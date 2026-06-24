@@ -1,0 +1,149 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   10.000 – Die Clique · Design-System
+   Frisch designte, augenschonende Dunkel-Palette für lange Spielabende.
+   "Nacht am Spieltisch": tiefes Tinten-Blau als Bühne, warmes Champagner-Gold
+   als Marke/Highlight, Mint für sichere Aktionen, Koralle für Risiko/Niete.
+   =========================================================================== */
+@theme {
+  /* Hintergründe & Flächen (von tief nach erhöht) */
+  --color-ink-950: #060910;
+  --color-ink-900: #0a0e16;
+  --color-ink-850: #0e1320;
+  --color-ink-800: #131a2b;
+  --color-ink-700: #1b2438;
+  --color-ink-600: #283450;
+  --color-ink-500: #3a4866;
+
+  /* Text */
+  --color-fog-100: #eef2fb;
+  --color-fog-300: #c2cbe0;
+  --color-fog-400: #93a0bd;
+  --color-fog-500: #66728f;
+  --color-fog-600: #47536e;
+
+  /* Champagner-Gold · Marke + Highlights */
+  --color-gold-300: #ffda8a;
+  --color-gold-400: #ffcb5c;
+  --color-gold-500: #f5b83d;
+  --color-gold-600: #d99a26;
+
+  /* Mint · sichere Aktionen (Sichern / Erfolg) */
+  --color-mint-300: #6ff0c9;
+  --color-mint-400: #2fd3a5;
+  --color-mint-500: #16b389;
+  --color-mint-600: #0d8e6d;
+
+  /* Koralle · Gefahr / Niete / ungültig */
+  --color-coral-300: #ff9aa8;
+  --color-coral-400: #fb5e73;
+  --color-coral-500: #e23b54;
+  --color-coral-600: #b82a40;
+
+  /* Iris · Refill / Info / neutrale Aktion */
+  --color-iris-300: #aab4ff;
+  --color-iris-400: #7c8bff;
+  --color-iris-500: #5d6af0;
+  --color-iris-600: #4651cc;
+
+  /* Risiko-Skala */
+  --color-risk-1: #fb5e73;
+  --color-risk-2: #ff8a4c;
+  --color-risk-3: #ffcb5c;
+  --color-risk-4: #b6e25a;
+  --color-risk-5: #2fd3a5;
+  --color-risk-6: #16b389;
+
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-ink-900);
+  background-image: radial-gradient(
+      120% 90% at 50% -10%,
+      rgba(124, 139, 255, 0.08),
+      transparent 60%
+    ),
+    radial-gradient(100% 80% at 100% 110%, rgba(245, 184, 61, 0.06), transparent 55%);
+  background-attachment: fixed;
+  color: var(--color-fog-300);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+
+button {
+  touch-action: manipulation;
+  font-family: inherit;
+}
+
+/* Safe-Area-Helfer für iPhone (Notch / Dynamic Island / Home-Indicator) */
+.safe-pt {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animationen */
+@keyframes pop-in {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-pop {
+  animation: pop-in 0.16s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes rise {
+  0% {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-rise {
+  animation: rise 0.25s ease-out forwards;
+}
+
+/* Wiederverwendbare Oberflächen */
+.glass {
+  background: rgba(10, 14, 22, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
