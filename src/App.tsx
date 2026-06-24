@@ -3,6 +3,7 @@ import type { GameState, Player } from './lib/types'
 import { calculateScore, WINNING_SCORE } from './lib/scoring'
 import { computeRisk } from './lib/risk'
 import { saveGame } from './lib/storage'
+import { pushGame } from './lib/cloud'
 import { buzz } from './lib/haptics'
 import { SetupScreen } from './components/SetupScreen'
 import { GameScreen } from './components/GameScreen'
@@ -121,7 +122,8 @@ export function App() {
         setPlayers(nextPlayers)
         setWinner(win)
         setPhase('finished')
-        saveGame(win, nextPlayers, event)
+        const record = saveGame(win, nextPlayers, event)
+        void pushGame(record) // fire-and-forget: offline bleibt es lokal, Sync später
         buzz([12, 40, 12, 40, 60])
       }
 
