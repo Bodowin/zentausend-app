@@ -19,6 +19,7 @@ interface Props {
   effectiveTarget: number
   neededForWin: number
   dice: number[]
+  inHand: number
   accumulated: number
   result: ScoreResult
   totalPotential: number
@@ -29,7 +30,7 @@ interface Props {
   onAddDie: (v: number) => void
   onRemoveDie: (i: number) => void
   onClearDice: () => void
-  onRefill: () => void
+  onContinue: () => void
   onBank: () => void
   onBust: () => void
   onUndo: () => void
@@ -49,6 +50,7 @@ export function GameScreen(p: Props) {
     effectiveTarget,
     neededForWin,
     dice,
+    inHand,
     accumulated,
     result,
     totalPotential,
@@ -59,9 +61,14 @@ export function GameScreen(p: Props) {
   } = p
 
   const lastChance = phase === 'lastChance'
-  const canRefill = dice.length === 6 && result.isValid && result.score > 0
   const canBank = result.isValid && totalPotential > 0
-  const idle = dice.length === 0 && accumulated === 0
+  // Weiterwürfeln möglich, sobald mindestens ein gültiger Würfel gelegt ist.
+  const canContinue = result.isValid && result.score > 0 && dice.length >= 1
+  // Alle Würfel der Hand gelegt → heiße Würfel (6 neu), sonst Rest neu würfeln.
+  const usedAll = dice.length === inHand
+  const remainingAfter = inHand - dice.length
+  // Kein Wurf gewertet → nur Niete (verliert ggf. das im Zug Gesicherte).
+  const idle = dice.length === 0
   const neededAfterBank = Math.max(0, neededForWin - totalPotential)
 
   return (
@@ -183,7 +190,9 @@ export function GameScreen(p: Props) {
           }`}
         >
           {dice.length === 0 ? (
-            <span className="text-sm italic text-fog-600">Gewertete Würfel eintippen…</span>
+            <span className="text-sm italic text-fog-600">
+              {inHand < 6 ? `${inHand} Würfel geworfen – Gewertete eintippen…` : 'Gewertete Würfel eintippen…'}
+            </span>
           ) : (
             <div className="flex flex-wrap justify-center gap-2">
               {dice.map((val, i) => {
@@ -269,7 +278,7 @@ export function GameScreen(p: Props) {
               <button
                 key={n}
                 onClick={() => p.onAddDie(n)}
-                disabled={dice.length >= 6 || phase === 'finished'}
+                disabled={dice.length >= inHand || phase === 'finished'}
                 className="h-14 rounded-xl border-b-4 border-ink-950 bg-ink-800 text-xl font-bold text-fog-100 transition-all hover:bg-ink-700 active:translate-y-1 active:border-b-0 disabled:translate-y-0 disabled:opacity-30"
               >
                 {n}
@@ -283,26 +292,18 @@ export function GameScreen(p: Props) {
               <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
                 <button
                   onClick={p.onBust}
-                  className="rounded-xl border border-coral-500/30 bg-ink-900 font-bold text-coral-400 transition-colors hover:bg-coral-500/10"
+                  className="flex flex-col items-center justify-center rounded-xl border border-coral-500/30 bg-ink-900 font-bold leading-none text-coral-400 transition-colors hover:bg-coral-500/10"
                 >
                   Niete
+                  {accumulated > 0 && (
+                    <span className="mt-0.5 text-[9px] font-normal opacity-80">verliert {fmt(accumulated)}</span>
+                  )}
                 </button>
                 <div className="grid place-items-center rounded-xl border border-dashed border-ink-800 text-sm italic text-fog-600">
-                  Auf Wurf warten…
+                  {inHand < 6 ? `${inHand} Würfel werfen…` : 'Auf Wurf warten…'}
                 </div>
               </div>
-            ) : canRefill ? (
-              <button
-                onClick={p.onRefill}
-                className="flex h-full w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none"
-              >
-                <IconRefresh />
-                <div className="flex flex-col items-start leading-none">
-                  <span>Refill & weiter</span>
-                  <span className="mt-0.5 text-[10px] font-normal opacity-80">Alle 6 frisch · 97,7 % sicher</span>
-                </div>
-              </button>
-            ) : (
+            ) : !result.isValid ? (
               <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
                 <button
                   onClick={p.onBust}
@@ -310,6 +311,15 @@ export function GameScreen(p: Props) {
                 >
                   Niete
                 </button>
+                <button
+                  disabled
+                  className="cursor-not-allowed rounded-xl bg-ink-800 font-bold text-fog-600"
+                >
+                  Ungültig
+                </button>
+              </div>
+            ) : (
+              <div className="grid h-full grid-cols-2 gap-3">
                 <button
                   onClick={p.onBank}
                   disabled={!canBank}
@@ -320,7 +330,21 @@ export function GameScreen(p: Props) {
                   }`}
                 >
                   <IconCheck className="h-6 w-6" />
-                  <span>{fmt(totalPotential)} sichern</span>
+                  <span>{fmt(totalPotential)}</span>
+                </button>
+                <button
+                  onClick={p.onContinue}
+                  disabled={!canContinue}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none"
+                >
+                  <IconRefresh className="h-5 w-5" />
+                  <div className="flex flex-col items-start leading-none">
+                    <span>{usedAll ? 'Heiße Würfel' : 'Weiter'}</span>
+                    <span className="mt-0.5 text-[10px] font-normal opacity-80">
+                      {usedAll ? '6 neu' : `noch ${remainingAfter}`}
+                      {risk ? ` · ${risk.pct.toFixed(0)} %` : ''}
+                    </span>
+                  </div>
                 </button>
               </div>
             )}

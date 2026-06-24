@@ -20,6 +20,8 @@ interface Snapshot {
   target: number
   dice: number[]
   accumulated: number
+  inHand: number
+  turnHasPasch: boolean
   action: string
 }
 
@@ -40,6 +42,11 @@ export function App() {
   // --- Zugzustand ---
   const [dice, setDice] = useState<number[]>([])
   const [accumulated, setAccumulated] = useState(0)
+  // Würfel "in der Hand" für den aktuellen Wurf (startet bei 6, sinkt beim
+  // Beiseitelegen; bei 0 → heiße Würfel, wieder 6).
+  const [inHand, setInHand] = useState(6)
+  // Liegt in diesem Zug bereits ein Drilling/Pasch? → aktiviert Risiko-Szenario B.
+  const [turnHasPasch, setTurnHasPasch] = useState(false)
   const [toast, setToast] = useState('')
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
 
@@ -61,6 +68,8 @@ export function App() {
     setWinner(null)
     setDice([])
     setAccumulated(0)
+    setInHand(6)
+    setTurnHasPasch(false)
     setSnapshot(null)
     setToast('')
     setView('game')
@@ -74,7 +83,7 @@ export function App() {
 
   // --- Würfel-Eingabe ---
   const addDie = (val: number) => {
-    if (dice.length >= 6 || phase === 'finished') return
+    if (dice.length >= inHand || phase === 'finished') return
     buzz(6)
     setDice((d) => [...d, val].sort())
   }
@@ -91,9 +100,11 @@ export function App() {
         target,
         dice: [...dice],
         accumulated,
+        inHand,
+        turnHasPasch,
         action,
       }),
-    [players, idx, round, phase, target, dice, accumulated],
+    [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch],
   )
 
   const undo = () => {
@@ -105,6 +116,8 @@ export function App() {
     setTarget(snapshot.target)
     setDice(snapshot.dice)
     setAccumulated(snapshot.accumulated)
+    setInHand(snapshot.inHand)
+    setTurnHasPasch(snapshot.turnHasPasch)
     setWinner(null)
     setSnapshot(null)
     showToast('Rückgängig')
@@ -135,6 +148,8 @@ export function App() {
         setTarget(nextTarget)
         setAccumulated(0)
         setDice([])
+        setInHand(6)
+        setTurnHasPasch(false)
       }
 
       if (phase === 'lastChance') {
@@ -159,13 +174,21 @@ export function App() {
   )
 
   // --- Aktionen ---
-  const handleRefill = () => {
-    if (!result.isValid || result.score === 0 || dice.length !== 6) return
-    takeSnapshot('refill')
+  // Weiterwürfeln: gewertete Würfel sichern und die RESTLICHEN neu würfeln.
+  // Wurden alle Würfel der Hand gelegt → heiße Würfel (wieder 6).
+  const handleContinue = () => {
+    if (!result.isValid || result.score === 0 || dice.length === 0 || dice.length > inHand) return
+    takeSnapshot('continue')
     buzz(10)
+    const usedAll = dice.length === inHand
     setAccumulated((a) => a + result.score)
+    // Heiße Würfel: alle 6 neu → kein Pasch mehr auf dem Tisch.
+    // Teil-Wurf: beiseitegelegte Würfel (inkl. Pasch) bleiben liegen.
+    if (usedAll) setTurnHasPasch(false)
+    else if (result.hasTriple) setTurnHasPasch(true)
+    setInHand(usedAll ? 6 : inHand - dice.length)
     setDice([])
-    showToast('Refill!')
+    showToast(usedAll ? 'Heiße Würfel!' : 'Weiter!')
   }
 
   const handleBank = () => {
@@ -196,9 +219,11 @@ export function App() {
 
   const risk = useMemo(() => {
     if (!result.isValid || dice.length === 0 || result.score === 0) return null
-    if (dice.length === 6) return computeRisk(6, false) // Refill → 6 frische Würfel
-    return computeRisk(6 - dice.length, result.hasTriple)
-  }, [result, dice.length])
+    // Alle Würfel der Hand gelegt → heiße Würfel: 6 frische, kein aktiver Pasch.
+    if (dice.length === inHand) return computeRisk(6, false)
+    // Sonst werden die restlichen Würfel neu geworfen; ein Pasch wertet weiter.
+    return computeRisk(inHand - dice.length, turnHasPasch || result.hasTriple)
+  }, [result, dice.length, inHand, turnHasPasch])
 
   // --- Rendering ---
   if (view === 'stats') {
@@ -231,6 +256,7 @@ export function App() {
       effectiveTarget={effectiveTarget}
       neededForWin={neededForWin}
       dice={dice}
+      inHand={inHand}
       accumulated={accumulated}
       result={result}
       totalPotential={totalPotential}
@@ -241,7 +267,7 @@ export function App() {
       onAddDie={addDie}
       onRemoveDie={removeDie}
       onClearDice={clearDice}
-      onRefill={handleRefill}
+      onContinue={handleContinue}
       onBank={handleBank}
       onBust={handleBust}
       onUndo={undo}

@@ -61,9 +61,11 @@ Variables* setzen (optional – ohne sie greifen die eingebauten Defaults).
 
 ## Status & Roadmap
 
-Umgesetzt: vollständige High-Stakes-Regeln, korrigierter Risiko-Rechner
-(Szenario A + B), Fair-Play-Endspiel, Nieten-Zählung, Event-Tagging, ewige
-Bestenliste, Undo, Haptik, PWA, Supabase-Cloud-Sync.
+Umgesetzt: vollständige High-Stakes-Regeln, Wurf-für-Wurf-Spiel (Würfel
+beiseitelegen & Rest weiterwürfeln, heiße Würfel), korrigierter Risiko-Rechner
+(Szenario A + B, live an die Restwürfel gekoppelt), Fair-Play-Endspiel,
+Nieten-Zählung, Event-Tagging, ewige Bestenliste, Undo, Haptik, PWA,
+Supabase-Cloud-Sync.
 
 Als Nächstes: Vercel-Deployment (einmalig verbinden) · optional „Clique-Code"
 oder Login, falls die Tabelle stärker abgesichert werden soll.
