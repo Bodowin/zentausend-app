@@ -1,10 +1,13 @@
 import type { Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
 import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
+import { playerColor } from '../lib/colors'
+import { shareResult } from '../lib/share'
 import {
   IconCheck,
   IconRefresh,
   IconRotate,
+  IconShare,
   IconTrash,
   IconTrophy,
   IconUndo,
@@ -76,6 +79,18 @@ export function GameScreen(p: Props) {
   const idle = dice.length === 0
   const neededAfterBank = Math.max(0, neededForWin - totalPotential)
 
+  // Risiko-Coach: dezente Empfehlung auf Basis der Erfolgschance.
+  const coach: { text: string; tone: string } | null =
+    !risk || totalPotential === 0
+      ? null
+      : neededAfterBank <= 0 && canBank
+        ? { text: 'Sichern = Sieg!', tone: 'text-mint-300' }
+        : risk.pct >= 85
+          ? { text: 'Weiter ist sicher', tone: 'text-mint-400' }
+          : risk.pct >= 65
+            ? { text: 'Geht noch', tone: 'text-risk-3' }
+            : { text: 'Lieber sichern', tone: 'text-coral-400' }
+
   return (
     <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb">
       {/* Kopfzeile */}
@@ -133,12 +148,18 @@ export function GameScreen(p: Props) {
               }`}
             >
               <div className="mb-0.5 flex items-center justify-between gap-2">
-                <span
-                  className={`max-w-[72px] truncate text-[11px] font-bold uppercase tracking-wide ${
-                    active ? 'text-fog-100' : 'text-fog-500'
-                  }`}
-                >
-                  {pl.name}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: playerColor(pl.name) }}
+                  />
+                  <span
+                    className={`max-w-[64px] truncate text-[11px] font-bold uppercase tracking-wide ${
+                      active ? 'text-fog-100' : 'text-fog-500'
+                    }`}
+                  >
+                    {pl.name}
+                  </span>
                 </span>
                 {pl.score >= WINNING_SCORE && <IconTrophy className="h-3.5 w-3.5 text-gold-400" />}
               </div>
@@ -257,7 +278,7 @@ export function GameScreen(p: Props) {
           )}
         </div>
 
-        {/* Risiko-Meter */}
+        {/* Risiko-Meter + Coach */}
         <div className="mb-3 h-12">
           {risk && (
             <div className="flex items-center gap-3 rounded-xl border border-ink-800 bg-ink-900/60 p-2.5 animate-pop">
@@ -273,6 +294,11 @@ export function GameScreen(p: Props) {
                   <div className={`h-full rounded-full ${risk.bar}`} style={{ width: `${risk.pct}%` }} />
                 </div>
               </div>
+              {coach && (
+                <div className={`w-16 text-right text-[10px] font-bold leading-tight ${coach.tone}`}>
+                  {coach.text}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -380,20 +406,31 @@ export function GameScreen(p: Props) {
                       i === 0 ? 'font-bold text-gold-400' : 'text-fog-400'
                     }`}
                   >
-                    <span>
-                      {i + 1}. {pl.name}
-                      <span className="ml-2 text-[10px] text-fog-600">{pl.busts} N</span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 text-right text-fog-600">{i + 1}.</span>
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: playerColor(pl.name) }} />
+                      {pl.name}
+                      <span className="text-[10px] text-fog-600">{pl.busts} N</span>
                     </span>
                     <span className="font-mono">{fmt(pl.score)}</span>
                   </div>
                 ))}
             </div>
-            <button
-              onClick={p.onNewGame}
-              className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
-            >
-              Neues Spiel
-            </button>
+            <div className="grid grid-cols-[1fr_auto] gap-3">
+              <button
+                onClick={p.onNewGame}
+                className="rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
+              >
+                Neues Spiel
+              </button>
+              <button
+                onClick={() => shareResult(winner, players, event)}
+                className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
+                aria-label="Ergebnis teilen"
+              >
+                <IconShare className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

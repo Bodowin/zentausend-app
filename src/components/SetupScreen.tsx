@@ -3,6 +3,7 @@ import type { Player } from '../lib/types'
 import { getEvents } from '../lib/storage'
 import { IconChart, IconUserPlus, IconUsers, IconX, IconTag, IconSettings } from './Icons'
 import { SettingsModal } from './SettingsModal'
+import { playerColor } from '../lib/colors'
 
 const PRESETS = ['Gabi', 'Mabi', 'Dana', 'Bodo']
 
@@ -107,7 +108,10 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
                 className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2.5 animate-pop"
               >
                 <div className="flex items-center gap-3">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-ink-700 text-[11px] font-bold text-fog-400">
+                  <span
+                    className="grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-ink-950"
+                    style={{ backgroundColor: playerColor(p.name) }}
+                  >
                     {i + 1}
                   </span>
                   <span className="font-semibold text-fog-100">{p.name}</span>
