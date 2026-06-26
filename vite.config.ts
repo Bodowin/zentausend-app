@@ -5,6 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    // Build-Zeitstempel, in den Einstellungen sichtbar – hilft, einen veralteten
+    // PWA-Cache zu erkennen.
+    __BUILD_TIME__: JSON.stringify(
+      new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
+    ),
+  },
   plugins: [
     react(),
     tailwindcss(),

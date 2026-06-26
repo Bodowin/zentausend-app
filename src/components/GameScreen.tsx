@@ -78,6 +78,9 @@ export function GameScreen(p: Props) {
   // Kein Wurf gewertet → nur Niete (verliert ggf. das im Zug Gesicherte).
   const idle = dice.length === 0
   const neededAfterBank = Math.max(0, neededForWin - totalPotential)
+  // Letzte Chance: Anführer (höchster Score) und die zu schlagende Marke.
+  const leader = lastChance ? [...players].sort((a, b) => b.score - a.score)[0] : null
+  const beatScore = effectiveTarget - 1
 
   // Risiko-Coach: dezente Empfehlung auf Basis der Erfolgschance.
   const coach: { text: string; tone: string } | null =
@@ -138,15 +141,23 @@ export function GameScreen(p: Props) {
       <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-ink-800 px-3 py-3">
         {players.map((pl, i) => {
           const active = i === idx && phase !== 'finished'
+          const reached = pl.score >= WINNING_SCORE
           return (
             <div
               key={pl.id}
-              className={`inline-flex min-w-[104px] flex-col rounded-2xl border px-4 py-2.5 transition-all ${
+              className={`relative inline-flex min-w-[104px] flex-col rounded-2xl border px-4 py-2.5 transition-all ${
                 active
-                  ? 'z-10 scale-105 border-gold-500/50 bg-ink-800 shadow-lg shadow-black/40'
-                  : 'border-transparent bg-ink-900/40 opacity-60'
+                  ? 'z-10 scale-105 border-gold-500/60 bg-ink-800 shadow-lg shadow-black/40'
+                  : reached
+                    ? 'border-gold-500/60 bg-gold-500/10'
+                    : 'border-transparent bg-ink-900/40 opacity-60'
               }`}
             >
+              {reached && (
+                <span className="absolute -top-2 right-2 rounded-full bg-gold-500 px-1.5 py-px text-[8px] font-black uppercase tracking-wide text-ink-950 shadow">
+                  🏆 10.000
+                </span>
+              )}
               <div className="mb-0.5 flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span
@@ -155,17 +166,17 @@ export function GameScreen(p: Props) {
                   />
                   <span
                     className={`max-w-[64px] truncate text-[11px] font-bold uppercase tracking-wide ${
-                      active ? 'text-fog-100' : 'text-fog-500'
+                      active || reached ? 'text-fog-100' : 'text-fog-500'
                     }`}
                   >
                     {pl.name}
                   </span>
                 </span>
-                {pl.score >= WINNING_SCORE && <IconTrophy className="h-3.5 w-3.5 text-gold-400" />}
+                {reached && <IconTrophy className="h-3.5 w-3.5 text-gold-400" />}
               </div>
               <span
                 className={`font-mono text-2xl font-black tracking-tight ${
-                  active ? 'text-gold-400' : 'text-fog-400'
+                  reached ? 'text-gold-300' : active ? 'text-gold-400' : 'text-fog-400'
                 }`}
               >
                 {fmt(pl.score)}
@@ -175,6 +186,15 @@ export function GameScreen(p: Props) {
           )
         })}
       </div>
+
+      {/* Letzte-Chance-Banner: macht klar, dass jemand 10.000 hat */}
+      {lastChance && leader && (
+        <div className="flex items-center justify-center gap-2 border-b border-coral-500/30 bg-coral-500/10 px-4 py-2 text-center text-xs font-bold animate-pop">
+          <IconTrophy className="h-4 w-4 text-gold-400" />
+          <span className="text-fog-100">{leader.name} hat 10.000!</span>
+          <span className="text-coral-300">{fmt(beatScore)} muss überboten werden</span>
+        </div>
+      )}
 
       {/* Status-Zeile */}
       <div className="grid grid-cols-2 gap-4 border-b border-ink-800 bg-ink-900/40 px-4 py-2.5 font-mono text-xs">
