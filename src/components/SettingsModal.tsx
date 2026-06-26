@@ -51,6 +51,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         >
           {saved ? 'Gespeichert ✓' : 'Speichern'}
         </button>
+
+        <p className="mt-4 text-center text-[10px] text-fog-600">Version {__BUILD_TIME__}</p>
       </div>
     </div>
   )
