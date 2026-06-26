@@ -2,7 +2,7 @@ import type { Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
 import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
-import { shareResult } from '../lib/share'
+import { shareResultImage } from '../lib/shareImage'
 import {
   IconCheck,
   IconRefresh,
@@ -265,7 +265,8 @@ export function GameScreen(p: Props) {
         {/* Punkte-Anzeige */}
         <div className="flex flex-1 flex-col items-center justify-center py-1">
           <div
-            className={`font-mono text-6xl font-black tracking-tighter transition-colors ${
+            key={result.score}
+            className={`font-mono text-6xl font-black tracking-tighter transition-colors animate-pop ${
               result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-ink-600') : 'text-ink-700'
             }`}
           >
@@ -372,7 +373,9 @@ export function GameScreen(p: Props) {
                 <button
                   onClick={p.onContinue}
                   disabled={!canContinue}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none"
+                  className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none ${
+                    usedAll ? 'animate-pulse' : ''
+                  }`}
                 >
                   <IconRefresh className="h-5 w-5" />
                   <div className="flex flex-col items-start leading-none">
@@ -424,9 +427,9 @@ export function GameScreen(p: Props) {
                 Neues Spiel
               </button>
               <button
-                onClick={() => shareResult(winner, players, event)}
+                onClick={() => shareResultImage(winner, players, event)}
                 className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                aria-label="Ergebnis teilen"
+                aria-label="Ergebnis als Bild teilen"
               >
                 <IconShare className="h-5 w-5" />
               </button>
