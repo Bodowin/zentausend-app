@@ -1,6 +1,6 @@
 import type { Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
-import { WINNING_SCORE } from '../lib/scoring'
+import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
 import {
   IconCheck,
   IconRefresh,
@@ -18,6 +18,7 @@ interface Props {
   event: string
   effectiveTarget: number
   neededForWin: number
+  testMode: boolean
   dice: number[]
   inHand: number
   accumulated: number
@@ -49,6 +50,7 @@ export function GameScreen(p: Props) {
     event,
     effectiveTarget,
     neededForWin,
+    testMode,
     dice,
     inHand,
     accumulated,
@@ -61,7 +63,10 @@ export function GameScreen(p: Props) {
   } = p
 
   const lastChance = phase === 'lastChance'
-  const canBank = result.isValid && totalPotential > 0
+  // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
+  const onBoard = players[idx].score > 0
+  const entryShort = !onBoard && totalPotential > 0 && totalPotential < ENTRY_MIN
+  const canBank = result.isValid && totalPotential > 0 && (onBoard || totalPotential >= ENTRY_MIN)
   // Weiterwürfeln möglich, sobald mindestens ein gültiger Würfel gelegt ist.
   const canContinue = result.isValid && result.score > 0 && dice.length >= 1
   // Alle Würfel der Hand gelegt → heiße Würfel (6 neu), sonst Rest neu würfeln.
@@ -91,6 +96,7 @@ export function GameScreen(p: Props) {
             <span className="text-[10px] text-fog-600">
               Ziel {fmt(effectiveTarget)}
               {event ? ` · ${event}` : ''}
+              {testMode ? ' · TEST' : ''}
             </span>
           </div>
         </div>
@@ -330,7 +336,12 @@ export function GameScreen(p: Props) {
                   }`}
                 >
                   <IconCheck className="h-6 w-6" />
-                  <span>{fmt(totalPotential)}</span>
+                  <div className="flex flex-col items-start leading-none">
+                    <span>{fmt(totalPotential)}</span>
+                    {entryShort && (
+                      <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {ENTRY_MIN}</span>
+                    )}
+                  </div>
                 </button>
                 <button
                   onClick={p.onContinue}

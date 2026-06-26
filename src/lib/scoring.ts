@@ -2,6 +2,9 @@ import type { ScoreResult } from './types'
 
 export const WINNING_SCORE = 10000
 
+/** Mindestpunkte, um das erste Mal aufs Konto zu kommen ("Einstieg"). */
+export const ENTRY_MIN = 350
+
 /**
  * Bewertet die eingetippten Würfel nach dem High-Stakes-Regelwerk aus der
  * Produktspezifikation:
