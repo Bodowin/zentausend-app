@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { GameState, Player } from './lib/types'
-import { calculateScore, WINNING_SCORE } from './lib/scoring'
+import { calculateScore, ENTRY_MIN, WINNING_SCORE } from './lib/scoring'
 import { computeRisk } from './lib/risk'
 import { saveGame } from './lib/storage'
 import { pushGame } from './lib/cloud'
@@ -195,6 +195,8 @@ export function App() {
     if (!result.isValid) return
     const pot = accumulated + result.score
     if (pot === 0) return
+    // Einstiegsregel: wer noch bei 0 steht, braucht mindestens ENTRY_MIN.
+    if (players[idx].score === 0 && pot < ENTRY_MIN) return
     takeSnapshot('bank')
     buzz(14)
     const newPlayers = players.map((p, i) =>
