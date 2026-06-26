@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import type { Player } from '../lib/types'
 import { getEvents } from '../lib/storage'
-import { IconChart, IconUserPlus, IconUsers, IconX, IconTag, IconSettings } from './Icons'
+import { IconChart, IconRefresh, IconUserPlus, IconUsers, IconX, IconTag, IconSettings } from './Icons'
 import { SettingsModal } from './SettingsModal'
 import { playerColor } from '../lib/colors'
+import type { ActiveGame } from '../lib/activeGame'
 
 const PRESETS = ['Gabi', 'Mabi', 'Dana', 'Bodo']
 
@@ -11,9 +12,19 @@ interface Props {
   makePlayer: (name: string) => Player
   onStart: (players: Player[], event: string, testMode: boolean) => void
   onShowStats: () => void
+  onShowHelp: () => void
+  resumable: ActiveGame | null
+  onResume: (g: ActiveGame) => void
 }
 
-export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
+export function SetupScreen({
+  makePlayer,
+  onStart,
+  onShowStats,
+  onShowHelp,
+  resumable,
+  onResume,
+}: Props) {
   const [players, setPlayers] = useState<Player[]>([])
   const [guest, setGuest] = useState('')
   const [event, setEvent] = useState('')
@@ -44,6 +55,13 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
             <IconChart className="h-4 w-4" /> Statistik
           </button>
           <button
+            onClick={onShowHelp}
+            className="grid h-9 w-9 place-items-center rounded-xl border border-ink-700 bg-ink-800/70 text-sm font-bold text-fog-400 transition-colors hover:text-fog-100"
+            aria-label="Spielregeln"
+          >
+            ?
+          </button>
+          <button
             onClick={() => setShowSettings(true)}
             className="grid h-9 w-9 place-items-center rounded-xl border border-ink-700 bg-ink-800/70 text-fog-400 transition-colors hover:text-fog-100"
             aria-label="Einstellungen"
@@ -54,6 +72,24 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
       </header>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {resumable && (
+        <button
+          onClick={() => onResume(resumable)}
+          className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 text-left transition-colors hover:bg-gold-500/15 animate-rise"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-500/20 text-gold-400">
+            <IconRefresh className="h-5 w-5" />
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="font-bold text-fog-100">Spiel fortsetzen</span>
+            <span className="truncate text-xs text-fog-400">
+              Runde {resumable.round} · {resumable.players.map((p) => p.name).join(', ')}
+              {resumable.testMode ? ' · TEST' : ''}
+            </span>
+          </span>
+        </button>
+      )}
 
       <section className="mb-5 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-5 shadow-2xl shadow-black/40 animate-rise">
         <h2 className="mb-4 flex items-center gap-2 font-semibold text-fog-100">
