@@ -49,7 +49,9 @@ export function App() {
   // Liegt in diesem Zug bereits ein Drilling/Pasch? → aktiviert Risiko-Szenario B.
   const [turnHasPasch, setTurnHasPasch] = useState(false)
   const [toast, setToast] = useState('')
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
+  // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
+  const [undoStack, setUndoStack] = useState<Snapshot[]>([])
+  const UNDO_LIMIT = 30
 
   const result = useMemo(() => calculateScore(dice), [dice])
 
@@ -72,7 +74,7 @@ export function App() {
     setAccumulated(0)
     setInHand(6)
     setTurnHasPasch(false)
-    setSnapshot(null)
+    setUndoStack([])
     setToast('')
     setView('game')
   }
@@ -94,34 +96,40 @@ export function App() {
 
   const takeSnapshot = useCallback(
     (action: string) =>
-      setSnapshot({
-        players: players.map((p) => ({ ...p })),
-        idx,
-        round,
-        phase,
-        target,
-        dice: [...dice],
-        accumulated,
-        inHand,
-        turnHasPasch,
-        action,
-      }),
+      setUndoStack((stack) =>
+        [
+          ...stack,
+          {
+            players: players.map((p) => ({ ...p })),
+            idx,
+            round,
+            phase,
+            target,
+            dice: [...dice],
+            accumulated,
+            inHand,
+            turnHasPasch,
+            action,
+          },
+        ].slice(-UNDO_LIMIT),
+      ),
     [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch],
   )
 
   const undo = () => {
-    if (!snapshot) return
-    setPlayers(snapshot.players)
-    setIdx(snapshot.idx)
-    setRound(snapshot.round)
-    setPhase(snapshot.phase)
-    setTarget(snapshot.target)
-    setDice(snapshot.dice)
-    setAccumulated(snapshot.accumulated)
-    setInHand(snapshot.inHand)
-    setTurnHasPasch(snapshot.turnHasPasch)
+    const snap = undoStack[undoStack.length - 1]
+    if (!snap) return
+    setPlayers(snap.players)
+    setIdx(snap.idx)
+    setRound(snap.round)
+    setPhase(snap.phase)
+    setTarget(snap.target)
+    setDice(snap.dice)
+    setAccumulated(snap.accumulated)
+    setInHand(snap.inHand)
+    setTurnHasPasch(snap.turnHasPasch)
     setWinner(null)
-    setSnapshot(null)
+    setUndoStack((stack) => stack.slice(0, -1))
     showToast('Rückgängig')
   }
 
@@ -271,7 +279,7 @@ export function App() {
       risk={risk}
       toast={toast}
       winner={winner}
-      canUndo={!!snapshot}
+      canUndo={undoStack.length > 0}
       onAddDie={addDie}
       onRemoveDie={removeDie}
       onClearDice={clearDice}
