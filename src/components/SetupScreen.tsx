@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import type { Player } from '../lib/types'
 import { getEvents } from '../lib/storage'
-import { IconChart, IconUserPlus, IconUsers, IconX, IconTag } from './Icons'
+import { IconChart, IconUserPlus, IconUsers, IconX, IconTag, IconSettings } from './Icons'
+import { SettingsModal } from './SettingsModal'
 
 const PRESETS = ['Gabi', 'Mabi', 'Dana', 'Bodo']
 
 interface Props {
   makePlayer: (name: string) => Player
-  onStart: (players: Player[], event: string) => void
+  onStart: (players: Player[], event: string, testMode: boolean) => void
   onShowStats: () => void
 }
 
@@ -15,6 +16,8 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
   const [players, setPlayers] = useState<Player[]>([])
   const [guest, setGuest] = useState('')
   const [event, setEvent] = useState('')
+  const [testMode, setTestMode] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const pastEvents = useMemo(() => getEvents(), [])
 
   const add = (name: string) => {
@@ -32,13 +35,24 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
           <span className="font-display text-4xl font-black tracking-tighter text-gold-500">10.000</span>
           <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-fog-500">Die Clique</span>
         </div>
-        <button
-          onClick={onShowStats}
-          className="flex items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
-        >
-          <IconChart className="h-4 w-4" /> Statistik
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onShowStats}
+            className="flex items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
+          >
+            <IconChart className="h-4 w-4" /> Statistik
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="grid h-9 w-9 place-items-center rounded-xl border border-ink-700 bg-ink-800/70 text-fog-400 transition-colors hover:text-fog-100"
+            aria-label="Einstellungen"
+          >
+            <IconSettings className="h-4 w-4" />
+          </button>
+        </div>
       </header>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
       <section className="mb-5 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-5 shadow-2xl shadow-black/40 animate-rise">
         <h2 className="mb-4 flex items-center gap-2 font-semibold text-fog-100">
@@ -137,12 +151,36 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
         )}
       </section>
 
+      <label className="mb-4 flex cursor-pointer items-center justify-between rounded-2xl border border-ink-700/80 bg-ink-850/60 px-4 py-3">
+        <span className="flex flex-col">
+          <span className="text-sm font-semibold text-fog-200">Testspiel</span>
+          <span className="text-[11px] text-fog-500">Zählt nicht für die Statistik</span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={testMode}
+          onClick={() => setTestMode((v) => !v)}
+          className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+            testMode ? 'bg-gold-500' : 'bg-ink-700'
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-6 w-6 rounded-full bg-fog-100 shadow transition-transform ${
+              testMode ? 'translate-x-5' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
+      </label>
+
       <button
-        onClick={() => onStart(players, event)}
+        onClick={() => onStart(players, event, testMode)}
         disabled={players.length < 2}
         className="mb-6 mt-auto w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
       >
-        {players.length < 2 ? 'Mind. 2 Spieler wählen' : `Spiel starten · ${players.length} Spieler`}
+        {players.length < 2
+          ? 'Mind. 2 Spieler wählen'
+          : `${testMode ? 'Testspiel' : 'Spiel'} starten · ${players.length} Spieler`}
       </button>
     </div>
   )

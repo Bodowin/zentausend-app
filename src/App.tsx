@@ -38,6 +38,7 @@ export function App() {
   const [phase, setPhase] = useState<GameState>('setup')
   const [target, setTarget] = useState(0)
   const [winner, setWinner] = useState<Player | null>(null)
+  const [testMode, setTestMode] = useState(false)
 
   // --- Zugzustand ---
   const [dice, setDice] = useState<number[]>([])
@@ -58,9 +59,10 @@ export function App() {
   }, [])
 
   // --- Setup ---
-  const startGame = (chosen: Player[], evt: string) => {
+  const startGame = (chosen: Player[], evt: string, test: boolean) => {
     setPlayers(chosen.map((p) => ({ ...p, score: 0, busts: 0 })))
     setEvent(evt.trim())
+    setTestMode(test)
     setIdx(0)
     setRound(1)
     setPhase('active')
@@ -135,8 +137,11 @@ export function App() {
         setPlayers(nextPlayers)
         setWinner(win)
         setPhase('finished')
-        const record = saveGame(win, nextPlayers, event)
-        void pushGame(record) // fire-and-forget: offline bleibt es lokal, Sync später
+        // Testspiele werden weder lokal noch in der Cloud gespeichert.
+        if (!testMode) {
+          const record = saveGame(win, nextPlayers, event)
+          void pushGame(record) // fire-and-forget: offline bleibt es lokal, Sync später
+        }
         buzz([12, 40, 12, 40, 60])
       }
 
@@ -170,7 +175,7 @@ export function App() {
       const nextRound = nextIdx === 0 ? round + 1 : round
       return advance(nextIdx, 'active', nextRound, target)
     },
-    [phase, idx, target, round, event, showToast],
+    [phase, idx, target, round, event, testMode, showToast],
   )
 
   // --- Aktionen ---
@@ -257,6 +262,7 @@ export function App() {
       event={event}
       effectiveTarget={effectiveTarget}
       neededForWin={neededForWin}
+      testMode={testMode}
       dice={dice}
       inHand={inHand}
       accumulated={accumulated}

@@ -1,5 +1,5 @@
-import { supabase } from './supabase'
-import { getHistory } from './storage'
+import { getSupabase } from './supabase'
+import { getHistory, removeGame } from './storage'
 import type { GameRecord } from './types'
 import type { Database } from './database.types'
 
@@ -32,6 +32,7 @@ function fromRow(row: Row): GameRecord {
 
 /** Schiebt ein einzelnes Spiel in die Cloud (idempotent über client_id). */
 export async function pushGame(game: GameRecord): Promise<boolean> {
+  const supabase = getSupabase()
   if (!supabase) return false
   const { error } = await supabase
     .from('games')
@@ -45,6 +46,7 @@ export async function pushGame(game: GameRecord): Promise<boolean> {
 
 /** Holt alle Spiele aus der Cloud (neueste zuerst). */
 export async function fetchCloudGames(): Promise<GameRecord[]> {
+  const supabase = getSupabase()
   if (!supabase) return []
   const { data, error } = await supabase
     .from('games')
@@ -56,6 +58,49 @@ export async function fetchCloudGames(): Promise<GameRecord[]> {
     return []
   }
   return (data ?? []).map(fromRow)
+}
+
+export type DeleteResult = 'ok' | 'denied' | 'offline'
+
+/**
+ * Löscht ein Spiel lokal und – falls vorhanden – in der Cloud.
+ *
+ * Das Cloud-Löschen ist durch den Clique-Code geschützt. Da RLS ein verwehrtes
+ * DELETE nicht als Fehler, sondern als „0 Zeilen" meldet, prüfen wir danach, ob
+ * der Datensatz noch existiert:
+ *  - in der Cloud gelöscht → 'ok'
+ *  - existiert noch in der Cloud (Code fehlt/falsch) → 'denied' (lokal bleibt)
+ *  - war nie in der Cloud (nur lokal) → lokal entfernt, 'ok'
+ */
+export async function deleteGame(game: GameRecord): Promise<DeleteResult> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    removeGame(game.id)
+    return 'offline'
+  }
+
+  const { data: deleted } = await supabase
+    .from('games')
+    .delete()
+    .eq('client_id', key(game))
+    .select('id')
+
+  if (deleted && deleted.length > 0) {
+    removeGame(game.id)
+    return 'ok'
+  }
+
+  // Nichts gelöscht: liegt es noch in der Cloud (→ verweigert) oder war es nur lokal?
+  const { data: still } = await supabase
+    .from('games')
+    .select('id')
+    .eq('client_id', key(game))
+    .limit(1)
+
+  if (still && still.length > 0) return 'denied'
+
+  removeGame(game.id)
+  return 'ok'
 }
 
 export interface SyncResult {
@@ -74,7 +119,7 @@ export interface SyncResult {
  */
 export async function syncAndMerge(): Promise<SyncResult> {
   const local = getHistory()
-  if (!supabase) return { games: local, online: false }
+  if (!getSupabase()) return { games: local, online: false }
 
   const cloud = await fetchCloudGames()
   const cloudIds = new Set(cloud.map(key))

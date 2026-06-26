@@ -18,6 +18,7 @@ interface Props {
   event: string
   effectiveTarget: number
   neededForWin: number
+  testMode: boolean
   dice: number[]
   inHand: number
   accumulated: number
@@ -49,6 +50,7 @@ export function GameScreen(p: Props) {
     event,
     effectiveTarget,
     neededForWin,
+    testMode,
     dice,
     inHand,
     accumulated,
@@ -94,6 +96,7 @@ export function GameScreen(p: Props) {
             <span className="text-[10px] text-fog-600">
               Ziel {fmt(effectiveTarget)}
               {event ? ` · ${event}` : ''}
+              {testMode ? ' · TEST' : ''}
             </span>
           </div>
         </div>
