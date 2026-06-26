@@ -1,5 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GameState, Player } from './lib/types'
+import {
+  clearActiveGame,
+  loadActiveGame,
+  saveActiveGame,
+  type ActiveGame,
+} from './lib/activeGame'
 import { calculateScore, ENTRY_MIN, WINNING_SCORE } from './lib/scoring'
 import { computeRisk } from './lib/risk'
 import { saveGame } from './lib/storage'
@@ -8,6 +14,9 @@ import { buzz } from './lib/haptics'
 import { SetupScreen } from './components/SetupScreen'
 import { GameScreen } from './components/GameScreen'
 import { StatsScreen } from './components/StatsScreen'
+import { IntroScreen } from './components/IntroScreen'
+
+const INTRO_KEY = '10k_seen_intro'
 
 type View = 'setup' | 'game' | 'stats'
 
@@ -53,7 +62,60 @@ export function App() {
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const UNDO_LIMIT = 30
 
+  // Fortsetzbares (unterbrochenes) Spiel aus dem letzten Mal.
+  const [resumable, setResumable] = useState<ActiveGame | null>(() => loadActiveGame())
+
+  // Erklärungs-Bildschirm beim ersten Start (und über „?" erneut aufrufbar).
+  const [showIntro, setShowIntro] = useState(() => {
+    try {
+      return !localStorage.getItem(INTRO_KEY)
+    } catch {
+      return false
+    }
+  })
+  const closeIntro = () => {
+    try {
+      localStorage.setItem(INTRO_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setShowIntro(false)
+  }
+
   const result = useMemo(() => calculateScore(dice), [dice])
+
+  // Laufendes Spiel bei jeder Änderung sichern, damit es fortsetzbar ist.
+  useEffect(() => {
+    if (view === 'game' && (phase === 'active' || phase === 'lastChance')) {
+      saveActiveGame({
+        players,
+        idx,
+        round,
+        phase,
+        target,
+        event,
+        testMode,
+        dice,
+        accumulated,
+        inHand,
+        turnHasPasch,
+        savedAt: new Date().toISOString(),
+      })
+    }
+  }, [
+    view,
+    players,
+    idx,
+    round,
+    phase,
+    target,
+    event,
+    testMode,
+    dice,
+    accumulated,
+    inHand,
+    turnHasPasch,
+  ])
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -75,6 +137,7 @@ export function App() {
     setInHand(6)
     setTurnHasPasch(false)
     setUndoStack([])
+    setResumable(null)
     setToast('')
     setView('game')
   }
@@ -82,7 +145,27 @@ export function App() {
   const exitToSetup = () => {
     setPhase('setup')
     setWinner(null)
+    setResumable(loadActiveGame()) // unterbrochenes Spiel ggf. zum Fortsetzen anbieten
     setView('setup')
+  }
+
+  const resumeGame = (g: ActiveGame) => {
+    setPlayers(g.players)
+    setIdx(g.idx)
+    setRound(g.round)
+    setPhase(g.phase)
+    setTarget(g.target)
+    setEvent(g.event)
+    setTestMode(g.testMode)
+    setDice(g.dice)
+    setAccumulated(g.accumulated)
+    setInHand(g.inHand)
+    setTurnHasPasch(g.turnHasPasch)
+    setWinner(null)
+    setUndoStack([])
+    setResumable(null)
+    setToast('')
+    setView('game')
   }
 
   // --- Würfel-Eingabe ---
@@ -150,6 +233,7 @@ export function App() {
           const record = saveGame(win, nextPlayers, event)
           void pushGame(record) // fire-and-forget: offline bleibt es lokal, Sync später
         }
+        clearActiveGame() // Spiel ist vorbei → nicht mehr fortsetzbar
         buzz([12, 40, 12, 40, 60])
       }
 
@@ -247,11 +331,17 @@ export function App() {
 
   if (view === 'setup') {
     return (
-      <SetupScreen
-        makePlayer={(name) => ({ id: uid(), name, score: 0, busts: 0 })}
-        onStart={startGame}
-        onShowStats={() => setView('stats')}
-      />
+      <>
+        <SetupScreen
+          makePlayer={(name) => ({ id: uid(), name, score: 0, busts: 0 })}
+          onStart={startGame}
+          onShowStats={() => setView('stats')}
+          onShowHelp={() => setShowIntro(true)}
+          resumable={resumable}
+          onResume={resumeGame}
+        />
+        {showIntro && <IntroScreen onClose={closeIntro} />}
+      </>
     )
   }
 
