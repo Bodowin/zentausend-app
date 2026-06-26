@@ -155,27 +155,31 @@ export function SetupScreen({ makePlayer, onStart, onShowStats }: Props) {
         )}
       </section>
 
-      <label className="mb-4 flex cursor-pointer items-center justify-between rounded-2xl border border-ink-700/80 bg-ink-850/60 px-4 py-3">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={testMode}
+        onClick={() => setTestMode((v) => !v)}
+        className={`mb-4 flex w-full items-center justify-between rounded-2xl border bg-ink-850/60 px-4 py-3 text-left transition-colors ${
+          testMode ? 'border-gold-500/50' : 'border-ink-700/80'
+        }`}
+      >
         <span className="flex flex-col">
           <span className="text-sm font-semibold text-fog-200">Testspiel</span>
           <span className="text-[11px] text-fog-500">Zählt nicht für die Statistik</span>
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={testMode}
-          onClick={() => setTestMode((v) => !v)}
-          className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-            testMode ? 'bg-gold-500' : 'bg-ink-700'
+        <span
+          className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${
+            testMode ? 'bg-gold-500' : 'bg-ink-600'
           }`}
         >
           <span
-            className={`absolute top-0.5 h-6 w-6 rounded-full bg-fog-100 shadow transition-transform ${
-              testMode ? 'translate-x-5' : 'translate-x-0.5'
+            className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+              testMode ? 'translate-x-[26px]' : 'translate-x-1'
             }`}
           />
-        </button>
-      </label>
+        </span>
+      </button>
 
       <button
         onClick={() => onStart(players, event, testMode)}
