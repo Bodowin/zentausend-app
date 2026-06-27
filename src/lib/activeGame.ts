@@ -28,6 +28,8 @@ export function saveActiveGame(game: ActiveGame): void {
   }
 }
 
+const isDie = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 6
+
 export function loadActiveGame(): ActiveGame | null {
   try {
     const raw = localStorage.getItem(KEY)
@@ -35,6 +37,13 @@ export function loadActiveGame(): ActiveGame | null {
     const g = JSON.parse(raw) as ActiveGame
     // Nur fortsetzbar, wenn ein laufendes Spiel mit Spielern vorliegt.
     if (!g.players?.length || (g.phase !== 'active' && g.phase !== 'lastChance')) return null
+    // Verteidigung gegen beschädigten Speicher: Index, Würfel und Hand prüfen.
+    if (typeof g.idx !== 'number' || g.idx < 0 || g.idx >= g.players.length) return null
+    const kept = g.kept ?? []
+    const dice = g.dice ?? []
+    const rolled = g.rolled ?? []
+    if (![...kept, ...dice, ...rolled].every(isDie)) return null
+    if (kept.length + dice.length > 6) return null
     return g
   } catch {
     return null

@@ -35,6 +35,15 @@ export function saveGame(
   return record
 }
 
+/** Ersetzt den lokalen Verlauf vollständig (z. B. nach einem Cloud-Merge). */
+export function replaceHistory(games: GameRecord[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(games.slice(0, MAX_RECORDS)))
+  } catch {
+    /* ignore */
+  }
+}
+
 export function clearHistory(): void {
   try {
     localStorage.removeItem(HISTORY_KEY)

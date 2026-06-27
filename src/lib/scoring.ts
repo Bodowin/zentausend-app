@@ -23,6 +23,12 @@ export function calculateScore(dice: number[]): ScoreResult {
     return { score: 0, label: '', isValid: true, invalidDice: [], hasTriple: false, hasJokerTriple: false }
   }
 
+  // Verteidigung gegen kaputte Daten (manipuliertes localStorage, künftige Imports):
+  // nur echte Würfelaugen 1–6 sind zulässig.
+  if (dice.some((d) => !Number.isInteger(d) || d < 1 || d > 6)) {
+    return { score: 0, label: '', isValid: false, invalidDice: [...dice], hasTriple: false, hasJokerTriple: false }
+  }
+
   const counts: Record<number, number> = {}
   dice.forEach((d) => (counts[d] = (counts[d] || 0) + 1))
   const distinctNumbers = Object.keys(counts).length
