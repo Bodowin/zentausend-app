@@ -248,9 +248,9 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     const sizePx = 2 * h * S
     // Filz deckt den ganzen Schalen-Innenraum ab (sonst landen Würfel daneben).
     const feltPx = (2 * Rb + 1.2) * S
-    // Stärkere Perspektive + höherer Blickpunkt → die Schale „liegt" wie ein
-    // Tisch, statt flach an der Wand zu kleben.
-    const camTilt = 60, perspective = minD * 1.3
+    // Negativer Tilt → Kamera schaut von OBEN auf den Tisch (statt „von unten an
+    // die Decke"). Stärkere Perspektive für echte Tiefe.
+    const camTilt = -60, perspective = minD * 1.3
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
     if (reduce) {
