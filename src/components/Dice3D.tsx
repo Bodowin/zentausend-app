@@ -56,18 +56,6 @@ function makeFaceTexture(value: number): THREE.CanvasTexture {
   return t
 }
 
-function targetQuat(value: number): THREE.Quaternion {
-  const q = new THREE.Quaternion()
-  const X = new THREE.Vector3(1, 0, 0)
-  const Z = new THREE.Vector3(0, 0, 1)
-  if (value === 6) q.setFromAxisAngle(X, Math.PI)
-  else if (value === 2) q.setFromAxisAngle(Z, Math.PI / 2)
-  else if (value === 5) q.setFromAxisAngle(Z, -Math.PI / 2)
-  else if (value === 3) q.setFromAxisAngle(X, -Math.PI / 2)
-  else if (value === 4) q.setFromAxisAngle(X, Math.PI / 2)
-  return q
-}
-
 const rand = (a: number, b: number) => a + Math.random() * (b - a)
 
 /**
@@ -101,9 +89,9 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
     mount.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100)
-    camera.position.set(0, 8.5, 5.5)
-    camera.lookAt(0, 0, 0)
+    const camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 100)
+    camera.position.set(0, 6.8, 5.0)
+    camera.lookAt(0, 0.2, 0)
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.85))
     const dir = new THREE.DirectionalLight(0xfff0d0, 1.1)
@@ -115,28 +103,29 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
 
     // dunkle "Schale" als Boden
     const floorMat = new THREE.MeshStandardMaterial({ color: 0x0e1320, roughness: 0.9, metalness: 0.1 })
-    const floorMesh = new THREE.Mesh(new THREE.CircleGeometry(4.4, 48), floorMat)
+    const ARENA = 2.5 // halbe Spielfeldbreite – kompakt, damit alle Würfel im Bild bleiben
+    const floorMesh = new THREE.Mesh(new THREE.CircleGeometry(ARENA + 0.5, 48), floorMat)
     floorMesh.rotation.x = -Math.PI / 2
     scene.add(floorMesh)
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(4.4, 0.18, 12, 48),
+      new THREE.TorusGeometry(ARENA + 0.5, 0.14, 12, 48),
       new THREE.MeshStandardMaterial({ color: 0xf5b83d, roughness: 0.5, metalness: 0.4 }),
     )
     ring.rotation.x = -Math.PI / 2
     scene.add(ring)
 
     // Physik
-    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -22, 0) })
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -24, 0) })
     world.broadphase = new CANNON.NaiveBroadphase()
     world.allowSleep = true
     const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() })
     floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
     world.addBody(floorBody)
     const wallCfg: { p: [number, number, number]; ry: number }[] = [
-      { p: [0, 0, -4], ry: 0 }, // Normal +Z → zur Mitte
-      { p: [0, 0, 4], ry: Math.PI }, // Normal -Z → zur Mitte
-      { p: [-4, 0, 0], ry: Math.PI / 2 }, // Normal +X → zur Mitte
-      { p: [4, 0, 0], ry: -Math.PI / 2 }, // Normal -X → zur Mitte
+      { p: [0, 0, -ARENA], ry: 0 }, // Normal +Z → zur Mitte
+      { p: [0, 0, ARENA], ry: Math.PI }, // Normal -Z → zur Mitte
+      { p: [-ARENA, 0, 0], ry: Math.PI / 2 }, // Normal +X → zur Mitte
+      { p: [ARENA, 0, 0], ry: -Math.PI / 2 }, // Normal -X → zur Mitte
     ]
     for (const w of wallCfg) {
       const b = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() })
@@ -149,30 +138,61 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
     const matFor = (v: number) =>
       new THREE.MeshStandardMaterial({ map: textures[v - 1], roughness: 0.45, metalness: 0.05 })
 
+    const S = 0.85 // Würfel-Kantenlänge
     const dice = values.map((value, i) => {
-      const geo = new THREE.BoxGeometry(1, 1, 1)
+      const geo = new THREE.BoxGeometry(S, S, S)
       const mats = FACE_VALUES.map((fv) => matFor(fv))
       const mesh = new THREE.Mesh(geo, mats)
       scene.add(mesh)
       const body = new CANNON.Body({
         mass: 1,
-        shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
+        shape: new CANNON.Box(new CANNON.Vec3(S / 2, S / 2, S / 2)),
         allowSleep: true,
-        sleepSpeedLimit: 0.25,
-        sleepTimeLimit: 0.2,
+        sleepSpeedLimit: 0.2,
+        sleepTimeLimit: 0.15,
       })
-      body.position.set(rand(-1.6, 1.6), 3 + i * 0.7, rand(-1.6, 1.6))
-      body.velocity.set(rand(-4, 4), rand(1, 3), rand(-4, 4))
-      body.angularVelocity.set(rand(-10, 10), rand(-10, 10), rand(-10, 10))
+      const col = i % 3
+      const row = Math.floor(i / 3)
+      body.position.set(-1 + col * 1, 2.4 + row * 0.9, -0.5 + row * 1)
+      body.velocity.set(rand(-2.5, 2.5), rand(0, 1.5), rand(-2.5, 2.5))
+      body.angularVelocity.set(rand(-8, 8), rand(-8, 8), rand(-8, 8))
       world.addBody(body)
-      return { mesh, body, value, snapping: false }
+      return { mesh, body, value, relabeled: false }
     })
+
+    // Lokale Flächennormalen → Materialindex (BoxGeometry: +X,-X,+Y,-Y,+Z,-Z).
+    const FACE_NORMALS: [THREE.Vector3, number][] = [
+      [new THREE.Vector3(1, 0, 0), 0],
+      [new THREE.Vector3(-1, 0, 0), 1],
+      [new THREE.Vector3(0, 1, 0), 2],
+      [new THREE.Vector3(0, -1, 0), 3],
+      [new THREE.Vector3(0, 0, 1), 4],
+      [new THREE.Vector3(0, 0, -1), 5],
+    ]
+    // Relabel-Technik: die obenliegende Fläche bekommt die vorbestimmte Augenzahl,
+    // ohne den Würfel zu drehen → kein "Umspringen".
+    const relabel = (d: (typeof dice)[number]) => {
+      const tmp = new THREE.Vector3()
+      let bestIdx = 2
+      let bestY = -Infinity
+      for (const [n, idx] of FACE_NORMALS) {
+        tmp.copy(n).applyQuaternion(d.mesh.quaternion)
+        if (tmp.y > bestY) {
+          bestY = tmp.y
+          bestIdx = idx
+        }
+      }
+      const mat = (d.mesh.material as THREE.MeshStandardMaterial[])[bestIdx]
+      mat.map = textures[d.value - 1]
+      mat.needsUpdate = true
+      d.relabeled = true
+    }
 
     let raf = 0
     let last = performance.now()
     const start = last
     let lastBuzz = 0
-    let snapPhase = false
+    let settledAt = 0
 
     const tick = (now: number) => {
       try {
@@ -181,33 +201,34 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
         world.step(1 / 60, dt, 3)
 
         const elapsed = now - start
-        const maxSpeed = Math.max(...dice.map((d) => d.body.velocity.length()))
-        if (!snapPhase && (elapsed > 1500 || (elapsed > 600 && maxSpeed < 0.4))) {
-          snapPhase = true
-        }
-
         for (const d of dice) {
           d.mesh.position.set(d.body.position.x, d.body.position.y, d.body.position.z)
-          if (snapPhase) {
-            d.mesh.quaternion.slerp(targetQuat(d.value), 0.16)
-          } else {
-            d.mesh.quaternion.set(d.body.quaternion.x, d.body.quaternion.y, d.body.quaternion.z, d.body.quaternion.w)
-          }
+          d.mesh.quaternion.set(d.body.quaternion.x, d.body.quaternion.y, d.body.quaternion.z, d.body.quaternion.w)
         }
 
-        if (!snapPhase && maxSpeed > 2 && now - lastBuzz > 90) {
+        const maxSpeed = Math.max(...dice.map((d) => d.body.velocity.length()))
+        if (maxSpeed > 1.5 && now - lastBuzz > 90) {
           buzz(8)
           lastBuzz = now
         }
 
-        renderer.render(scene, camera)
-
-        // Snap fertig oder Sicherheits-Timeout → fertig.
-        if ((snapPhase && elapsed > 2100) || elapsed > 4000) {
-          buzz(12)
-          finish()
-          return
+        // Zur Ruhe gekommen (oder Sicherheits-Timeout) → Augenzahl auf die
+        // obenliegende Fläche legen (kein Drehen) und fertig.
+        const calm = elapsed > 700 && maxSpeed < 0.25
+        if (calm || elapsed > 3500) {
+          if (!settledAt) settledAt = now
+          // kurz nachschwingen lassen, dann relabeln
+          if (now - settledAt > 120 || elapsed > 3500) {
+            dice.forEach((d) => !d.relabeled && relabel(d))
+            renderer.render(scene, camera)
+            buzz(12)
+            // einen Moment das Ergebnis zeigen, dann zum Tippen weiter
+            window.setTimeout(finish, 650)
+            return
+          }
         }
+
+        renderer.render(scene, camera)
         raf = requestAnimationFrame(tick)
       } catch (e) {
         cancelAnimationFrame(raf)
