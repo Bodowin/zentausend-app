@@ -1,620 +1,385 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import * as CANNON from 'cannon-es'
-
 /**
- * Virtuelle Würfel mit ECHTER 3D-Starrkörper-Physik (cannon-es, reines JS – kein
- * WebGL) und CSS-3D-Rendering (matrix3d). Basiert auf dem Entwurf von ChatGPT,
- * an dieses Projekt angepasst.
+ * DiceArena — echter 3D-Schwerkraft-Fall in einer Würfelschale, gerendert OHNE WebGL.
  *
- * Trick gegen das sichtbare „Einrasten": Bevor der erste sichtbare Frame läuft,
- * wird dieselbe Physik deterministisch im Dry-Run durchgerechnet → wir wissen
- * vorab, welche Fläche oben landet, und weisen die vorbestimmte Augenzahl von
- * Anfang an genau dieser Fläche zu (Face-Relabeling). Ergebnis: natürlicher
- * Fall, echte Kollisionen, kein Slerp, kein End-Snap.
+ * Basiert auf dem Entwurf von Claude, an dieses Projekt angepasst (Demo-Wrapper
+ * entfernt, Casino-Grün-Optik, Default-Export). Architektur:
+ *  1) HEADLESS PRE-ROLL: cannon-es simuliert den kompletten Wurf einmal ohne
+ *     Rendering bis zur Ruhe und zeichnet Position/Quaternion pro Schritt auf.
+ *  2) RELABELING VOR FRAME 1: Aus der Ruhe-Orientierung wird die obenliegende
+ *     Fläche bestimmt und EINE gültige Würfel-Beschriftung (Rotation eines echten
+ *     Würfels) gewählt, deren Oberseite values[i] zeigt — bevor etwas sichtbar ist.
+ *  3) PLAYBACK: Die aufgezeichnete Bahn wird per CSS-3D abgespielt (matrix3d aus
+ *     der Quaternion). Da die Zahlen die ganze Animation gleich bleiben, gibt es
+ *     nichts zu verstecken → kein Umspringen der Augenzahl.
+ *
+ *  Cocked-Rejection: Landet ein Würfel auf Kante/Ecke, wird der Pre-Roll neu
+ *  gewürfelt (unsichtbar). Kein WebGL → iOS-stabil, offline.
  */
 
-export interface DiceArenaProps {
-  values: number[]
-  onSettle: () => void
+import * as CANNON from 'cannon-es'
+import { useEffect, useRef, useState } from 'react'
+
+type DiceArenaProps = { values: number[]; onSettle?: () => void }
+
+/* ============================ Würfel-Logik ============================== */
+// Slots (Body-lokal): 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z
+const SLOT_NORMALS: [number, number, number][] = [
+  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+]
+// Ein gültiger Standardwürfel (gegenüberliegend = 7). Falls Augen gespiegelt
+// wirken: +X/-X tauschen, z.B. [5,2,3,4,1,6] → kippt die Chiralität.
+const BASE = [2, 5, 3, 4, 1, 6]
+
+// CSS-Flächen-Transforms je Slot (kanonischer CSS-Würfel; +Y = optisch oben).
+const SLOT_TF = [
+  'rotateY(90deg) translateZ(var(--h))',
+  'rotateY(-90deg) translateZ(var(--h))',
+  'rotateX(90deg) translateZ(var(--h))',
+  'rotateX(-90deg) translateZ(var(--h))',
+  'translateZ(var(--h))',
+  'rotateY(180deg) translateZ(var(--h))',
+]
+
+const PIPS: Record<number, [number, number][]> = {
+  1: [[1, 1]],
+  2: [[0, 0], [2, 2]],
+  3: [[0, 0], [1, 1], [2, 2]],
+  4: [[0, 0], [2, 0], [0, 2], [2, 2]],
+  5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]],
+  6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]],
 }
 
-type DieValue = 1 | 2 | 3 | 4 | 5 | 6
-type FaceId = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz'
-type FaceLabels = Record<FaceId, DieValue>
-
-interface DieConfig {
-  position: CANNON.Vec3
-  quaternion: CANNON.Quaternion
-  velocity: CANNON.Vec3
-  angularVelocity: CANNON.Vec3
+// --- die 24 gültigen Beschriftungen (alle = Rotationen von BASE → garantiert gültig) ---
+const composePerm = (a: number[], b: number[]) => b.map((x) => a[x])
+function buildLabelings(): number[][] {
+  const gX = [0, 1, 4, 5, 3, 2], gY = [5, 4, 2, 3, 0, 1], gZ = [2, 3, 1, 0, 4, 5]
+  const id = [0, 1, 2, 3, 4, 5]
+  const seen = new Map<string, number[]>([[id.join(), id]])
+  const queue = [id]
+  while (queue.length) {
+    const p = queue.shift()!
+    for (const g of [gX, gY, gZ]) {
+      const np = composePerm(g, p), k = np.join()
+      if (!seen.has(k)) { seen.set(k, np); queue.push(np) }
+    }
+  }
+  const out: number[][] = []
+  for (const p of seen.values()) {
+    const L = new Array(6)
+    for (let s = 0; s < 6; s++) L[p[s]] = BASE[s]
+    out.push(L)
+  }
+  return out
 }
+const LABELINGS = buildLabelings()
 
-interface PhysicsSetup {
-  seed: number
-  values: DieValue[]
-  configs: DieConfig[]
-  labels: FaceLabels[]
-  predictedTopFaces: FaceId[]
-}
-
-const FIXED_STEP = 1 / 60
-const MAX_STEPS_PER_FRAME = 3
-const PRE_SIM_STEPS = 280
-const MIN_VISIBLE_MS = 1150
-const FORCE_FINISH_MS = 4600
-
-const DIE_SIZE = 0.72
-const DIE_HALF = DIE_SIZE / 2
-const DIE_PX = 58
-const SCALE = DIE_PX / DIE_SIZE
-const TRAY_W = 5.35
-const TRAY_D = 3.75
-const WALL_H = 0.9
-const WALL_THICKNESS = 0.18
-const GRAVITY = 13.5
-
-const FACE_IDS: FaceId[] = ['px', 'nx', 'py', 'ny', 'pz', 'nz']
-const OPPOSITE: Record<FaceId, FaceId> = { px: 'nx', nx: 'px', py: 'ny', ny: 'py', pz: 'nz', nz: 'pz' }
-
-const FACE_NORMALS: Record<FaceId, CANNON.Vec3> = {
-  px: new CANNON.Vec3(1, 0, 0),
-  nx: new CANNON.Vec3(-1, 0, 0),
-  py: new CANNON.Vec3(0, 1, 0),
-  ny: new CANNON.Vec3(0, -1, 0),
-  pz: new CANNON.Vec3(0, 0, 1),
-  nz: new CANNON.Vec3(0, 0, -1),
+function chooseLabeling(topSlot: number, value: number): number[] {
+  return LABELINGS.find((L) => L[topSlot] === value) ?? LABELINGS[0]
 }
 
-// DOM-Achsen-Mapping: DOM X = Physik X, DOM Y = Physik Z, DOM Z = Physik Y.
-const FACE_TRANSFORMS: Record<FaceId, string> = {
-  py: `translateZ(${DIE_PX / 2}px)`,
-  ny: `rotateY(180deg) translateZ(${DIE_PX / 2}px)`,
-  px: `rotateY(90deg) translateZ(${DIE_PX / 2}px)`,
-  nx: `rotateY(-90deg) translateZ(${DIE_PX / 2}px)`,
-  pz: `rotateX(90deg) translateZ(${DIE_PX / 2}px)`,
-  nz: `rotateX(-90deg) translateZ(${DIE_PX / 2}px)`,
+/* ============================ Mathe-Helfer ============================== */
+type Q = [number, number, number, number]
+type V = [number, number, number]
+
+function rotV(v: V, q: Q): V {
+  const [vx, vy, vz] = v
+  const [qx, qy, qz, qw] = q
+  const tx = 2 * (qy * vz - qz * vy), ty = 2 * (qz * vx - qx * vz), tz = 2 * (qx * vy - qy * vx)
+  return [vx + qw * tx + (qy * tz - qz * ty), vy + qw * ty + (qz * tx - qx * tz), vz + qw * tz + (qx * ty - qy * tx)]
+}
+function topSlotFromQuat(q: Q): { slot: number; dot: number } {
+  let slot = 2, dot = -Infinity
+  for (let s = 0; s < 6; s++) { const d = rotV(SLOT_NORMALS[s], q)[1]; if (d > dot) { dot = d; slot = s } }
+  return { slot, dot }
+}
+function qSlerp(a: Q, b: Q, t: number): Q {
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
+  let bb: Q = b
+  if (d < 0) { bb = [-b[0], -b[1], -b[2], -b[3]]; d = -d }
+  if (d > 0.9995) {
+    const r: Q = [a[0] + (bb[0] - a[0]) * t, a[1] + (bb[1] - a[1]) * t, a[2] + (bb[2] - a[2]) * t, a[3] + (bb[3] - a[3]) * t]
+    const l = Math.hypot(r[0], r[1], r[2], r[3]) || 1
+    return [r[0] / l, r[1] / l, r[2] / l, r[3] / l]
+  }
+  const th0 = Math.acos(d), th = th0 * t
+  const s0 = Math.sin(th0 - th) / Math.sin(th0), s1 = Math.sin(th) / Math.sin(th0)
+  return [a[0] * s0 + bb[0] * s1, a[1] * s0 + bb[1] * s1, a[2] * s0 + bb[2] * s1, a[3] * s0 + bb[3] * s1]
 }
 
-const PIPS: Record<DieValue, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
+function matrix3dFor(q: Q, p: V, S: number): string {
+  const [x, y, z, w] = q
+  const xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, wx = w * x, wy = w * y, wz = w * z
+  const r00 = 1 - 2 * (yy + zz), r01 = 2 * (xy - wz), r02 = 2 * (xz + wy)
+  const r10 = 2 * (xy + wz), r11 = 1 - 2 * (xx + zz), r12 = 2 * (yz - wx)
+  const r20 = 2 * (xz - wy), r21 = 2 * (yz + wx), r22 = 1 - 2 * (xx + yy)
+  const m00 = r00, m01 = -r01, m02 = r02
+  const m10 = -r10, m11 = r11, m12 = -r12
+  const m20 = r20, m21 = -r21, m22 = r22
+  const tx = p[0] * S, ty = -p[1] * S, tz = p[2] * S
+  return `matrix3d(${m00},${m10},${m20},0,${m01},${m11},${m21},0,${m02},${m12},${m22},0,${tx},${ty},${tz},1)`
 }
 
-const css = `
-.diceArena {
-  position: relative;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  border-radius: 28px;
-  background:
-    radial-gradient(120% 85% at 50% 0%, rgba(124, 139, 255, 0.16), transparent 56%),
-    radial-gradient(100% 80% at 20% 100%, rgba(245, 184, 61, 0.11), transparent 60%),
-    #060910;
-  perspective: 920px;
-  contain: layout paint size;
-  touch-action: none;
+/* ================================ Audio ================================ */
+let audioCtx: AudioContext | null = null
+/** Muss in einer User-Geste aufgerufen werden, um den Aufprall-Klick zu aktivieren. */
+export function unlockDiceAudio() {
+  if (typeof window === 'undefined') return
+  if (!audioCtx) {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (AC) audioCtx = new AC()
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
 }
-.diceArena::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06), transparent 28%, rgba(0,0,0,0.2));
-  pointer-events: none;
+function playClick(intensity: number) {
+  const ctx = audioCtx
+  if (!ctx || ctx.state !== 'running') return
+  const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain()
+  o.type = 'triangle'
+  o.frequency.setValueAtTime(150 + intensity * 140, t)
+  o.frequency.exponentialRampToValueAtTime(70, t + 0.06)
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(Math.min(0.16, 0.03 + intensity * 0.16), t + 0.005)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.1)
 }
-.diceArena__world {
-  --tray-w: ${TRAY_W * SCALE}px;
-  --tray-d: ${TRAY_D * SCALE}px;
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  width: var(--tray-w);
-  height: var(--tray-d);
-  transform-style: preserve-3d;
-  transform: translate(-50%, -50%) scale(var(--fit, 1)) rotateX(61deg) rotateZ(-3deg);
+
+/* ===================== Pre-Roll (headless Physik) ====================== */
+type Impact = { die: number; frame: number; intensity: number }
+type Attempt = { pos: V[][]; quat: Q[][]; impacts: Impact[]; topSlots: number[]; cocked: boolean; frames: number }
+
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
+function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: number; FIXED_DT: number; MAX_STEPS: number }): Attempt {
+  const { h, Rb, y0, G, FIXED_DT, MAX_STEPS } = cfg
+  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -G, 0) })
+  world.allowSleep = true
+  ;(world.solver as CANNON.GSSolver).iterations = 14
+  world.broadphase = new CANNON.NaiveBroadphase()
+  const ground = new CANNON.Material('g'), dieM = new CANNON.Material('d')
+  world.addContactMaterial(new CANNON.ContactMaterial(ground, dieM, { friction: 0.1, restitution: 0.3 }))
+  world.addContactMaterial(new CANNON.ContactMaterial(dieM, dieM, { friction: 0.06, restitution: 0.25 }))
+  world.defaultContactMaterial.friction = 0.1
+
+  const floor = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
+  floor.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
+  world.addBody(floor)
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2
+    const nrm = new CANNON.Vec3(-Math.cos(a), 0.22, -Math.sin(a)); nrm.normalize()
+    const w = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
+    w.quaternion.setFromVectors(new CANNON.Vec3(0, 0, 1), nrm)
+    w.position.set(Math.cos(a) * Rb, 0, Math.sin(a) * Rb)
+    world.addBody(w)
+  }
+
+  let curFrame = 0
+  const impacts: Impact[] = []
+  const bodies: CANNON.Body[] = []
+  for (let i = 0; i < n; i++) {
+    const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
+    b.sleepSpeedLimit = 0.15; b.sleepTimeLimit = 0.3; b.linearDamping = 0.01; b.angularDamping = 0.03
+    b.position.set((Math.random() - 0.5) * Rb * 0.5, y0 + Math.random() * 1.5 + i * 0.12, (Math.random() - 0.5) * Rb * 0.5)
+    b.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28)
+    b.velocity.set((Math.random() - 0.5) * 3, -(6 + Math.random() * 3), (Math.random() - 0.5) * 3)
+    b.angularVelocity.set((Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24)
+    const idx = i
+    b.addEventListener('collide', (e: { contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
+      const v = Math.abs(e?.contact?.getImpactVelocityAlongNormal?.() ?? 0)
+      if (v > 1.2) impacts.push({ die: idx, frame: curFrame, intensity: clamp(v / 8, 0, 1) })
+    })
+    bodies.push(b); world.addBody(b)
+  }
+
+  const pos: V[][] = bodies.map(() => [])
+  const quat: Q[][] = bodies.map(() => [])
+  let restFrames = 0
+  for (curFrame = 0; curFrame < MAX_STEPS; curFrame++) {
+    world.step(FIXED_DT)
+    for (let i = 0; i < n; i++) {
+      const b = bodies[i]
+      pos[i].push([b.position.x, b.position.y, b.position.z])
+      quat[i].push([b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w])
+    }
+    const allSlow = bodies.every(
+      (b) => b.sleepState === CANNON.Body.SLEEPING || (b.velocity.lengthSquared() < 0.02 && b.angularVelocity.lengthSquared() < 0.05),
+    )
+    if (allSlow) { if (++restFrames > 10) break } else restFrames = 0
+  }
+
+  let cocked = false
+  const topSlots: number[] = []
+  for (let i = 0; i < n; i++) {
+    const q = quat[i][quat[i].length - 1]
+    const { slot, dot } = topSlotFromQuat(q)
+    topSlots.push(slot)
+    if (dot < 0.92) cocked = true
+  }
+  return { pos, quat, impacts, topSlots, cocked, frames: pos[0]?.length ?? 0 }
 }
-.diceArena__felt {
-  position: absolute;
-  inset: 0;
-  border-radius: 30px;
-  background:
-    radial-gradient(90% 75% at 50% 50%, rgba(47, 211, 165, 0.09), transparent 62%),
-    radial-gradient(70% 45% at 50% 6%, rgba(255, 203, 92, 0.12), transparent 60%),
-    repeating-radial-gradient(circle at 48% 45%, rgba(255,255,255,.025) 0 1px, transparent 1px 4px),
-    linear-gradient(135deg, #0b332e, #061b1c 72%);
-  box-shadow:
-    inset 0 0 0 2px rgba(245, 184, 61, 0.18),
-    inset 0 0 36px rgba(0, 0, 0, 0.72),
-    0 22px 60px rgba(0, 0, 0, 0.55);
-  transform: translateZ(0px);
+
+/* =============================== Komponente ============================= */
+type ArenaData = {
+  pos: V[][]; quat: Q[][]; impacts: Impact[]; labelings: number[][]
+  frames: number; S: number; sizePx: number; FIXED_DT: number; camTilt: number; perspective: number
 }
-.diceArena__wall {
-  position: absolute;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #1f1720, #08090f);
-  box-shadow:
-    inset 0 2px 0 rgba(255, 203, 92, 0.18),
-    inset 0 -10px 16px rgba(0,0,0,.62),
-    0 10px 22px rgba(0,0,0,.42);
-  transform: translateZ(24px);
-}
-.diceArena__wall--top, .diceArena__wall--bottom { left: -18px; width: calc(100% + 36px); height: 38px; }
-.diceArena__wall--top { top: -27px; }
-.diceArena__wall--bottom { bottom: -27px; }
-.diceArena__wall--left, .diceArena__wall--right { top: -14px; height: calc(100% + 28px); width: 38px; }
-.diceArena__wall--left { left: -27px; }
-.diceArena__wall--right { right: -27px; }
-.diceArena__shadow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 52px;
-  height: 30px;
-  margin-left: -26px;
-  margin-top: -15px;
-  border-radius: 999px;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.62), rgba(0,0,0,.2) 46%, transparent 72%);
-  filter: blur(2px);
-  opacity: .5;
-  transform-style: preserve-3d;
-  will-change: transform, opacity;
-  pointer-events: none;
-}
-.diceArena__die {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: ${DIE_PX}px;
-  height: ${DIE_PX}px;
-  margin-left: ${-DIE_PX / 2}px;
-  margin-top: ${-DIE_PX / 2}px;
-  transform-style: preserve-3d;
-  transform-origin: 50% 50%;
-  will-change: transform;
-  pointer-events: none;
-}
-.diceArena__face {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 0;
-  padding: 8px;
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 30% 23%, rgba(255,255,255,.95), rgba(255,255,255,0) 32%),
-    linear-gradient(145deg, #fffaf0, #ece4d3 54%, #d5c7ae);
-  box-shadow:
-    inset 0 0 0 1px rgba(10, 14, 22, .14),
-    inset 0 -8px 13px rgba(10, 14, 22, .18),
-    inset 0 5px 8px rgba(255, 255, 255, .68);
-  backface-visibility: hidden;
-}
-.diceArena__face::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255,255,255,.16), transparent 45%, rgba(0,0,0,.08));
-  pointer-events: none;
-}
-.diceArena__pip {
-  width: 9px;
-  height: 9px;
-  align-self: center;
-  justify-self: center;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 32%, #38445d, #0a0e16 72%);
-  box-shadow: inset 0 1px 1px rgba(255,255,255,.16);
-}
-@media (prefers-reduced-motion: reduce) {
-  .diceArena__world { transform: translate(-50%, -50%) scale(var(--fit, 1)) rotateX(58deg) rotateZ(-3deg); }
-}
-`
 
 export default function DiceArena({ values, onSettle }: DiceArenaProps) {
-  const seedRef = useRef<number>(makeSeed())
-  const arenaRef = useRef<HTMLDivElement | null>(null)
-  const dieRefs = useRef<(HTMLDivElement | null)[]>([])
-  const shadowRefs = useRef<(HTMLSpanElement | null)[]>([])
-  const onSettleRef = useRef(onSettle)
-  onSettleRef.current = onSettle
-
-  const valuesKey = values.join(',')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const setup = useMemo(() => createSetup(normalizeValues(values), seedRef.current), [valuesKey])
-  const [settled, setSettled] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const dieRefs = useRef<HTMLDivElement[]>([])
+  const shadowRefs = useRef<HTMLDivElement[]>([])
+  const dataRef = useRef<ArenaData | null>(null)
+  const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (setup.values.length === 0) {
-      const t = window.setTimeout(() => onSettleRef.current(), 0)
-      return () => window.clearTimeout(t)
+    const root = rootRef.current; if (!root) return
+    const vals = values.map((v) => clamp(Math.round(v), 1, 6))
+    const n = vals.length
+    if (n === 0) { onSettleRef.current?.(); return }
+
+    const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
+    const h = 0.5
+    const Rb = 2.4 + n * 0.45
+    const y0 = Rb * 0.9 + 2.2
+    const S = (minD * 0.4) / Rb
+    const sizePx = 2 * h * S
+    const camTilt = 56, perspective = minD * 2.2
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+    if (reduce) {
+      const labelings = vals.map((v) => chooseLabeling(2, v))
+      const pos: V[][] = vals.map((_, i) => [[(i - (n - 1) / 2) * (2 * h * 1.2), h, 0]])
+      const quat: Q[][] = vals.map(() => [[0, 0, 0, 1]])
+      dataRef.current = { pos, quat, impacts: [], labelings, frames: 1, S, sizePx, FIXED_DT: 1 / 60, camTilt, perspective }
+      setReady(true)
+      const t = setTimeout(() => onSettleRef.current?.(), 120)
+      return () => clearTimeout(t)
     }
 
-    // Tray responsiv an die Arena-Breite anpassen (sonst läuft er auf schmalen Phones über).
-    const arena = arenaRef.current
-    if (arena) {
-      const fit = Math.min(1, (arena.clientWidth * 0.94) / (TRAY_W * SCALE + 70))
-      arena.style.setProperty('--fit', String(fit))
+    const cfg = { h, Rb, y0, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 600 }
+    let attempt = runAttempt(n, cfg)
+    for (let k = 0; k < 9 && attempt.cocked; k++) attempt = runAttempt(n, cfg)
+
+    const labelings = attempt.topSlots.map((slot, i) => chooseLabeling(slot, vals[i]))
+    attempt.impacts.sort((a, b) => a.frame - b.frame)
+    dataRef.current = {
+      pos: attempt.pos, quat: attempt.quat, impacts: attempt.impacts, labelings,
+      frames: attempt.frames, S, sizePx, FIXED_DT: cfg.FIXED_DT, camTilt, perspective,
     }
+    setReady(true)
+  }, [values])
 
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    const { world, bodies } = createWorld(setup.configs)
+  useEffect(() => {
+    if (!ready) return
+    const d = dataRef.current; if (!d) return
+    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.0
+    const pulses = new Array(n).fill(0)
+    let impactPtr = 0, raf = 0
+    const start = performance.now()
 
-    let raf = 0
-    let last = performance.now()
-    let acc = 0
-    let stableFrames = 0
-    let frameCount = 0
-    const startedAt = last
-    let done = false
-
-    const finish = () => {
-      if (done) return
-      done = true
-      setSettled(true)
-      updateDom(bodies, dieRefs.current, shadowRefs.current)
-      window.setTimeout(() => onSettleRef.current(), reduceMotion ? 80 : 180)
-    }
-
-    if (reduceMotion) {
-      for (let i = 0; i < bodies.length; i++) {
-        bodies[i].position.set(-1.55 + i * 0.62, DIE_HALF + 0.015, i % 2 ? 0.32 : -0.32)
-        bodies[i].velocity.set(0, 0, 0)
-        bodies[i].angularVelocity.set(0, 0, 0)
+    const write = (i: number, p: V, q: Q) => {
+      const el = dieRefs.current[i]
+      if (el) el.style.transform = `${matrix3dFor(q, p, d.S)} scale(${1 + pulses[i]})`
+      const sh = shadowRefs.current[i]
+      if (sh) {
+        const lift = clamp(p[1] / 4, 0, 1)
+        sh.style.transform = `translate3d(${p[0] * d.S}px,0,${p[2] * d.S}px) rotateX(90deg) scale(${0.7 + lift * 0.8})`
+        sh.style.opacity = `${0.4 * (1 - lift * 0.6)}`
       }
-      updateDom(bodies, dieRefs.current, shadowRefs.current)
-      finish()
-      return () => undefined
     }
 
-    updateDom(bodies, dieRefs.current, shadowRefs.current)
-
-    const tick = (now: number) => {
-      if (done) return
-      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
-      last = now
-      acc += dt
-
-      let subSteps = 0
-      while (acc >= FIXED_STEP && subSteps < MAX_STEPS_PER_FRAME) {
-        world.step(FIXED_STEP)
-        acc -= FIXED_STEP
-        subSteps += 1
-        frameCount += 1
+    const frame = (now: number) => {
+      const f = ((now - start) / 1000) * SPEED / dt
+      const i0 = Math.min(Math.floor(f), last), i1 = Math.min(i0 + 1, last)
+      const a = i0 === last ? 0 : f - i0
+      for (let i = 0; i < n; i++) {
+        const p0 = d.pos[i][i0], p1 = d.pos[i][i1]
+        const p: V = [p0[0] + (p1[0] - p0[0]) * a, p0[1] + (p1[1] - p0[1]) * a, p0[2] + (p1[2] - p0[2]) * a]
+        write(i, p, qSlerp(d.quat[i][i0], d.quat[i][i1], a))
       }
-      if (subSteps === MAX_STEPS_PER_FRAME) acc = 0
-
-      updateDom(bodies, dieRefs.current, shadowRefs.current)
-
-      const elapsed = now - startedAt
-      const sameTopAsPreSim = bodies.every((body, i) => topFaceFromBody(body) === setup.predictedTopFaces[i])
-      const slowEnough = allBodiesSlow(bodies)
-      if (elapsed > MIN_VISIBLE_MS && sameTopAsPreSim && slowEnough) stableFrames += 1
-      else stableFrames = 0
-
-      if (stableFrames >= 14 || elapsed > FORCE_FINISH_MS || frameCount > PRE_SIM_STEPS + 90) {
-        finish()
-        return
+      while (impactPtr < d.impacts.length && d.impacts[impactPtr].frame <= i0) {
+        const im = d.impacts[impactPtr++]
+        pulses[im.die] = Math.min(0.14, pulses[im.die] + im.intensity * 0.13)
+        playClick(im.intensity)
+        navigator.vibrate?.(Math.round(4 + im.intensity * 10))
       }
-      raf = window.requestAnimationFrame(tick)
-    }
+      for (let i = 0; i < n; i++) pulses[i] *= 0.84
 
-    raf = window.requestAnimationFrame(tick)
-    return () => {
-      done = true
-      window.cancelAnimationFrame(raf)
+      if (i0 >= last) { onSettleRef.current?.(); return }
+      raf = requestAnimationFrame(frame)
     }
-  }, [setup])
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [ready])
 
+  const d = dataRef.current
   return (
-    <div ref={arenaRef} className={`diceArena${settled ? ' diceArena--settled' : ''}`} aria-label="Virtueller 3D-Würfelwurf">
-      <style>{css}</style>
-      <div className="diceArena__world">
-        <div className="diceArena__felt" />
-        <span className="diceArena__wall diceArena__wall--top" />
-        <span className="diceArena__wall diceArena__wall--right" />
-        <span className="diceArena__wall diceArena__wall--bottom" />
-        <span className="diceArena__wall diceArena__wall--left" />
-
-        {setup.values.map((_, i) => (
-          <span
-            key={`shadow-${i}-${setup.seed}`}
-            ref={(el) => {
-              shadowRefs.current[i] = el
-            }}
-            className="diceArena__shadow"
-          />
-        ))}
-
-        {setup.values.map((_, i) => (
-          <div
-            key={`die-${i}-${setup.seed}`}
-            ref={(el) => {
-              dieRefs.current[i] = el
-            }}
-            className="diceArena__die"
-          >
-            {FACE_IDS.map((face) => (
-              <DiceFace key={face} value={setup.labels[i][face]} transform={FACE_TRANSFORMS[face]} />
+    <div className="da-root" ref={rootRef}>
+      <style>{CSS}</style>
+      {ready && d && (
+        <div className="da-cam" style={{ perspective: `${d.perspective}px`, ['--tilt' as string]: `${d.camTilt}deg` }}>
+          <div className="da-stage">
+            <div className="da-floor" style={{ width: d.sizePx * 7, height: d.sizePx * 7 }} />
+            {d.labelings.map((_, i) => (
+              <div
+                key={'s' + i}
+                className="da-shadow"
+                ref={(el) => { if (el) shadowRefs.current[i] = el }}
+                style={{ width: d.sizePx * 1.05, height: d.sizePx * 1.05 }}
+              />
+            ))}
+            {d.labelings.map((L, i) => (
+              <div
+                key={'d' + i}
+                className="da-die"
+                ref={(el) => { if (el) dieRefs.current[i] = el }}
+                style={{ width: d.sizePx, height: d.sizePx, ['--h' as string]: `${d.sizePx / 2}px` }}
+              >
+                {SLOT_TF.map((tf, s) => (
+                  <div key={s} className="da-face" style={{ transform: tf }}>
+                    {PIPS[L[s]].map(([c, r], pi) => (
+                      <span key={pi} className="da-pip" style={{ gridColumn: c + 1, gridRow: r + 1 }} />
+                    ))}
+                  </div>
+                ))}
+              </div>
             ))}
           </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function DiceFace({ value, transform }: { value: DieValue; transform: string }) {
-  return (
-    <div className="diceArena__face" style={{ transform }} aria-hidden="true">
-      {Array.from({ length: 9 }, (_, i) =>
-        PIPS[value].includes(i) ? <span key={i} className="diceArena__pip" /> : <span key={i} />,
+        </div>
       )}
     </div>
   )
 }
 
-function normalizeValues(input: number[]): DieValue[] {
-  return input
-    .slice(0, 6)
-    .map((v) => Math.round(v))
-    .filter((v): v is DieValue => v >= 1 && v <= 6)
-}
-
-function createSetup(values: DieValue[], seed: number): PhysicsSetup {
-  const rng = mulberry32(seed)
-  const configs = createInitialConfigs(values.length, rng)
-
-  // Dry-Run derselben Physik vor dem ersten sichtbaren Frame → obenliegende
-  // Fläche vorhersagen und die gewünschte Augenzahl dort zuweisen.
-  const { world, bodies } = createWorld(configs)
-  for (let i = 0; i < PRE_SIM_STEPS; i += 1) {
-    world.step(FIXED_STEP)
-    if (i > 90 && allBodiesSlow(bodies)) break
-  }
-
-  const predictedTopFaces = bodies.map(topFaceFromBody)
-  const labels = predictedTopFaces.map((topFace, i) => labelsForTargetTop(topFace, values[i]))
-  return { seed, values, configs, labels, predictedTopFaces }
-}
-
-function createInitialConfigs(count: number, rng: () => number): DieConfig[] {
-  const configs: DieConfig[] = []
-  const cols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(count))))
-
-  for (let i = 0; i < count; i += 1) {
-    const col = i % cols
-    const row = Math.floor(i / cols)
-    const x = -TRAY_W * 0.33 + col * 0.62 + randRange(rng, -0.1, 0.1)
-    const z = -TRAY_D * 0.28 + row * 0.56 + randRange(rng, -0.12, 0.12)
-    const y = 2.1 + i * 0.13 + randRange(rng, -0.08, 0.12)
-
-    const quaternion = new CANNON.Quaternion()
-    quaternion.setFromEuler(randRange(rng, 0, Math.PI * 2), randRange(rng, 0, Math.PI * 2), randRange(rng, 0, Math.PI * 2), 'XYZ')
-
-    configs.push({
-      position: new CANNON.Vec3(x, y, z),
-      quaternion,
-      velocity: new CANNON.Vec3(randRange(rng, 1.8, 3.4), randRange(rng, 0.15, 1.2), randRange(rng, 1.1, 2.7)),
-      angularVelocity: new CANNON.Vec3(randRange(rng, -12, 12), randRange(rng, -16, 16), randRange(rng, -13, 13)),
-    })
-  }
-  return configs
-}
-
-function createWorld(configs: DieConfig[]) {
-  const world = new CANNON.World()
-  world.gravity.set(0, -GRAVITY, 0)
-  world.allowSleep = true
-  world.broadphase = new CANNON.NaiveBroadphase()
-  const solver = world.solver as CANNON.GSSolver
-  solver.iterations = 12
-  solver.tolerance = 0.001
-
-  const diceMat = new CANNON.Material('bone-dice')
-  const trayMat = new CANNON.Material('felt-tray')
-
-  world.addContactMaterial(
-    new CANNON.ContactMaterial(diceMat, trayMat, {
-      friction: 0.62,
-      restitution: 0.31,
-      contactEquationStiffness: 1e7,
-      contactEquationRelaxation: 4,
-    }),
-  )
-  world.addContactMaterial(
-    new CANNON.ContactMaterial(diceMat, diceMat, {
-      friction: 0.45,
-      restitution: 0.38,
-      contactEquationStiffness: 1e7,
-      contactEquationRelaxation: 4,
-    }),
-  )
-
-  const floor = new CANNON.Body({ mass: 0, material: trayMat })
-  floor.addShape(new CANNON.Box(new CANNON.Vec3(TRAY_W / 2, 0.05, TRAY_D / 2)))
-  floor.position.set(0, -0.05, 0)
-  world.addBody(floor)
-
-  addWall(world, trayMat, 0, WALL_H / 2, -TRAY_D / 2 - WALL_THICKNESS / 2, TRAY_W / 2 + WALL_THICKNESS, WALL_H / 2, WALL_THICKNESS / 2)
-  addWall(world, trayMat, 0, WALL_H / 2, TRAY_D / 2 + WALL_THICKNESS / 2, TRAY_W / 2 + WALL_THICKNESS, WALL_H / 2, WALL_THICKNESS / 2)
-  addWall(world, trayMat, -TRAY_W / 2 - WALL_THICKNESS / 2, WALL_H / 2, 0, WALL_THICKNESS / 2, WALL_H / 2, TRAY_D / 2)
-  addWall(world, trayMat, TRAY_W / 2 + WALL_THICKNESS / 2, WALL_H / 2, 0, WALL_THICKNESS / 2, WALL_H / 2, TRAY_D / 2)
-
-  const diceShape = new CANNON.Box(new CANNON.Vec3(DIE_HALF, DIE_HALF, DIE_HALF))
-  const bodies = configs.map((cfg) => {
-    const body = new CANNON.Body({ mass: 1, material: diceMat })
-    body.addShape(diceShape)
-    body.position.copy(cfg.position)
-    body.quaternion.copy(cfg.quaternion)
-    body.velocity.copy(cfg.velocity)
-    body.angularVelocity.copy(cfg.angularVelocity)
-    body.linearDamping = 0.18
-    body.angularDamping = 0.32
-    body.sleepSpeedLimit = 0.12
-    body.sleepTimeLimit = 0.28
-    world.addBody(body)
-    return body
-  })
-
-  return { world, bodies }
-}
-
-function addWall(
-  world: CANNON.World,
-  material: CANNON.Material,
-  x: number,
-  y: number,
-  z: number,
-  hx: number,
-  hy: number,
-  hz: number,
-) {
-  const wall = new CANNON.Body({ mass: 0, material })
-  wall.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz)))
-  wall.position.set(x, y, z)
-  world.addBody(wall)
-}
-
-function labelsForTargetTop(topFace: FaceId, target: DieValue): FaceLabels {
-  const labels = {} as FaceLabels
-  labels[topFace] = target
-
-  const oppositeFace = OPPOSITE[topFace]
-  const oppositeValue = (7 - target) as DieValue
-  labels[oppositeFace] = oppositeValue
-
-  const remainingFaces = FACE_IDS.filter((f) => labels[f] === undefined)
-  const remainingValues = ([1, 2, 3, 4, 5, 6] as DieValue[]).filter((v) => v !== target && v !== oppositeValue)
-
-  for (let i = 0; i < remainingFaces.length; i += 1) labels[remainingFaces[i]] = remainingValues[i]
-  return labels
-}
-
-function topFaceFromBody(body: CANNON.Body): FaceId {
-  let best: FaceId = 'py'
-  let bestDot = -Infinity
-  for (const face of FACE_IDS) {
-    const normal = body.quaternion.vmult(FACE_NORMALS[face])
-    const dot = normal.y
-    if (dot > bestDot) {
-      best = face
-      bestDot = dot
-    }
-  }
-  return best
-}
-
-function allBodiesSlow(bodies: CANNON.Body[]): boolean {
-  return bodies.every(
-    (body) =>
-      body.sleepState === CANNON.Body.SLEEPING ||
-      (body.velocity.lengthSquared() < 0.015 && body.angularVelocity.lengthSquared() < 0.12 && body.position.y < DIE_HALF + 0.09),
-  )
-}
-
-function updateDom(
-  bodies: CANNON.Body[],
-  dieEls: Array<HTMLDivElement | null>,
-  shadowEls: Array<HTMLSpanElement | null>,
-) {
-  for (let i = 0; i < bodies.length; i += 1) {
-    const body = bodies[i]
-    const die = dieEls[i]
-    if (die) die.style.transform = physicsToCssMatrix(body.position, body.quaternion)
-
-    const shadow = shadowEls[i]
-    if (shadow) {
-      const height = Math.max(0, body.position.y - DIE_HALF)
-      const scale = clamp(1.08 - height * 0.34, 0.34, 1.08)
-      const opacity = clamp(0.76 - height * 0.26, 0.16, 0.76)
-      shadow.style.opacity = String(opacity)
-      shadow.style.transform = `translate3d(${round3(body.position.x * SCALE)}px, ${round3(body.position.z * SCALE)}px, 1px) scale(${round3(scale)})`
-    }
-  }
-}
-
-function physicsToCssMatrix(position: CANNON.Vec3, q: CANNON.Quaternion): string {
-  const x = q.x
-  const y = q.y
-  const z = q.z
-  const w = q.w
-  const xx = x * x
-  const yy = y * y
-  const zz = z * z
-  const xy = x * y
-  const xz = x * z
-  const yz = y * z
-  const wx = w * x
-  const wy = w * y
-  const wz = w * z
-
-  const r00 = 1 - 2 * (yy + zz)
-  const r01 = 2 * (xy - wz)
-  const r02 = 2 * (xz + wy)
-  const r10 = 2 * (xy + wz)
-  const r11 = 1 - 2 * (xx + zz)
-  const r12 = 2 * (yz - wx)
-  const r20 = 2 * (xz - wy)
-  const r21 = 2 * (yz + wx)
-  const r22 = 1 - 2 * (xx + yy)
-
-  // Achsen-Remap A*R*A^T mit CSS-Achsen [Physik X, Physik Z, Physik Y].
-  const c00 = r00
-  const c01 = r02
-  const c02 = r01
-  const c10 = r20
-  const c11 = r22
-  const c12 = r21
-  const c20 = r10
-  const c21 = r12
-  const c22 = r11
-
-  const tx = position.x * SCALE
-  const ty = position.z * SCALE
-  const tz = position.y * SCALE
-
-  return `matrix3d(${round5(c00)},${round5(c10)},${round5(c20)},0,${round5(c01)},${round5(c11)},${round5(c21)},0,${round5(c02)},${round5(c12)},${round5(c22)},0,${round3(tx)},${round3(ty)},${round3(tz)},1)`
-}
-
-function makeSeed(): number {
-  try {
-    const a = new Uint32Array(1)
-    crypto.getRandomValues(a)
-    return a[0] || Date.now()
-  } catch {
-    return Date.now()
-  }
-}
-
-function mulberry32(seed: number) {
-  let t = seed >>> 0
-  return function rng() {
-    t += 0x6d2b79f5
-    let r = Math.imul(t ^ (t >>> 15), 1 | t)
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r)
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-function randRange(rng: () => number, min: number, max: number): number {
-  return min + (max - min) * rng()
-}
-
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v))
-}
-
-function round3(v: number): string {
-  return Number.isFinite(v) ? v.toFixed(3) : '0'
-}
-
-function round5(v: number): string {
-  return Number.isFinite(v) ? v.toFixed(5) : '0'
-}
+/* ================================== CSS ================================= */
+const CSS = `
+.da-root{position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(130% 100% at 50% 6%, #0c2b25 0%, #07201d 52%, #050b0d 100%);}
+.da-cam{position:absolute;inset:0;}
+.da-stage{position:absolute;left:50%;top:60%;transform-style:preserve-3d;
+  transform:rotateX(var(--tilt));transform-origin:center;}
+.da-floor{position:absolute;left:0;top:0;transform:translate(-50%,-50%) rotateX(90deg);
+  border-radius:50%;
+  background:
+    radial-gradient(60% 45% at 50% 8%, rgba(255,203,92,.10), transparent 60%),
+    radial-gradient(closest-side, #0e4034 0%, #0b332e 60%, #07221f 100%);
+  box-shadow:inset 0 0 60px rgba(0,0,0,.62),
+             inset 0 0 0 3px rgba(245,184,61,.16),
+             0 22px 60px rgba(0,0,0,.5);}
+.da-shadow{position:absolute;left:0;top:0;border-radius:50%;
+  transform-origin:center;will-change:transform,opacity;
+  background:radial-gradient(closest-side, rgba(0,0,0,.6), rgba(0,0,0,0));filter:blur(2px);
+  translate:-50% -50%;}
+.da-die{position:absolute;left:0;top:0;transform-style:preserve-3d;will-change:transform;
+  translate:-50% -50%;}
+.da-face{position:absolute;inset:0;display:grid;box-sizing:border-box;
+  grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
+  padding:13%;border-radius:15%;backface-visibility:hidden;
+  background:radial-gradient(120% 120% at 30% 22%, #fbf8f0 0%, #efeadb 58%, #e1dbca 100%);
+  box-shadow:inset 0 0 0 1px rgba(120,108,86,.18),
+             inset 0 6px 10px rgba(255,255,255,.55),
+             inset 0 -10px 16px rgba(120,104,74,.18);}
+.da-pip{place-self:center;width:62%;height:62%;border-radius:50%;
+  background:radial-gradient(closest-side, #2b2b2b, #131313);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.18), 0 1px 1px rgba(0,0,0,.35);}
+`

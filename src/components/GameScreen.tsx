@@ -484,7 +484,7 @@ export function GameScreen(p: Props) {
       {rolling3D && (
         <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
           <div className="mb-2 text-sm font-bold uppercase tracking-widest text-gold-400">Würfelt…</div>
-          <div className="h-[55vh] w-full max-w-lg">
+          <div className="relative h-[55vh] w-full max-w-lg overflow-hidden rounded-3xl">
             <DiceArena values={rolled} onSettle={() => setRolling3D(false)} />
           </div>
           <button
