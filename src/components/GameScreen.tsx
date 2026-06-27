@@ -4,8 +4,6 @@ import type { RiskInfo } from '../lib/risk'
 import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
-import { DiceRoller } from './DiceRoller'
-
 const Dice3D = lazy(() => import('./Dice3D'))
 import {
   IconCheck,
@@ -75,7 +73,6 @@ export function GameScreen(p: Props) {
     canUndo,
   } = p
 
-  const [showRoller, setShowRoller] = useState(false)
   const [rolling3D, setRolling3D] = useState(false)
   const handleRoll3D = () => {
     setRolling3D(true)
@@ -135,15 +132,6 @@ export function GameScreen(p: Props) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {diceMode === 'real' && (
-            <button
-              onClick={() => setShowRoller(true)}
-              className="grid h-9 w-9 place-items-center rounded-full text-base transition-colors hover:bg-ink-800"
-              aria-label="Virtuell würfeln"
-            >
-              🎲
-            </button>
-          )}
           <button
             onClick={p.onUndo}
             disabled={!canUndo}
@@ -474,9 +462,6 @@ export function GameScreen(p: Props) {
           </div>
         </div>
       </div>
-
-      {/* Virtuelle Würfel (Standalone-Roller, nur Echt-Modus) */}
-      {showRoller && <DiceRoller count={inHand} onClose={() => setShowRoller(false)} />}
 
       {/* 3D-Wurf (Virtuell-Modus) */}
       {rolling3D && (
