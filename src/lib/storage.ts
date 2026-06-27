@@ -1,4 +1,4 @@
-import type { GameRecord, Player, PlayerStats } from './types'
+import type { GameRecord, Player, PlayerStats, Turn } from './types'
 
 const HISTORY_KEY = '10k_history_v3'
 const MAX_RECORDS = 200
@@ -11,7 +11,12 @@ export function getHistory(): GameRecord[] {
   }
 }
 
-export function saveGame(winner: Player, allPlayers: Player[], event: string): GameRecord {
+export function saveGame(
+  winner: Player,
+  allPlayers: Player[],
+  event: string,
+  turns: Turn[] = [],
+): GameRecord {
   const record: GameRecord = {
     id: Date.now(),
     date: new Date().toISOString(),
@@ -19,6 +24,7 @@ export function saveGame(winner: Player, allPlayers: Player[], event: string): G
     winner: winner.name,
     winnerScore: winner.score,
     players: allPlayers.map((p) => ({ name: p.name, score: p.score, busts: p.busts })),
+    turns,
   }
   try {
     const next = [record, ...getHistory()].slice(0, MAX_RECORDS)
@@ -96,6 +102,72 @@ export function aggregateStats(history = getHistory(), event?: string): PlayerSt
   // Sortierung: meiste Siege, dann beste Siegquote, dann höchster Bestwert.
   list.sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.bestScore - a.bestScore)
   return list
+}
+
+export interface GamePlayerStat {
+  name: string
+  total: number
+  turns: number
+  avg: number
+  busts: number
+  best: number
+}
+
+export interface GameAnalysis {
+  hasTurns: boolean
+  players: GamePlayerStat[]
+  roundNumbers: number[]
+  /** round -> spielername -> in dieser Runde gesicherte Punkte */
+  roundPoints: Record<number, Record<string, number>>
+  bestTurn: { name: string; points: number; round: number } | null
+  mostBusts: { name: string; count: number } | null
+  roundsCount: number
+}
+
+/** Detail-Analyse eines einzelnen Spiels (Zug- und Rundendaten). */
+export function computeGameAnalysis(game: GameRecord): GameAnalysis {
+  const names = game.players.map((p) => p.name)
+  const finalByName = new Map(game.players.map((p) => [p.name, p]))
+  const turns: Turn[] = game.turns ?? []
+  const hasTurns = turns.length > 0
+
+  const players: GamePlayerStat[] = names
+    .map((name) => {
+      const ts = turns.filter((t) => t.player === name)
+      const final = finalByName.get(name)
+      const total = final?.score ?? ts.reduce((s, t) => s + t.points, 0)
+      const turnsCount = ts.length
+      const busts = final?.busts ?? ts.filter((t) => t.bust).length
+      const best = ts.reduce((m, t) => Math.max(m, t.points), 0)
+      return { name, total, turns: turnsCount, avg: turnsCount ? Math.round(total / turnsCount) : 0, busts, best }
+    })
+    .sort((a, b) => b.total - a.total)
+
+  const roundNumbers = [...new Set(turns.map((t) => t.round))].sort((a, b) => a - b)
+  const roundPoints: Record<number, Record<string, number>> = {}
+  for (const r of roundNumbers) {
+    roundPoints[r] = Object.fromEntries(names.map((n) => [n, 0]))
+  }
+  for (const t of turns) roundPoints[t.round][t.player] += t.points
+
+  let bestTurn: GameAnalysis['bestTurn'] = null
+  for (const t of turns) {
+    if (t.points > 0 && (!bestTurn || t.points > bestTurn.points)) {
+      bestTurn = { name: t.player, points: t.points, round: t.round }
+    }
+  }
+
+  const mostBusts = [...players].sort((a, b) => b.busts - a.busts)[0]
+
+  return {
+    hasTurns,
+    players,
+    roundNumbers,
+    roundPoints,
+    bestTurn,
+    mostBusts: mostBusts && mostBusts.busts > 0 ? { name: mostBusts.name, count: mostBusts.busts } : null,
+    roundsCount: roundNumbers.length,
+  }
 }
 
 export interface Award {

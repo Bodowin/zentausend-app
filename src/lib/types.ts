@@ -21,6 +21,16 @@ export interface ScoreResult {
   hasTriple: boolean
 }
 
+/** Ein einzelner abgeschlossener Zug (für die Runden-Analyse). */
+export interface Turn {
+  /** Spielrunde, in der der Zug stattfand. */
+  round: number
+  player: string
+  /** Gesicherte Punkte dieses Zugs (0 bei Niete). */
+  points: number
+  bust: boolean
+}
+
 /** Ein gespeichertes Spiel-Ergebnis (localStorage-Schema v3). */
 export interface GameRecord {
   id: number
@@ -30,6 +40,8 @@ export interface GameRecord {
   winner: string
   winnerScore: number
   players: { name: string; score: number; busts: number }[]
+  /** Zug-für-Zug-Verlauf (ab v3.1; bei älteren Spielen nicht vorhanden). */
+  turns?: Turn[]
 }
 
 /** Aggregierter Eintrag der ewigen Bestenliste. */

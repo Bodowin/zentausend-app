@@ -15,7 +15,8 @@ function toRow(g: GameRecord): Insert {
     event: g.event ?? '',
     winner: g.winner,
     winner_score: g.winnerScore,
-    players: g.players,
+    players: g.players as unknown as Insert['players'],
+    turns: (g.turns ?? []) as unknown as Insert['turns'],
   }
 }
 
@@ -27,6 +28,7 @@ function fromRow(row: Row): GameRecord {
     winner: row.winner,
     winnerScore: row.winner_score,
     players: (Array.isArray(row.players) ? row.players : []) as GameRecord['players'],
+    turns: (Array.isArray(row.turns) ? row.turns : undefined) as GameRecord['turns'],
   }
 }
 

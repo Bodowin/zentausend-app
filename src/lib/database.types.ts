@@ -22,6 +22,7 @@ export type Database = {
           id: string
           played_at: string
           players: Json
+          turns: Json | null
           winner: string
           winner_score: number
         }
@@ -32,6 +33,7 @@ export type Database = {
           id?: string
           played_at: string
           players: Json
+          turns?: Json | null
           winner: string
           winner_score: number
         }
@@ -42,6 +44,7 @@ export type Database = {
           id?: string
           played_at?: string
           players?: Json
+          turns?: Json | null
           winner?: string
           winner_score?: number
         }
