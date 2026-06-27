@@ -5,7 +5,7 @@ import { recommendAction } from '../lib/risk'
 import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
-import DiceCanvas from './DiceCanvas'
+import DiceArena from './DiceArena'
 import {
   IconCheck,
   IconRefresh,
@@ -485,7 +485,7 @@ export function GameScreen(p: Props) {
         <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
           <div className="mb-2 text-sm font-bold uppercase tracking-widest text-gold-400">Würfelt…</div>
           <div className="h-[55vh] w-full max-w-lg">
-            <DiceCanvas values={rolled} onSettle={() => setRolling3D(false)} />
+            <DiceArena values={rolled} onSettle={() => setRolling3D(false)} />
           </div>
           <button
             onClick={() => setRolling3D(false)}
