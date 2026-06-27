@@ -298,9 +298,13 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       const i0 = Math.min(Math.floor(f), last), i1 = Math.min(i0 + 1, last)
       const a = i0 === last ? 0 : f - i0
       for (let i = 0; i < n; i++) {
-        const p0 = d.pos[i][i0], p1 = d.pos[i][i1]
+        const arr = d.pos[i], qarr = d.quat[i]
+        if (!arr || !arr.length) continue
+        const li = arr.length - 1
+        const k0 = Math.max(0, Math.min(i0, li)), k1 = Math.max(0, Math.min(i1, li))
+        const p0 = arr[k0], p1 = arr[k1]
         const p: V = [p0[0] + (p1[0] - p0[0]) * a, p0[1] + (p1[1] - p0[1]) * a, p0[2] + (p1[2] - p0[2]) * a]
-        write(i, p, qSlerp(d.quat[i][i0], d.quat[i][i1], a))
+        write(i, p, qSlerp(qarr[k0], qarr[k1], a))
       }
       while (impactPtr < d.impacts.length && d.impacts[impactPtr].frame <= i0) {
         const im = d.impacts[impactPtr++]
@@ -323,8 +327,13 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       <style>{CSS}</style>
       {ready && d && (
         <div className="da-cam" style={{ perspective: `${d.perspective}px`, ['--tilt' as string]: `${d.camTilt}deg` }}>
+          {/* Filz in eigener 3D-Ebene … */}
           <div className="da-stage">
             <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
+          </div>
+          {/* … Würfel + Schatten in zweiter Ebene → werden IMMER über dem Filz
+              gezeichnet (gleiche Transform = deckungsgleich, kein Verdecken). */}
+          <div className="da-stage">
             {d.labelings.map((_, i) => (
               <div
                 key={'s' + i}
