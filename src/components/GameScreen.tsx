@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import type { Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
 import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
+import { DiceRoller } from './DiceRoller'
 import {
   IconCheck,
   IconRefresh,
@@ -65,6 +67,7 @@ export function GameScreen(p: Props) {
     canUndo,
   } = p
 
+  const [showRoller, setShowRoller] = useState(false)
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
@@ -119,6 +122,13 @@ export function GameScreen(p: Props) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowRoller(true)}
+            className="grid h-9 w-9 place-items-center rounded-full text-base transition-colors hover:bg-ink-800"
+            aria-label="Virtuell würfeln"
+          >
+            🎲
+          </button>
           <button
             onClick={p.onUndo}
             disabled={!canUndo}
@@ -411,6 +421,9 @@ export function GameScreen(p: Props) {
           </div>
         </div>
       </div>
+
+      {/* Virtuelle Würfel */}
+      {showRoller && <DiceRoller count={inHand} onClose={() => setShowRoller(false)} />}
 
       {/* Sieg-Overlay */}
       {winner && (
