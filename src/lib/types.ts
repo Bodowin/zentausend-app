@@ -17,8 +17,14 @@ export interface ScoreResult {
   isValid: boolean
   /** Augenzahlen, die keine Punkte bringen und rot markiert werden. */
   invalidDice: number[]
-  /** true, wenn ein Drilling+ dabei ist (aktiviert den Pasch-Risiko-Modus). */
+  /** true, wenn ein Drilling+ dabei ist. */
   hasTriple: boolean
+  /**
+   * true nur bei einem Drilling+ einer Augenzahl aus {2,3,4,6}. Nur DANN gilt
+   * Risiko-Szenario B – ein Pasch aus 1ern/5ern bringt keine neue Rettungs-
+   * augenzahl (1 und 5 retten ohnehin) und bleibt Szenario A.
+   */
+  hasJokerTriple: boolean
 }
 
 /** Ein einzelner abgeschlossener Zug (für die Runden-Analyse). */

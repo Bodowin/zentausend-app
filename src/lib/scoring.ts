@@ -20,7 +20,7 @@ export const ENTRY_MIN = 350
  */
 export function calculateScore(dice: number[]): ScoreResult {
   if (dice.length === 0) {
-    return { score: 0, label: '', isValid: true, invalidDice: [], hasTriple: false }
+    return { score: 0, label: '', isValid: true, invalidDice: [], hasTriple: false, hasJokerTriple: false }
   }
 
   const counts: Record<number, number> = {}
@@ -29,17 +29,32 @@ export function calculateScore(dice: number[]): ScoreResult {
 
   // Sonderfälle nur bei einem vollen 6er-Wurf.
   if (dice.length === 6 && distinctNumbers === 6) {
-    return { score: 1500, label: 'Straße!', isValid: true, invalidDice: [], hasTriple: false }
+    return {
+      score: 1500,
+      label: 'Straße!',
+      isValid: true,
+      invalidDice: [],
+      hasTriple: false,
+      hasJokerTriple: false,
+    }
   }
 
   const pairsCount = Object.values(counts).filter((c) => c === 2).length
   if (dice.length === 6 && pairsCount === 3) {
-    return { score: 1500, label: '3 Paare!', isValid: true, invalidDice: [], hasTriple: false }
+    return {
+      score: 1500,
+      label: '3 Paare!',
+      isValid: true,
+      invalidDice: [],
+      hasTriple: false,
+      hasJokerTriple: false,
+    }
   }
 
   let score = 0
   let label = ''
   let hasTriple = false
+  let hasJokerTriple = false
   const invalidDice: number[] = []
 
   for (let num = 1; num <= 6; num++) {
@@ -48,6 +63,8 @@ export function calculateScore(dice: number[]): ScoreResult {
 
     if (count >= 3) {
       hasTriple = true
+      // Nur Drillinge aus {2,3,4,6} bringen eine neue Rettungsaugenzahl (Szenario B).
+      if (num !== 1 && num !== 5) hasJokerTriple = true
       const baseValue = num === 1 ? 1000 : num === 5 ? 500 : num * 100
       score += baseValue + (count - 3) * 1000
       if (count > 3) label = `${count}er-Pasch!`
@@ -61,5 +78,5 @@ export function calculateScore(dice: number[]): ScoreResult {
     }
   }
 
-  return { score, label, isValid: invalidDice.length === 0, invalidDice, hasTriple }
+  return { score, label, isValid: invalidDice.length === 0, invalidDice, hasTriple, hasJokerTriple }
 }
