@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { buzz } from '../lib/haptics'
@@ -79,6 +79,7 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a)
 export default function Dice3D({ values, onSettle }: { values: number[]; onSettle: () => void }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const settledRef = useRef(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const mount = mountRef.current
@@ -89,13 +90,9 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
       onSettle()
     }
 
-    let renderer: THREE.WebGLRenderer
+    let cleanup = () => {}
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    } catch {
-      finish()
-      return
-    }
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
 
     const width = mount.clientWidth || 320
     const height = mount.clientHeight || 320
@@ -178,39 +175,44 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
     let snapPhase = false
 
     const tick = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 1 / 30)
-      last = now
-      world.step(1 / 60, dt, 3)
+      try {
+        const dt = Math.min((now - last) / 1000, 1 / 30)
+        last = now
+        world.step(1 / 60, dt, 3)
 
-      const elapsed = now - start
-      const maxSpeed = Math.max(...dice.map((d) => d.body.velocity.length()))
-      if (!snapPhase && (elapsed > 1500 || (elapsed > 600 && maxSpeed < 0.4))) {
-        snapPhase = true
-      }
-
-      for (const d of dice) {
-        d.mesh.position.set(d.body.position.x, d.body.position.y, d.body.position.z)
-        if (snapPhase) {
-          d.mesh.quaternion.slerp(targetQuat(d.value), 0.16)
-        } else {
-          d.mesh.quaternion.set(d.body.quaternion.x, d.body.quaternion.y, d.body.quaternion.z, d.body.quaternion.w)
+        const elapsed = now - start
+        const maxSpeed = Math.max(...dice.map((d) => d.body.velocity.length()))
+        if (!snapPhase && (elapsed > 1500 || (elapsed > 600 && maxSpeed < 0.4))) {
+          snapPhase = true
         }
-      }
 
-      if (!snapPhase && maxSpeed > 2 && now - lastBuzz > 90) {
-        buzz(8)
-        lastBuzz = now
-      }
+        for (const d of dice) {
+          d.mesh.position.set(d.body.position.x, d.body.position.y, d.body.position.z)
+          if (snapPhase) {
+            d.mesh.quaternion.slerp(targetQuat(d.value), 0.16)
+          } else {
+            d.mesh.quaternion.set(d.body.quaternion.x, d.body.quaternion.y, d.body.quaternion.z, d.body.quaternion.w)
+          }
+        }
 
-      renderer.render(scene, camera)
+        if (!snapPhase && maxSpeed > 2 && now - lastBuzz > 90) {
+          buzz(8)
+          lastBuzz = now
+        }
 
-      // Snap fertig oder Sicherheits-Timeout → fertig.
-      if ((snapPhase && elapsed > 2100) || elapsed > 4000) {
-        buzz(12)
-        finish()
-        return
+        renderer.render(scene, camera)
+
+        // Snap fertig oder Sicherheits-Timeout → fertig.
+        if ((snapPhase && elapsed > 2100) || elapsed > 4000) {
+          buzz(12)
+          finish()
+          return
+        }
+        raf = requestAnimationFrame(tick)
+      } catch (e) {
+        cancelAnimationFrame(raf)
+        setError(e instanceof Error ? e.message : String(e))
       }
-      raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
 
@@ -223,7 +225,7 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
     }
     window.addEventListener('resize', onResize)
 
-    return () => {
+    cleanup = () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
       textures.forEach((t) => t.dispose())
@@ -237,8 +239,25 @@ export default function Dice3D({ values, onSettle }: { values: number[]; onSettl
       renderer.dispose()
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }
+    } catch (e) {
+      // 3D-Setup fehlgeschlagen → Fehlermeldung zeigen (per „Überspringen" weiter).
+      setError(e instanceof Error ? e.message : String(e))
+    }
+    return cleanup
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  if (error) {
+    return (
+      <div className="grid h-full place-items-center p-6 text-center">
+        <div>
+          <div className="mb-2 text-sm font-bold text-coral-400">3D nicht verfügbar</div>
+          <div className="text-[11px] leading-relaxed text-fog-500">{error}</div>
+          <div className="mt-2 text-[10px] text-fog-600">(Tippe „Überspringen" – das Spiel läuft normal weiter.)</div>
+        </div>
+      </div>
+    )
+  }
 
   return <div ref={mountRef} className="h-full w-full" />
 }
