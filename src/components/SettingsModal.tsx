@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { getCliqueCode, setCliqueCode } from '../lib/cliqueCode'
+import { getAdminCode, setAdminCode } from '../lib/adminCode'
 import { IconLock, IconX } from './Icons'
 
-/** Modal zum Setzen des Clique-Codes (Schreib-/Löschschutz der Cloud). */
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+/** Modal für Clique-Code (Schreiben/Sync) und optionalen Admin-Code (Löschen). */
+export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => void; focusAdmin?: boolean }) {
   const [code, setCode] = useState(getCliqueCode())
+  const [admin, setAdmin] = useState(getAdminCode())
+  const [showAdmin, setShowAdmin] = useState(focusAdmin || getAdminCode().length > 0)
   const [saved, setSaved] = useState(false)
 
   const save = () => {
     setCliqueCode(code)
+    setAdminCode(admin)
     setSaved(true)
     window.setTimeout(onClose, 600)
   }
@@ -30,9 +34,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         <p className="mb-4 text-sm leading-relaxed text-fog-400">
           Das gemeinsame Kennwort eurer Clique. Nur damit lassen sich Spiele in die ewige Tabelle
-          <strong className="text-fog-200"> schreiben</strong> oder
-          <strong className="text-fog-200"> löschen</strong>. Lesen bleibt für alle offen. Jedes
-          Clique-Mitglied gibt ihn einmal pro Gerät ein.
+          <strong className="text-fog-200"> schreiben & synchronisieren</strong>. Lesen bleibt für alle
+          offen. Jedes Clique-Mitglied gibt ihn einmal pro Gerät ein.
         </p>
 
         <input
@@ -44,6 +47,32 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           autoCapitalize="characters"
           className="mb-4 w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 focus:border-gold-500/70 focus:outline-none"
         />
+
+        {/* Admin-Code: optional, nur für die Person, die löschen darf. */}
+        {showAdmin ? (
+          <div className="mb-4 rounded-2xl border border-coral-500/30 bg-coral-500/5 p-4">
+            <div className="mb-2 text-sm font-bold text-coral-300">Admin-Code (Löschen)</div>
+            <p className="mb-3 text-xs leading-relaxed text-fog-400">
+              Nur mit diesem geheimen Code lassen sich Spiele aus der ewigen Tabelle
+              <strong className="text-fog-200"> löschen</strong>. Lass ihn leer, wenn du nicht der Admin bist.
+            </p>
+            <input
+              type="text"
+              value={admin}
+              onChange={(e) => setAdmin(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              placeholder="Admin-Code…"
+              className="w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 focus:border-coral-500/70 focus:outline-none"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAdmin(true)}
+            className="mb-4 text-xs font-semibold text-fog-500 underline-offset-2 hover:text-fog-300 hover:underline"
+          >
+            Admin-Code eingeben (zum Löschen)
+          </button>
+        )}
 
         <button
           onClick={save}

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { aggregateStats, computeAwards, getEvents } from '../lib/storage'
 import { deleteGame, syncAndMerge } from '../lib/cloud'
+import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
 import type { GameRecord } from '../lib/types'
 import { IconBack, IconChart, IconTrash, IconTrophy } from './Icons'
@@ -16,7 +17,19 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [filter, setFilter] = useState<string>('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [focusAdmin, setFocusAdmin] = useState(false)
   const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null)
+  const [msg, setMsg] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  const reload = () => {
+    setLoading(true)
+    return syncAndMerge().then((res) => {
+      setGames(res.games)
+      setOnline(res.online)
+      setLoading(false)
+    })
+  }
 
   useEffect(() => {
     let alive = true
@@ -31,6 +44,21 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       alive = false
     }
   }, [])
+
+  const flash = (m: string) => {
+    setMsg(m)
+    window.setTimeout(() => setMsg((x) => (x === m ? '' : x)), 2600)
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const res = await importBackup(file)
+      await reload()
+      flash(`${res.added} neu importiert · ${res.total} gesamt`)
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Import fehlgeschlagen.')
+    }
+  }
 
   const events = useMemo(() => getEvents(games), [games])
   const stats = useMemo(() => aggregateStats(games, filter || undefined), [games, filter])
@@ -47,6 +75,8 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     const res = await deleteGame(g)
     setBusyId(null)
     if (res === 'denied') {
+      flash('Löschen nur mit Admin-Code.')
+      setFocusAdmin(true)
       setShowSettings(true)
       return
     }
@@ -59,7 +89,27 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 pt-[max(env(safe-area-inset-top),1.25rem)] safe-pb">
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal
+          focusAdmin={focusAdmin}
+          onClose={() => {
+            setShowSettings(false)
+            setFocusAdmin(false)
+          }}
+        />
+      )}
+
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void handleImport(f)
+          e.target.value = ''
+        }}
+      />
 
       <header className="mb-4 mt-2 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-2xl font-black text-fog-100">
@@ -72,6 +122,29 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
           <IconBack className="h-4 w-4" /> Zurück
         </button>
       </header>
+
+      {/* Backup-Werkzeuge: Export sichert die ewige Tabelle, Import spielt sie zurück. */}
+      <div className="mb-4 flex items-center gap-2">
+        <button
+          onClick={() => exportBackup(games)}
+          disabled={games.length === 0}
+          className="flex-1 rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:text-fog-100 disabled:opacity-40"
+        >
+          ⬇︎ Backup sichern
+        </button>
+        <button
+          onClick={() => fileInput.current?.click()}
+          className="flex-1 rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:text-fog-100"
+        >
+          ⬆︎ Backup laden
+        </button>
+      </div>
+
+      {msg && (
+        <div className="mb-4 rounded-xl border border-gold-500/40 bg-gold-500/10 px-3 py-2 text-center text-xs font-semibold text-gold-300 animate-pop">
+          {msg}
+        </div>
+      )}
 
       {/* Sync-Status */}
       <div className="mb-4 flex items-center gap-2 text-[11px]">

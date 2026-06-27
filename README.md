@@ -52,9 +52,12 @@ Die App funktioniert vollständig offline. Ist ein Supabase-Projekt hinterlegt
 geteilte Tabelle gepusht und die Statistik zieht alle Geräte zusammen.
 
 - Tabelle `public.games`, Row-Level-Security aktiv
-- Öffentlich **lesen**; **Einfügen** nur mit gültiger Datenform; **kein**
-  Ändern/Löschen vom Client
+- Öffentlich **lesen**; **Einfügen** nur mit gültiger Datenform und gültigem
+  **Clique-Code** (Header `x-clique-code`, einmalig pro Gerät einzugeben)
+- **Löschen** nur mit dem geheimen **Admin-Code** (Header `x-admin-code`) –
+  damit kann ausschließlich die Admin-Person Spiele aus der Tabelle entfernen
 - Sync ist idempotent über die lokale Spiel-ID (`client_id`)
+- Sicherheits-Backup: Statistik → „Backup sichern/laden" (JSON-Export/-Import)
 
 Auf Vercel die beiden `VITE_SUPABASE_*`-Variablen unter *Settings → Environment
 Variables* setzen (optional – ohne sie greifen die eingebauten Defaults).
