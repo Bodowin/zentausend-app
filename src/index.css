@@ -148,3 +148,57 @@ button {
   -webkit-backdrop-filter: blur(14px);
 }
 
+/* ===========================================================================
+   Virtuelle Würfel: echte CSS-3D-Würfel, von JS-Physik angetrieben (DiceArena)
+   =========================================================================== */
+.die-arena {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.die {
+  position: absolute;
+  top: 0;
+  left: 0;
+  perspective: 760px;
+  will-change: transform;
+}
+.die-shadow {
+  position: absolute;
+  left: 50%;
+  height: 12px;
+  transform: translateX(-50%) translateZ(0);
+  border-radius: 9999px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0) 70%);
+  filter: blur(1px);
+  z-index: -1;
+}
+.die-cube {
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.die-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  /* warmes Knochen-Weiß, harmoniert mit den eingetippten Würfeln */
+  background: linear-gradient(150deg, #f6f8ff, #d4dcef);
+  box-shadow:
+    inset 0 0 0 1px rgba(10, 14, 22, 0.12),
+    inset 0 -6px 10px rgba(10, 14, 22, 0.18);
+  backface-visibility: hidden;
+}
+.die-pip {
+  align-self: center;
+  justify-self: center;
+  width: 26%;
+  height: 26%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #3a4763, #0a0e16 72%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18);
+}
+
