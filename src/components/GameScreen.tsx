@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
 import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
 import { DiceRoller } from './DiceRoller'
+
+const Dice3D = lazy(() => import('./Dice3D'))
 import {
   IconCheck,
   IconRefresh,
@@ -74,6 +76,11 @@ export function GameScreen(p: Props) {
   } = p
 
   const [showRoller, setShowRoller] = useState(false)
+  const [rolling3D, setRolling3D] = useState(false)
+  const handleRoll3D = () => {
+    setRolling3D(true)
+    p.onRoll()
+  }
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
@@ -359,11 +366,11 @@ export function GameScreen(p: Props) {
             </div>
           ) : rolled.length === 0 && dice.length === 0 ? (
             <button
-              onClick={p.onRoll}
+              onClick={handleRoll3D}
               disabled={phase === 'finished'}
               className="flex h-16 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-b from-gold-400 to-gold-500 text-lg font-bold text-ink-950 shadow-[0_4px_0_var(--color-gold-600)] transition-all active:translate-y-1 active:shadow-none"
             >
-              🎲 Würfeln · {inHand} {inHand === 1 ? 'Würfel' : 'Würfel'}
+              🎲 Würfeln · {inHand} Würfel
             </button>
           ) : (
             <div className="min-h-16 rounded-2xl border border-ink-800 bg-ink-900/40 p-2.5">
@@ -468,8 +475,26 @@ export function GameScreen(p: Props) {
         </div>
       </div>
 
-      {/* Virtuelle Würfel */}
+      {/* Virtuelle Würfel (Standalone-Roller, nur Echt-Modus) */}
       {showRoller && <DiceRoller count={inHand} onClose={() => setShowRoller(false)} />}
+
+      {/* 3D-Wurf (Virtuell-Modus) */}
+      {rolling3D && (
+        <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
+          <div className="mb-2 text-sm font-bold uppercase tracking-widest text-gold-400">Würfelt…</div>
+          <div className="h-[60vh] w-full max-w-lg">
+            <Suspense fallback={<div className="grid h-full place-items-center text-fog-500">Lade 3D…</div>}>
+              <Dice3D values={rolled} onSettle={() => setRolling3D(false)} />
+            </Suspense>
+          </div>
+          <button
+            onClick={() => setRolling3D(false)}
+            className="mt-2 rounded-xl px-4 py-2 text-xs text-fog-500 hover:text-fog-200"
+          >
+            Überspringen
+          </button>
+        </div>
+      )}
 
       {/* Sieg-Overlay */}
       {winner && (
