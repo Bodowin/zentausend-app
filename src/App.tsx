@@ -27,10 +27,9 @@ interface Snapshot {
   round: number
   phase: GameState
   target: number
+  kept: number[]
   dice: number[]
   accumulated: number
-  inHand: number
-  turnHasPasch: boolean
   turns: Turn[]
   rolled: number[]
   action: string
@@ -53,13 +52,14 @@ export function App() {
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
 
   // --- Zugzustand ---
+  // Bereits ausgelegte Würfel dieser "Hand" (über mehrere Würfe hinweg, bis
+  // heiße Würfel). Werden GEMEINSAM gewertet, damit Drillinge auch über mehrere
+  // Würfe entstehen (drei 1er = 1000, nicht 3×100).
+  const [kept, setKept] = useState<number[]>([])
+  // Würfel des aktuellen Wurfs (noch nicht "weiter" bestätigt).
   const [dice, setDice] = useState<number[]>([])
+  // Gesicherte Punkte aus abgeschlossenen heißen Würfeln in diesem Zug.
   const [accumulated, setAccumulated] = useState(0)
-  // Würfel "in der Hand" für den aktuellen Wurf (startet bei 6, sinkt beim
-  // Beiseitelegen; bei 0 → heiße Würfel, wieder 6).
-  const [inHand, setInHand] = useState(6)
-  // Liegt in diesem Zug bereits ein Drilling/Pasch? → aktiviert Risiko-Szenario B.
-  const [turnHasPasch, setTurnHasPasch] = useState(false)
   // Zug-für-Zug-Verlauf für die Runden-Analyse.
   const [turns, setTurns] = useState<Turn[]>([])
   // Virtueller Modus: aktuell geworfene, noch nicht ausgelegte Würfel.
@@ -89,7 +89,10 @@ export function App() {
     setShowIntro(false)
   }
 
-  const result = useMemo(() => calculateScore(dice), [dice])
+  // Die ganze Hand (ausgelegt + aktueller Wurf) wird gemeinsam gewertet.
+  const combined = useMemo(() => [...kept, ...dice], [kept, dice])
+  const result = useMemo(() => calculateScore(combined), [combined])
+  const inHand = 6 - kept.length // Würfel, die diesen Wurf geworfen/getippt werden
 
   // Laufendes Spiel bei jeder Änderung sichern, damit es fortsetzbar ist.
   useEffect(() => {
@@ -103,10 +106,9 @@ export function App() {
         event,
         testMode,
         diceMode,
+        kept,
         dice,
         accumulated,
-        inHand,
-        turnHasPasch,
         turns,
         rolled,
         savedAt: new Date().toISOString(),
@@ -122,10 +124,9 @@ export function App() {
     event,
     testMode,
     diceMode,
+    kept,
     dice,
     accumulated,
-    inHand,
-    turnHasPasch,
     turns,
     rolled,
   ])
@@ -147,10 +148,9 @@ export function App() {
     setPhase('active')
     setTarget(0)
     setWinner(null)
+    setKept([])
     setDice([])
     setAccumulated(0)
-    setInHand(6)
-    setTurnHasPasch(false)
     setTurns([])
     setUndoStack([])
     setResumable(null)
@@ -173,10 +173,9 @@ export function App() {
     setTarget(g.target)
     setEvent(g.event)
     setTestMode(g.testMode)
+    setKept(g.kept ?? [])
     setDice(g.dice)
     setAccumulated(g.accumulated)
-    setInHand(g.inHand)
-    setTurnHasPasch(g.turnHasPasch)
     setTurns(g.turns ?? [])
     setDiceMode(g.diceMode ?? 'real')
     setRolled(g.rolled ?? [])
@@ -189,7 +188,7 @@ export function App() {
 
   // --- Würfel-Eingabe ---
   const addDie = (val: number) => {
-    if (dice.length >= inHand || phase === 'finished') return
+    if (kept.length + dice.length >= 6 || phase === 'finished') return
     buzz(6)
     setDice((d) => [...d, val].sort())
   }
@@ -207,17 +206,16 @@ export function App() {
             round,
             phase,
             target,
+            kept: [...kept],
             dice: [...dice],
             accumulated,
-            inHand,
-            turnHasPasch,
             turns: [...turns],
             rolled: [...rolled],
             action,
           },
         ].slice(-UNDO_LIMIT),
       ),
-    [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch, turns, rolled],
+    [players, idx, round, phase, target, kept, dice, accumulated, turns, rolled],
   )
 
   const undo = () => {
@@ -228,10 +226,9 @@ export function App() {
     setRound(snap.round)
     setPhase(snap.phase)
     setTarget(snap.target)
+    setKept(snap.kept)
     setDice(snap.dice)
     setAccumulated(snap.accumulated)
-    setInHand(snap.inHand)
-    setTurnHasPasch(snap.turnHasPasch)
     setTurns(snap.turns)
     setRolled(snap.rolled)
     setWinner(null)
@@ -267,9 +264,8 @@ export function App() {
         setRound(nextRound)
         setTarget(nextTarget)
         setAccumulated(0)
+        setKept([])
         setDice([])
-        setInHand(6)
-        setTurnHasPasch(false)
         setRolled([])
       }
 
@@ -295,22 +291,24 @@ export function App() {
   )
 
   // --- Aktionen ---
-  // Weiterwürfeln: gewertete Würfel sichern und die RESTLICHEN neu würfeln.
-  // Wurden alle Würfel der Hand gelegt → heiße Würfel (wieder 6).
+  // Weiterwürfeln: aktuellen Wurf zur Hand dazulegen und die RESTLICHEN neu
+  // würfeln. Sind alle 6 ausgelegt → heiße Würfel: Hand-Punkte sichern, neu mit 6.
   const handleContinue = () => {
-    if (!result.isValid || result.score === 0 || dice.length === 0 || dice.length > inHand) return
+    if (!result.isValid || result.score === 0 || dice.length === 0) return
     takeSnapshot('continue')
     buzz(10)
-    const usedAll = dice.length === inHand
-    setAccumulated((a) => a + result.score)
-    // Heiße Würfel: alle 6 neu → kein Pasch mehr auf dem Tisch.
-    // Teil-Wurf: ein Joker-Pasch (2/3/4/6) bleibt liegen und wertet weiter (Szenario B).
-    if (usedAll) setTurnHasPasch(false)
-    else if (result.hasJokerTriple) setTurnHasPasch(true)
-    setInHand(usedAll ? 6 : inHand - dice.length)
+    const newKept = [...kept, ...dice]
+    if (newKept.length === 6) {
+      // Heiße Würfel: die ganze Hand ist gewertet → Punkte sichern, frisch starten.
+      setAccumulated((a) => a + calculateScore(newKept).score)
+      setKept([])
+      showToast('Heiße Würfel!')
+    } else {
+      setKept(newKept)
+      showToast('Weiter!')
+    }
     setDice([])
     setRolled([]) // virtueller Modus: Rest neu würfeln
-    showToast(usedAll ? 'Heiße Würfel!' : 'Weiter!')
   }
 
   // --- Virtueller Würfel-Modus ---
@@ -374,11 +372,11 @@ export function App() {
 
   const risk = useMemo(() => {
     if (!result.isValid || dice.length === 0 || result.score === 0) return null
-    // Alle Würfel der Hand gelegt → heiße Würfel: 6 frische, kein aktiver Pasch.
-    if (dice.length === inHand) return computeRisk(6, false)
+    // Ganze Hand gelegt → heiße Würfel: 6 frische, kein aktiver Pasch mehr.
+    if (combined.length === 6) return computeRisk(6, false)
     // Sonst werden die restlichen Würfel neu geworfen; ein Joker-Pasch wertet weiter.
-    return computeRisk(inHand - dice.length, turnHasPasch || result.hasJokerTriple)
-  }, [result, dice.length, inHand, turnHasPasch])
+    return computeRisk(6 - combined.length, result.hasJokerTriple)
+  }, [result, dice.length, combined.length])
 
   // --- Rendering ---
   if (view === 'stats') {
@@ -418,6 +416,7 @@ export function App() {
       neededForWin={neededForWin}
       testMode={testMode}
       diceMode={diceMode}
+      kept={kept}
       dice={dice}
       rolled={rolled}
       inHand={inHand}

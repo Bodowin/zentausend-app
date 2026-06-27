@@ -12,10 +12,9 @@ export interface ActiveGame {
   event: string
   testMode: boolean
   diceMode: DiceMode
+  kept: number[]
   dice: number[]
   accumulated: number
-  inHand: number
-  turnHasPasch: boolean
   turns: Turn[]
   rolled: number[]
   savedAt: string

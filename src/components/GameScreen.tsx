@@ -27,6 +27,7 @@ interface Props {
   neededForWin: number
   testMode: boolean
   diceMode: DiceMode
+  kept: number[]
   dice: number[]
   rolled: number[]
   inHand: number
@@ -63,6 +64,7 @@ export function GameScreen(p: Props) {
     neededForWin,
     testMode,
     diceMode,
+    kept,
     dice,
     rolled,
     inHand,
@@ -251,17 +253,27 @@ export function GameScreen(p: Props) {
             result.isValid ? 'border-ink-800 bg-ink-900/50' : 'border-coral-500/40 bg-coral-500/5'
           }`}
         >
-          {dice.length === 0 ? (
+          {kept.length === 0 && dice.length === 0 ? (
             <span className="text-sm italic text-fog-600">
               {inHand < 6 ? `${inHand} Würfel geworfen – Gewertete eintippen…` : 'Gewertete Würfel eintippen…'}
             </span>
           ) : (
             <div className="flex flex-wrap justify-center gap-2">
+              {/* Bereits ausgelegte Würfel dieser Hand (fixiert) */}
+              {kept.map((val, i) => (
+                <span
+                  key={`k${i}`}
+                  className="grid h-12 w-12 place-items-center rounded-xl border-b-4 border-gold-600/70 bg-gold-300/90 text-xl font-bold text-ink-900 shadow-sm"
+                >
+                  {val}
+                </span>
+              ))}
+              {/* Aktueller Wurf (antippbar zum Entfernen) */}
               {dice.map((val, i) => {
                 const bad = result.invalidDice.includes(val)
                 return (
                   <button
-                    key={i}
+                    key={`d${i}`}
                     onClick={() => p.onRemoveDie(i)}
                     className={`grid h-12 w-12 place-items-center rounded-xl border-b-4 text-xl font-bold shadow-sm transition-colors animate-pop ${
                       bad
