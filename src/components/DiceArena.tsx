@@ -178,10 +178,12 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
   for (let i = 0; i < n; i++) {
     const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
     b.sleepSpeedLimit = 0.15; b.sleepTimeLimit = 0.3; b.linearDamping = 0.01; b.angularDamping = 0.03
-    b.position.set((Math.random() - 0.5) * Rb * 0.5, y0 + Math.random() * 1.5 + i * 0.12, (Math.random() - 0.5) * Rb * 0.5)
+    b.position.set((Math.random() - 0.5) * Rb * 0.3, y0 + Math.random() * 1.5 + i * 0.12, (Math.random() - 0.5) * Rb * 0.3)
     b.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28)
-    b.velocity.set((Math.random() - 0.5) * 3, -(6 + Math.random() * 3), (Math.random() - 0.5) * 3)
-    b.angularVelocity.set((Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24)
+    // Lebendiger Wurf (höher/schneller + mehr Drall) → längeres Rollen; die engen,
+    // nach innen gekippten Wände halten die Würfel trotzdem in der Mitte.
+    b.velocity.set((Math.random() - 0.5) * 2.2, -(8 + Math.random() * 4), (Math.random() - 0.5) * 2.2)
+    b.angularVelocity.set((Math.random() - 0.5) * 32, (Math.random() - 0.5) * 32, (Math.random() - 0.5) * 32)
     const idx = i
     b.addEventListener('collide', (e: { contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
       const v = Math.abs(e?.contact?.getImpactVelocityAlongNormal?.() ?? 0)
@@ -220,7 +222,7 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
 /* =============================== Komponente ============================= */
 type ArenaData = {
   pos: V[][]; quat: Q[][]; impacts: Impact[]; labelings: number[][]
-  frames: number; S: number; sizePx: number; FIXED_DT: number; camTilt: number; perspective: number
+  frames: number; S: number; sizePx: number; feltPx: number; FIXED_DT: number; camTilt: number; perspective: number
 }
 
 export default function DiceArena({ values, onSettle }: DiceArenaProps) {
@@ -239,10 +241,13 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
     const h = 0.5
-    const Rb = 2.4 + n * 0.45
-    const y0 = Rb * 0.9 + 2.2
+    // Engere Schale → Würfel bleiben mittig beieinander statt an die Wände zu fliegen.
+    const Rb = 1.7 + n * 0.25
+    const y0 = Rb * 0.9 + 3.2
     const S = (minD * 0.4) / Rb
     const sizePx = 2 * h * S
+    // Filz deckt den ganzen Schalen-Innenraum ab (sonst landen Würfel daneben).
+    const feltPx = (2 * Rb + 1.2) * S
     const camTilt = 56, perspective = minD * 2.2
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
@@ -250,7 +255,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       const labelings = vals.map((v) => chooseLabeling(2, v))
       const pos: V[][] = vals.map((_, i) => [[(i - (n - 1) / 2) * (2 * h * 1.2), h, 0]])
       const quat: Q[][] = vals.map(() => [[0, 0, 0, 1]])
-      dataRef.current = { pos, quat, impacts: [], labelings, frames: 1, S, sizePx, FIXED_DT: 1 / 60, camTilt, perspective }
+      dataRef.current = { pos, quat, impacts: [], labelings, frames: 1, S, sizePx, feltPx, FIXED_DT: 1 / 60, camTilt, perspective }
       setReady(true)
       const t = setTimeout(() => onSettleRef.current?.(), 120)
       return () => clearTimeout(t)
@@ -264,7 +269,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     attempt.impacts.sort((a, b) => a.frame - b.frame)
     dataRef.current = {
       pos: attempt.pos, quat: attempt.quat, impacts: attempt.impacts, labelings,
-      frames: attempt.frames, S, sizePx, FIXED_DT: cfg.FIXED_DT, camTilt, perspective,
+      frames: attempt.frames, S, sizePx, feltPx, FIXED_DT: cfg.FIXED_DT, camTilt, perspective,
     }
     setReady(true)
   }, [values])
@@ -319,7 +324,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       {ready && d && (
         <div className="da-cam" style={{ perspective: `${d.perspective}px`, ['--tilt' as string]: `${d.camTilt}deg` }}>
           <div className="da-stage">
-            <div className="da-floor" style={{ width: d.sizePx * 7, height: d.sizePx * 7 }} />
+            <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
             {d.labelings.map((_, i) => (
               <div
                 key={'s' + i}
