@@ -80,3 +80,20 @@ export function calculateScore(dice: number[]): ScoreResult {
 
   return { score, label, isValid: invalidDice.length === 0, invalidDice, hasTriple, hasJokerTriple }
 }
+
+/**
+ * Gibt es in diesem Wurf überhaupt etwas Wertbares (1, 5, Drilling, Straße,
+ * 3 Paare)? Falls nein → Niete. Für den virtuellen Würfel-Modus.
+ */
+export function rollHasScore(dice: number[]): boolean {
+  if (dice.length === 0) return false
+  const counts: Record<number, number> = {}
+  dice.forEach((d) => (counts[d] = (counts[d] || 0) + 1))
+  if (counts[1] || counts[5]) return true
+  for (const v of [2, 3, 4, 6]) if ((counts[v] || 0) >= 3) return true
+  if (dice.length === 6) {
+    if (Object.keys(counts).length === 6) return true // Straße
+    if (Object.values(counts).filter((n) => n === 2).length === 3) return true // 3 Paare
+  }
+  return false
+}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { Player } from '../lib/types'
+import type { DiceMode, Player } from '../lib/types'
 import { getEvents } from '../lib/storage'
 import { IconChart, IconRefresh, IconUserPlus, IconUsers, IconX, IconTag, IconSettings } from './Icons'
 import { SettingsModal } from './SettingsModal'
@@ -10,7 +10,7 @@ const PRESETS = ['Gabi', 'Mabi', 'Dana', 'Bodo']
 
 interface Props {
   makePlayer: (name: string) => Player
-  onStart: (players: Player[], event: string, testMode: boolean) => void
+  onStart: (players: Player[], event: string, testMode: boolean, diceMode: DiceMode) => void
   onShowStats: () => void
   onShowHelp: () => void
   resumable: ActiveGame | null
@@ -29,6 +29,7 @@ export function SetupScreen({
   const [guest, setGuest] = useState('')
   const [event, setEvent] = useState('')
   const [testMode, setTestMode] = useState(false)
+  const [diceMode, setDiceMode] = useState<DiceMode>('real')
   const [showSettings, setShowSettings] = useState(false)
   const pastEvents = useMemo(() => getEvents(), [])
 
@@ -191,6 +192,34 @@ export function SetupScreen({
         )}
       </section>
 
+      <div className="mb-4 rounded-2xl border border-ink-700/80 bg-ink-850/60 p-3">
+        <div className="mb-2 px-1 text-sm font-semibold text-fog-200">Würfel</div>
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              { v: 'real', label: '🎯 Echte', sub: 'Werte eintippen' },
+              { v: 'virtual', label: '🎲 Virtuelle', sub: 'In der App würfeln' },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.v}
+              type="button"
+              onClick={() => setDiceMode(m.v)}
+              className={`flex flex-col items-center rounded-xl border-2 px-3 py-2.5 transition-all ${
+                diceMode === m.v
+                  ? 'border-gold-500/60 bg-gold-500/10'
+                  : 'border-ink-700 bg-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span className={`text-sm font-bold ${diceMode === m.v ? 'text-gold-400' : 'text-fog-300'}`}>
+                {m.label}
+              </span>
+              <span className="text-[10px] text-fog-500">{m.sub}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <button
         type="button"
         role="switch"
@@ -218,7 +247,7 @@ export function SetupScreen({
       </button>
 
       <button
-        onClick={() => onStart(players, event, testMode)}
+        onClick={() => onStart(players, event, testMode, diceMode)}
         disabled={players.length < 2}
         className="mb-6 mt-auto w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
       >
