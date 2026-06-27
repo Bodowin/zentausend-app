@@ -1,5 +1,5 @@
 import { getSupabase } from './supabase'
-import { getHistory, removeGame } from './storage'
+import { getHistory, removeGame, replaceHistory } from './storage'
 import type { GameRecord } from './types'
 import type { Database } from './database.types'
 
@@ -46,10 +46,15 @@ export async function pushGame(game: GameRecord): Promise<boolean> {
   return true
 }
 
-/** Holt alle Spiele aus der Cloud (neueste zuerst). */
-export async function fetchCloudGames(): Promise<GameRecord[]> {
+/**
+ * Holt alle Spiele aus der Cloud (neueste zuerst).
+ *
+ * `ok` unterscheidet „Cloud leer" von „Cloud nicht erreichbar/Fehler", damit
+ * der Aufrufer nicht fälschlich „synchronisiert" meldet.
+ */
+export async function fetchCloudGames(): Promise<{ games: GameRecord[]; ok: boolean }> {
   const supabase = getSupabase()
-  if (!supabase) return []
+  if (!supabase) return { games: [], ok: false }
   const { data, error } = await supabase
     .from('games')
     .select('*')
@@ -57,9 +62,9 @@ export async function fetchCloudGames(): Promise<GameRecord[]> {
     .limit(500)
   if (error) {
     console.warn('Cloud-Fetch fehlgeschlagen:', error.message)
-    return []
+    return { games: [], ok: false }
   }
-  return (data ?? []).map(fromRow)
+  return { games: (data ?? []).map(fromRow), ok: true }
 }
 
 export type DeleteResult = 'ok' | 'denied' | 'offline'
@@ -123,7 +128,10 @@ export async function syncAndMerge(): Promise<SyncResult> {
   const local = getHistory()
   if (!getSupabase()) return { games: local, online: false }
 
-  const cloud = await fetchCloudGames()
+  const { games: cloud, ok } = await fetchCloudGames()
+  // Fetch fehlgeschlagen → ehrlich offline melden, nichts hochladen, lokal bleiben.
+  if (!ok) return { games: local, online: false }
+
   const cloudIds = new Set(cloud.map(key))
   const missing = local.filter((g) => !cloudIds.has(key(g)))
   if (missing.length) await Promise.allSettled(missing.map(pushGame))
@@ -133,5 +141,7 @@ export async function syncAndMerge(): Promise<SyncResult> {
   const games = [...byId.values()].sort(
     (a, b) => Date.parse(b.date) - Date.parse(a.date),
   )
+  // Erfolgreich gemerged → lokal cachen, damit Offline-Start die Cloud-Spiele kennt.
+  replaceHistory(games)
   return { games, online: true }
 }
