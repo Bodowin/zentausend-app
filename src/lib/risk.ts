@@ -68,3 +68,59 @@ export function computeRisk(remainingDice: number, scenarioB: boolean): RiskInfo
   const pct = table[remainingDice]
   return { pct, dice: remainingDice, scenarioB, ...classify(pct) }
 }
+
+export type CoachTone = 'good' | 'ok' | 'warn' | 'danger'
+export interface CoachAdvice {
+  text: string
+  tone: CoachTone
+}
+
+// Ab diesen Topf-Höhen wiegt ein Bust schwer genug, um trotz hoher Erfolgschance
+// zur Vorsicht zu raten.
+const POT_BIG = 1500
+const POT_HUGE = 2500
+
+/**
+ * Empfehlung des Risiko-Coaches.
+ *
+ * Anders als die reine Bust-Chance berücksichtigt sie, WIE VIEL im Topf steht:
+ * Ein Bust bei großem Topf schmerzt mehr, deshalb wird selbst bei hoher
+ * Erfolgswahrscheinlichkeit nie pauschal „sicher" geraten, wenn viel auf dem
+ * Spiel steht.
+ *
+ * @param pct      Erfolgschance des nächsten Wurfs (0–100).
+ * @param pot      Punkte, die bei einem Bust verloren gingen (aktueller Topf).
+ * @param canBank  Ist Sichern derzeit erlaubt (Einstiegsregel erfüllt)?
+ * @param bankWins Würde Sichern jetzt das Spiel gewinnen?
+ */
+export function recommendAction(
+  pct: number,
+  pot: number,
+  canBank: boolean,
+  bankWins: boolean,
+): CoachAdvice {
+  if (bankWins && canBank) return { text: 'Sichern = Sieg!', tone: 'good' }
+  // Einstieg noch nicht geschafft → man MUSS weiterwürfeln, Sichern geht nicht.
+  if (!canBank) return { text: 'Für den Einstieg weiterwürfeln', tone: 'ok' }
+
+  const bust = 100 - pct
+  const bigPot = pot >= POT_BIG
+  const hugePot = pot >= POT_HUGE
+
+  if (bust <= 5) {
+    return hugePot
+      ? { text: 'Sehr sicher – aber viel im Topf', tone: 'ok' }
+      : { text: 'Weiter ist sicher', tone: 'good' }
+  }
+  if (bust <= 15) {
+    return bigPot
+      ? { text: 'Gut – aber viel steht auf dem Spiel', tone: 'warn' }
+      : { text: 'Weiter ist gut', tone: 'good' }
+  }
+  if (bust <= 35) {
+    return bigPot
+      ? { text: 'Riskant – lieber sichern', tone: 'danger' }
+      : { text: 'Geht noch', tone: 'warn' }
+  }
+  return { text: 'Lieber sichern', tone: 'danger' }
+}

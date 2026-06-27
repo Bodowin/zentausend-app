@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
-import type { RiskInfo } from '../lib/risk'
+import type { CoachTone, RiskInfo } from '../lib/risk'
+import { recommendAction } from '../lib/risk'
 import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
@@ -97,17 +98,21 @@ export function GameScreen(p: Props) {
   const leader = lastChance ? [...players].sort((a, b) => b.score - a.score)[0] : null
   const beatScore = effectiveTarget - 1
 
-  // Risiko-Coach: dezente Empfehlung auf Basis der Erfolgschance.
+  // Risiko-Coach: Empfehlung, die nicht nur die Bust-Chance, sondern auch den
+  // Topf-Einsatz berücksichtigt (großer Topf → vorsichtiger raten).
+  const TONE_CLASS: Record<CoachTone, string> = {
+    good: 'text-mint-400',
+    ok: 'text-risk-4',
+    warn: 'text-risk-3',
+    danger: 'text-coral-400',
+  }
   const coach: { text: string; tone: string } | null =
     !risk || totalPotential === 0
       ? null
-      : neededAfterBank <= 0 && canBank
-        ? { text: 'Sichern = Sieg!', tone: 'text-mint-300' }
-        : risk.pct >= 85
-          ? { text: 'Weiter ist sicher', tone: 'text-mint-400' }
-          : risk.pct >= 65
-            ? { text: 'Geht noch', tone: 'text-risk-3' }
-            : { text: 'Lieber sichern', tone: 'text-coral-400' }
+      : (() => {
+          const a = recommendAction(risk.pct, totalPotential, canBank, neededAfterBank <= 0)
+          return { text: a.text, tone: TONE_CLASS[a.tone] }
+        })()
 
   return (
     <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb">
