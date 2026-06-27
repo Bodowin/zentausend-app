@@ -482,13 +482,7 @@ export function GameScreen(p: Props) {
         <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
           <div className="mb-2 text-sm font-bold uppercase tracking-widest text-gold-400">Würfelt…</div>
           <div className="h-[60vh] w-full max-w-lg">
-            <ErrorBoundary
-              fallback={
-                <div className="grid h-full place-items-center p-6 text-center text-xs text-coral-400">
-                  3D nicht verfügbar – „Überspringen" tippen, das Spiel läuft normal weiter.
-                </div>
-              }
-            >
+            <ErrorBoundary>
               <Suspense fallback={<div className="grid h-full place-items-center text-fog-500">Lade 3D…</div>}>
                 <Dice3D values={rolled} onSettle={() => setRolling3D(false)} />
               </Suspense>
