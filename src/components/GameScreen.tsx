@@ -1,12 +1,10 @@
-import { lazy, Suspense, useState } from 'react'
+import { useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
 import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
-import { ErrorBoundary } from './ErrorBoundary'
-
-const Dice3D = lazy(() => import('./Dice3D'))
+import DiceCss from './DiceCss'
 import {
   IconCheck,
   IconRefresh,
@@ -477,16 +475,12 @@ export function GameScreen(p: Props) {
         </div>
       </div>
 
-      {/* 3D-Wurf (Virtuell-Modus) */}
+      {/* Würfel-Wurf (Virtuell-Modus) */}
       {rolling3D && (
         <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
           <div className="mb-2 text-sm font-bold uppercase tracking-widest text-gold-400">Würfelt…</div>
-          <div className="h-[60vh] w-full max-w-lg">
-            <ErrorBoundary>
-              <Suspense fallback={<div className="grid h-full place-items-center text-fog-500">Lade 3D…</div>}>
-                <Dice3D values={rolled} onSettle={() => setRolling3D(false)} />
-              </Suspense>
-            </ErrorBoundary>
+          <div className="h-[55vh] w-full max-w-lg">
+            <DiceCss values={rolled} onSettle={() => setRolling3D(false)} />
           </div>
           <button
             onClick={() => setRolling3D(false)}
