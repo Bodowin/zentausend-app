@@ -289,9 +289,9 @@ export function App() {
     const usedAll = dice.length === inHand
     setAccumulated((a) => a + result.score)
     // Heiße Würfel: alle 6 neu → kein Pasch mehr auf dem Tisch.
-    // Teil-Wurf: beiseitegelegte Würfel (inkl. Pasch) bleiben liegen.
+    // Teil-Wurf: ein Joker-Pasch (2/3/4/6) bleibt liegen und wertet weiter (Szenario B).
     if (usedAll) setTurnHasPasch(false)
-    else if (result.hasTriple) setTurnHasPasch(true)
+    else if (result.hasJokerTriple) setTurnHasPasch(true)
     setInHand(usedAll ? 6 : inHand - dice.length)
     setDice([])
     showToast(usedAll ? 'Heiße Würfel!' : 'Weiter!')
@@ -333,8 +333,8 @@ export function App() {
     if (!result.isValid || dice.length === 0 || result.score === 0) return null
     // Alle Würfel der Hand gelegt → heiße Würfel: 6 frische, kein aktiver Pasch.
     if (dice.length === inHand) return computeRisk(6, false)
-    // Sonst werden die restlichen Würfel neu geworfen; ein Pasch wertet weiter.
-    return computeRisk(inHand - dice.length, turnHasPasch || result.hasTriple)
+    // Sonst werden die restlichen Würfel neu geworfen; ein Joker-Pasch wertet weiter.
+    return computeRisk(inHand - dice.length, turnHasPasch || result.hasJokerTriple)
   }, [result, dice.length, inHand, turnHasPasch])
 
   // --- Rendering ---
