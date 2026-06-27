@@ -1,74 +1,81 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as CANNON from 'cannon-es'
 
 /**
- * Virtuelle Würfel: echte CSS-3D-Würfel (6 Flächen, preserve-3d), deren
- * Orientierung pro Frame als QUATERNION geführt und als matrix3d ausgegeben wird
- * – angetrieben von einer festen 2D-Physik.
+ * Virtuelle Würfel mit ECHTER 3D-Starrkörper-Physik (cannon-es, reines JS – kein
+ * WebGL) und CSS-3D-Rendering (matrix3d). Basiert auf dem Entwurf von ChatGPT,
+ * an dieses Projekt angepasst.
  *
- * Synthese aus drei Ansätzen:
- *  - Würfel werden in den (leicht getilteten) Tisch geworfen, prallen an Wänden
- *    UND aneinander ab und ROLLEN dabei in Bewegungsrichtung (ω = v/R) → echtes
- *    Würfel-Gefühl statt flacher Drehung.
- *  - Quaternion-Tumble: kein Gimbal-Lock, beliebige Achse, kein Flackern.
- *  - Beim Stoß zusätzlicher Drall + kurzer Impact-Pop (Haptik gibt es auf iOS-Web
- *    nicht – das ist der sichtbare Ersatz).
- *  - Landung per Slerp auf die nächstgelegene gültige Endlage, die die
- *    vorbestimmte Augenzahl zeigt → springt nie um, Ergebnis bleibt exakt.
- *  - Fester Physik-Timestep mit dt-Clamp → 120-Hz-ProMotion sauber abgefangen.
- *  Kein WebGL → iOS-stabil, offline, design-treu.
+ * Trick gegen das sichtbare „Einrasten": Bevor der erste sichtbare Frame läuft,
+ * wird dieselbe Physik deterministisch im Dry-Run durchgerechnet → wir wissen
+ * vorab, welche Fläche oben landet, und weisen die vorbestimmte Augenzahl von
+ * Anfang an genau dieser Fläche zu (Face-Relabeling). Ergebnis: natürlicher
+ * Fall, echte Kollisionen, kein Slerp, kein End-Snap.
  */
 
-// ---- Quaternion-Helfer (x, y, z, w) --------------------------------------
-type Q = [number, number, number, number]
-
-const qMul = (a: Q, b: Q): Q => [
-  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
-  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
-  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
-  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
-]
-const qNorm = (q: Q): Q => {
-  const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1
-  return [q[0] / l, q[1] / l, q[2] / l, q[3] / l]
-}
-const qAxis = (x: number, y: number, z: number, ang: number): Q => {
-  const h = ang / 2
-  const s = Math.sin(h)
-  return [x * s, y * s, z * s, Math.cos(h)]
-}
-const qDot = (a: Q, b: Q) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
-const qSlerp = (a: Q, b: Q, t: number): Q => {
-  let d = qDot(a, b)
-  let bb = b
-  if (d < 0) {
-    bb = [-b[0], -b[1], -b[2], -b[3]]
-    d = -d
-  }
-  if (d > 0.9995) {
-    return qNorm([a[0] + (bb[0] - a[0]) * t, a[1] + (bb[1] - a[1]) * t, a[2] + (bb[2] - a[2]) * t, a[3] + (bb[3] - a[3]) * t])
-  }
-  const th = Math.acos(d)
-  const s = Math.sin(th)
-  const wa = Math.sin((1 - t) * th) / s
-  const wb = Math.sin(t * th) / s
-  return [a[0] * wa + bb[0] * wb, a[1] * wa + bb[1] * wb, a[2] * wa + bb[2] * wb, a[3] * wa + bb[3] * wb]
-}
-const qToMatrix3d = (q: Q): string => {
-  const [x, y, z, w] = q
-  const m00 = 1 - 2 * (y * y + z * z)
-  const m01 = 2 * (x * y - w * z)
-  const m02 = 2 * (x * z + w * y)
-  const m10 = 2 * (x * y + w * z)
-  const m11 = 1 - 2 * (x * x + z * z)
-  const m12 = 2 * (y * z - w * x)
-  const m20 = 2 * (x * z - w * y)
-  const m21 = 2 * (y * z + w * x)
-  const m22 = 1 - 2 * (x * x + y * y)
-  // CSS matrix3d ist spaltenweise.
-  return `matrix3d(${m00},${m10},${m20},0,${m01},${m11},${m21},0,${m02},${m12},${m22},0,0,0,0,1)`
+export interface DiceArenaProps {
+  values: number[]
+  onSettle: () => void
 }
 
-const PIP: Record<number, number[]> = {
+type DieValue = 1 | 2 | 3 | 4 | 5 | 6
+type FaceId = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz'
+type FaceLabels = Record<FaceId, DieValue>
+
+interface DieConfig {
+  position: CANNON.Vec3
+  quaternion: CANNON.Quaternion
+  velocity: CANNON.Vec3
+  angularVelocity: CANNON.Vec3
+}
+
+interface PhysicsSetup {
+  seed: number
+  values: DieValue[]
+  configs: DieConfig[]
+  labels: FaceLabels[]
+  predictedTopFaces: FaceId[]
+}
+
+const FIXED_STEP = 1 / 60
+const MAX_STEPS_PER_FRAME = 3
+const PRE_SIM_STEPS = 280
+const MIN_VISIBLE_MS = 1150
+const FORCE_FINISH_MS = 4600
+
+const DIE_SIZE = 0.72
+const DIE_HALF = DIE_SIZE / 2
+const DIE_PX = 58
+const SCALE = DIE_PX / DIE_SIZE
+const TRAY_W = 5.35
+const TRAY_D = 3.75
+const WALL_H = 0.9
+const WALL_THICKNESS = 0.18
+const GRAVITY = 13.5
+
+const FACE_IDS: FaceId[] = ['px', 'nx', 'py', 'ny', 'pz', 'nz']
+const OPPOSITE: Record<FaceId, FaceId> = { px: 'nx', nx: 'px', py: 'ny', ny: 'py', pz: 'nz', nz: 'pz' }
+
+const FACE_NORMALS: Record<FaceId, CANNON.Vec3> = {
+  px: new CANNON.Vec3(1, 0, 0),
+  nx: new CANNON.Vec3(-1, 0, 0),
+  py: new CANNON.Vec3(0, 1, 0),
+  ny: new CANNON.Vec3(0, -1, 0),
+  pz: new CANNON.Vec3(0, 0, 1),
+  nz: new CANNON.Vec3(0, 0, -1),
+}
+
+// DOM-Achsen-Mapping: DOM X = Physik X, DOM Y = Physik Z, DOM Z = Physik Y.
+const FACE_TRANSFORMS: Record<FaceId, string> = {
+  py: `translateZ(${DIE_PX / 2}px)`,
+  ny: `rotateY(180deg) translateZ(${DIE_PX / 2}px)`,
+  px: `rotateY(90deg) translateZ(${DIE_PX / 2}px)`,
+  nx: `rotateY(-90deg) translateZ(${DIE_PX / 2}px)`,
+  pz: `rotateX(90deg) translateZ(${DIE_PX / 2}px)`,
+  nz: `rotateX(-90deg) translateZ(${DIE_PX / 2}px)`,
+}
+
+const PIPS: Record<DieValue, number[]> = {
   1: [4],
   2: [0, 8],
   3: [0, 4, 8],
@@ -76,317 +83,538 @@ const PIP: Record<number, number[]> = {
   5: [0, 2, 4, 6, 8],
   6: [0, 2, 3, 5, 6, 8],
 }
-const FACES: { v: number; r: string }[] = [
-  { v: 1, r: '' },
-  { v: 6, r: 'rotateY(180deg)' },
-  { v: 3, r: 'rotateY(90deg)' },
-  { v: 4, r: 'rotateY(-90deg)' },
-  { v: 5, r: 'rotateX(90deg)' },
-  { v: 2, r: 'rotateX(-90deg)' },
-]
-// Euler-Rotation (Grad), die die Augenzahl nach vorne (zur Kamera, +Z) bringt.
-const BASE: Record<number, [number, number]> = {
-  1: [0, 0],
-  2: [90, 0],
-  3: [0, -90],
-  4: [0, 90],
-  5: [-90, 0],
-  6: [0, 180],
-}
-const rad = (d: number) => (d * Math.PI) / 180
-// Basis-Quaternion je Augenzahl: Rx(rx)·Ry(ry).
-const baseQuat = (v: number): Q => {
-  const [rx, ry] = BASE[v]
-  return qNorm(qMul(qAxis(1, 0, 0, rad(rx)), qAxis(0, 1, 0, rad(ry))))
-}
-const rand = (a: number, b: number) => a + Math.random() * (b - a)
 
-interface Body {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  q: Q
-  wx: number // Launch-Tumble-Winkelgeschwindigkeit (rad/s), klingt ab
-  wy: number
-  wz: number
-  value: number
-  pop: number // Impact-Pop-Restzeit (s)
-  settling: boolean
-  startQ: Q
-  targetQ: Q
-  st: number // Slerp-Fortschritt 0..1
+const css = `
+.diceArena {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 28px;
+  background:
+    radial-gradient(120% 85% at 50% 0%, rgba(124, 139, 255, 0.16), transparent 56%),
+    radial-gradient(100% 80% at 20% 100%, rgba(245, 184, 61, 0.11), transparent 60%),
+    #060910;
+  perspective: 920px;
+  contain: layout paint size;
+  touch-action: none;
 }
+.diceArena::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), transparent 28%, rgba(0,0,0,0.2));
+  pointer-events: none;
+}
+.diceArena__world {
+  --tray-w: ${TRAY_W * SCALE}px;
+  --tray-d: ${TRAY_D * SCALE}px;
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: var(--tray-w);
+  height: var(--tray-d);
+  transform-style: preserve-3d;
+  transform: translate(-50%, -50%) scale(var(--fit, 1)) rotateX(61deg) rotateZ(-3deg);
+}
+.diceArena__felt {
+  position: absolute;
+  inset: 0;
+  border-radius: 30px;
+  background:
+    radial-gradient(90% 75% at 50% 50%, rgba(47, 211, 165, 0.09), transparent 62%),
+    radial-gradient(70% 45% at 50% 6%, rgba(255, 203, 92, 0.12), transparent 60%),
+    repeating-radial-gradient(circle at 48% 45%, rgba(255,255,255,.025) 0 1px, transparent 1px 4px),
+    linear-gradient(135deg, #0b332e, #061b1c 72%);
+  box-shadow:
+    inset 0 0 0 2px rgba(245, 184, 61, 0.18),
+    inset 0 0 36px rgba(0, 0, 0, 0.72),
+    0 22px 60px rgba(0, 0, 0, 0.55);
+  transform: translateZ(0px);
+}
+.diceArena__wall {
+  position: absolute;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #1f1720, #08090f);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 203, 92, 0.18),
+    inset 0 -10px 16px rgba(0,0,0,.62),
+    0 10px 22px rgba(0,0,0,.42);
+  transform: translateZ(24px);
+}
+.diceArena__wall--top, .diceArena__wall--bottom { left: -18px; width: calc(100% + 36px); height: 38px; }
+.diceArena__wall--top { top: -27px; }
+.diceArena__wall--bottom { bottom: -27px; }
+.diceArena__wall--left, .diceArena__wall--right { top: -14px; height: calc(100% + 28px); width: 38px; }
+.diceArena__wall--left { left: -27px; }
+.diceArena__wall--right { right: -27px; }
+.diceArena__shadow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 30px;
+  margin-left: -26px;
+  margin-top: -15px;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.62), rgba(0,0,0,.2) 46%, transparent 72%);
+  filter: blur(2px);
+  opacity: .5;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.diceArena__die {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: ${DIE_PX}px;
+  height: ${DIE_PX}px;
+  margin-left: ${-DIE_PX / 2}px;
+  margin-top: ${-DIE_PX / 2}px;
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+  will-change: transform;
+  pointer-events: none;
+}
+.diceArena__face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0;
+  padding: 8px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 23%, rgba(255,255,255,.95), rgba(255,255,255,0) 32%),
+    linear-gradient(145deg, #fffaf0, #ece4d3 54%, #d5c7ae);
+  box-shadow:
+    inset 0 0 0 1px rgba(10, 14, 22, .14),
+    inset 0 -8px 13px rgba(10, 14, 22, .18),
+    inset 0 5px 8px rgba(255, 255, 255, .68);
+  backface-visibility: hidden;
+}
+.diceArena__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,.16), transparent 45%, rgba(0,0,0,.08));
+  pointer-events: none;
+}
+.diceArena__pip {
+  width: 9px;
+  height: 9px;
+  align-self: center;
+  justify-self: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 32%, #38445d, #0a0e16 72%);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.16);
+}
+@media (prefers-reduced-motion: reduce) {
+  .diceArena__world { transform: translate(-50%, -50%) scale(var(--fit, 1)) rotateX(58deg) rotateZ(-3deg); }
+}
+`
 
-export default function DiceArena({ values, onSettle }: { values: number[]; onSettle: () => void }) {
-  const arenaRef = useRef<HTMLDivElement>(null)
+export default function DiceArena({ values, onSettle }: DiceArenaProps) {
+  const seedRef = useRef<number>(makeSeed())
+  const arenaRef = useRef<HTMLDivElement | null>(null)
   const dieRefs = useRef<(HTMLDivElement | null)[]>([])
-  const cubeRefs = useRef<(HTMLDivElement | null)[]>([])
   const shadowRefs = useRef<(HTMLSpanElement | null)[]>([])
-  const settledRef = useRef(false)
+  const onSettleRef = useRef(onSettle)
+  onSettleRef.current = onSettle
 
-  const size = useMemo(
-    () => Math.round(Math.max(46, Math.min(66, Math.min(window.innerWidth, window.innerHeight * 0.5) * 0.16))),
-    [],
-  )
+  const valuesKey = values.join(',')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const setup = useMemo(() => createSetup(normalizeValues(values), seedRef.current), [valuesKey])
+  const [settled, setSettled] = useState(false)
 
   useEffect(() => {
-    const arena = arenaRef.current
-    if (!arena) return
-    const W = arena.clientWidth
-    const H = arena.clientHeight
-    const R = size * 0.6
-    const pad = R + 2
-    const n = Math.max(1, values.length)
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
-    const finish = () => {
-      if (settledRef.current) return
-      settledRef.current = true
-      onSettle()
-    }
-
-    // 4 gültige Endlagen je Augenzahl (Rollung um die Blickachse) – nächstgelegene wählen.
-    const targetFor = (v: number, cur: Q): Q => {
-      const base = baseQuat(v)
-      let best = base
-      let bestDot = -2
-      for (let k = 0; k < 4; k++) {
-        const cand = qNorm(qMul(qAxis(0, 0, 1, (k * Math.PI) / 2), base))
-        const d = Math.abs(qDot(cand, cur))
-        if (d > bestDot) {
-          bestDot = d
-          best = cand
-        }
-      }
-      return best
-    }
-
-    const bodies: Body[] = values.map((value, i) => {
-      const a = rand(-Math.PI * 0.72, -Math.PI * 0.28)
-      const speed = reduce ? 0 : rand(720, 1080)
-      return {
-        x: W / 2 + (i - (n - 1) / 2) * (size * 0.7) + rand(-10, 10),
-        y: reduce ? H / 2 : H - pad - rand(0, size * 0.4),
-        vx: Math.cos(a) * speed,
-        vy: Math.sin(a) * speed,
-        q: reduce ? baseQuat(value) : qNorm([rand(-1, 1), rand(-1, 1), rand(-1, 1), rand(-1, 1)]),
-        wx: reduce ? 0 : rand(-10, 10),
-        wy: reduce ? 0 : rand(-10, 10),
-        wz: reduce ? 0 : rand(-10, 10),
-        value,
-        pop: 0,
-        settling: false,
-        startQ: [0, 0, 0, 1],
-        targetQ: [0, 0, 0, 1],
-        st: 0,
-      }
-    })
-
-    const draw = () => {
-      for (let i = 0; i < bodies.length; i++) {
-        const b = bodies[i]
-        const die = dieRefs.current[i]
-        const cube = cubeRefs.current[i]
-        const sh = shadowRefs.current[i]
-        const speed = Math.hypot(b.vx, b.vy)
-        const lift = Math.min(size * 0.7, speed * 0.06)
-        const pop = b.pop > 0 ? 1 + Math.min(0.16, b.pop * 1.4) : 1
-        if (die)
-          die.style.transform = `translate(${b.x - size / 2}px, ${b.y - size / 2}px) translateZ(${lift}px) scale(${pop})`
-        if (cube) cube.style.transform = qToMatrix3d(b.q)
-        if (sh) {
-          const s = 1 - lift / (size * 1.4)
-          sh.style.transform = `translate(${b.x - size * 0.45}px, ${b.y - size * 0.16}px) scale(${s})`
-          sh.style.opacity = `${0.5 * s}`
-        }
-      }
-    }
-
-    if (reduce) {
-      const cols = Math.min(n, 4)
-      bodies.forEach((b, i) => {
-        const col = i % cols
-        const row = Math.floor(i / cols)
-        const rows = Math.ceil(n / cols)
-        b.x = W / 2 + (col - (Math.min(n, cols) - 1) / 2) * (size * 1.4)
-        b.y = H / 2 + (row - (rows - 1) / 2) * (size * 1.4)
-      })
-      draw()
-      const t = window.setTimeout(finish, 500)
+    if (setup.values.length === 0) {
+      const t = window.setTimeout(() => onSettleRef.current(), 0)
       return () => window.clearTimeout(t)
     }
 
-    const WALL_REST = 0.58
-    const DIE_REST = 0.74
-    const FR = 0.986 // lineare Reibung pro Physik-Schritt
-    const ANG_FR = 0.99
-    const SETTLE_SPEED = 18
-    const FIXED = 1 / 120
-    const MAX_MS = 2900
-    const SETTLE_MS = 300
-
-    const integrate = (h: number) => {
-      for (const b of bodies) {
-        b.x += b.vx * h
-        b.y += b.vy * h
-        b.vx *= FR
-        b.vy *= FR
-        b.wx *= ANG_FR
-        b.wy *= ANG_FR
-        b.wz *= ANG_FR
-        if (b.pop > 0) b.pop = Math.max(0, b.pop - h)
-
-        if (b.x < pad) {
-          b.x = pad
-          b.vx = Math.abs(b.vx) * WALL_REST
-          b.wz += rand(-3, 3)
-        } else if (b.x > W - pad) {
-          b.x = W - pad
-          b.vx = -Math.abs(b.vx) * WALL_REST
-          b.wz += rand(-3, 3)
-        }
-        if (b.y < pad) {
-          b.y = pad
-          b.vy = Math.abs(b.vy) * WALL_REST
-          b.wz += rand(-3, 3)
-        } else if (b.y > H - pad) {
-          b.y = H - pad
-          b.vy = -Math.abs(b.vy) * WALL_REST
-          b.wz += rand(-3, 3)
-        }
-
-        // Rollen in Bewegungsrichtung (ω = v/R, Achse ⟂ zur Bewegung) + Launch-Tumble.
-        const ox = b.vy / R + b.wx
-        const oy = -b.vx / R + b.wy
-        const oz = b.wz
-        const om = Math.hypot(ox, oy, oz)
-        if (om > 1e-4) {
-          const dq = qAxis(ox / om, oy / om, oz / om, om * h)
-          b.q = qNorm(qMul(dq, b.q))
-        }
-      }
-
-      // Würfel-Kollisionen: elastisch (gleiche Masse) + Drall + Pop.
-      for (let i = 0; i < bodies.length; i++) {
-        for (let j = i + 1; j < bodies.length; j++) {
-          const a = bodies[i]
-          const b = bodies[j]
-          const dx = b.x - a.x
-          const dy = b.y - a.y
-          const dist = Math.hypot(dx, dy)
-          const min = R * 2
-          if (dist < min && dist > 0) {
-            const nx = dx / dist
-            const ny = dy / dist
-            const ov = (min - dist) / 2
-            a.x -= nx * ov
-            a.y -= ny * ov
-            b.x += nx * ov
-            b.y += ny * ov
-            const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny
-            if (rel > 0) {
-              const imp = (-(1 + DIE_REST) * rel) / 2
-              a.vx += imp * nx
-              a.vy += imp * ny
-              b.vx -= imp * nx
-              b.vy -= imp * ny
-              const kick = Math.min(12, Math.abs(rel) * 0.012 + 3)
-              a.wx += rand(-kick, kick)
-              a.wy += rand(-kick, kick)
-              a.wz += rand(-kick, kick)
-              b.wx += rand(-kick, kick)
-              b.wy += rand(-kick, kick)
-              b.wz += rand(-kick, kick)
-              a.pop = b.pop = 0.12
-            }
-          }
-        }
-      }
+    // Tray responsiv an die Arena-Breite anpassen (sonst läuft er auf schmalen Phones über).
+    const arena = arenaRef.current
+    if (arena) {
+      const fit = Math.min(1, (arena.clientWidth * 0.94) / (TRAY_W * SCALE + 70))
+      arena.style.setProperty('--fit', String(fit))
     }
+
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const { world, bodies } = createWorld(setup.configs)
 
     let raf = 0
     let last = performance.now()
     let acc = 0
-    const t0 = performance.now()
-    let phase: 'roll' | 'settle' = 'roll'
+    let stableFrames = 0
+    let frameCount = 0
+    const startedAt = last
+    let done = false
 
-    const loop = (now: number) => {
-      let frame = (now - last) / 1000
-      last = now
-      if (frame > 0.05) frame = 0.05 // dt-Clamp gegen Tab-Stalls
-
-      if (phase === 'roll') {
-        acc += frame
-        while (acc >= FIXED) {
-          integrate(FIXED)
-          acc -= FIXED
-        }
-        let maxSpeed = 0
-        for (const b of bodies) maxSpeed = Math.max(maxSpeed, Math.hypot(b.vx, b.vy))
-        if (maxSpeed < SETTLE_SPEED || now - t0 > MAX_MS) {
-          phase = 'settle'
-          for (const b of bodies) {
-            b.settling = true
-            b.startQ = b.q
-            b.targetQ = targetFor(b.value, b.q)
-            b.st = 0
-            b.vx = b.vy = 0
-          }
-        }
-      } else {
-        // Slerp auf die Endlage (easeOutCubic).
-        let done = true
-        for (const b of bodies) {
-          b.st = Math.min(1, b.st + frame / (SETTLE_MS / 1000))
-          const e = 1 - Math.pow(1 - b.st, 3)
-          b.q = qSlerp(b.startQ, b.targetQ, e)
-          if (b.st < 1) done = false
-        }
-        draw()
-        if (done) {
-          finish()
-          return
-        }
-        raf = requestAnimationFrame(loop)
-        return
-      }
-
-      draw()
-      raf = requestAnimationFrame(loop)
+    const finish = () => {
+      if (done) return
+      done = true
+      setSettled(true)
+      updateDom(bodies, dieRefs.current, shadowRefs.current)
+      window.setTimeout(() => onSettleRef.current(), reduceMotion ? 80 : 180)
     }
 
-    draw()
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (reduceMotion) {
+      for (let i = 0; i < bodies.length; i++) {
+        bodies[i].position.set(-1.55 + i * 0.62, DIE_HALF + 0.015, i % 2 ? 0.32 : -0.32)
+        bodies[i].velocity.set(0, 0, 0)
+        bodies[i].angularVelocity.set(0, 0, 0)
+      }
+      updateDom(bodies, dieRefs.current, shadowRefs.current)
+      finish()
+      return () => undefined
+    }
 
-  const half = size / 2
+    updateDom(bodies, dieRefs.current, shadowRefs.current)
+
+    const tick = (now: number) => {
+      if (done) return
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
+      last = now
+      acc += dt
+
+      let subSteps = 0
+      while (acc >= FIXED_STEP && subSteps < MAX_STEPS_PER_FRAME) {
+        world.step(FIXED_STEP)
+        acc -= FIXED_STEP
+        subSteps += 1
+        frameCount += 1
+      }
+      if (subSteps === MAX_STEPS_PER_FRAME) acc = 0
+
+      updateDom(bodies, dieRefs.current, shadowRefs.current)
+
+      const elapsed = now - startedAt
+      const sameTopAsPreSim = bodies.every((body, i) => topFaceFromBody(body) === setup.predictedTopFaces[i])
+      const slowEnough = allBodiesSlow(bodies)
+      if (elapsed > MIN_VISIBLE_MS && sameTopAsPreSim && slowEnough) stableFrames += 1
+      else stableFrames = 0
+
+      if (stableFrames >= 14 || elapsed > FORCE_FINISH_MS || frameCount > PRE_SIM_STEPS + 90) {
+        finish()
+        return
+      }
+      raf = window.requestAnimationFrame(tick)
+    }
+
+    raf = window.requestAnimationFrame(tick)
+    return () => {
+      done = true
+      window.cancelAnimationFrame(raf)
+    }
+  }, [setup])
+
   return (
-    <div ref={arenaRef} className="die-arena">
-      <div className="die-table">
-        {values.map((_, i) => (
-          <div key={i}>
-            <span ref={(el) => (shadowRefs.current[i] = el)} className="die-shadow" style={{ width: size * 0.9, height: size * 0.34 }} />
-            <div ref={(el) => (dieRefs.current[i] = el)} className="die" style={{ width: size, height: size }}>
-              <div ref={(el) => (cubeRefs.current[i] = el)} className="die-cube" style={{ width: size, height: size }}>
-                {FACES.map((f) => (
-                  <div
-                    key={f.v}
-                    className="die-face"
-                    style={{ transform: `${f.r} translateZ(${half}px)`, padding: size * 0.13, borderRadius: size * 0.22 }}
-                  >
-                    {Array.from({ length: 9 }, (_, c) =>
-                      PIP[f.v].includes(c) ? <span key={c} className="die-pip" /> : <span key={c} />,
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+    <div ref={arenaRef} className={`diceArena${settled ? ' diceArena--settled' : ''}`} aria-label="Virtueller 3D-Würfelwurf">
+      <style>{css}</style>
+      <div className="diceArena__world">
+        <div className="diceArena__felt" />
+        <span className="diceArena__wall diceArena__wall--top" />
+        <span className="diceArena__wall diceArena__wall--right" />
+        <span className="diceArena__wall diceArena__wall--bottom" />
+        <span className="diceArena__wall diceArena__wall--left" />
+
+        {setup.values.map((_, i) => (
+          <span
+            key={`shadow-${i}-${setup.seed}`}
+            ref={(el) => {
+              shadowRefs.current[i] = el
+            }}
+            className="diceArena__shadow"
+          />
+        ))}
+
+        {setup.values.map((_, i) => (
+          <div
+            key={`die-${i}-${setup.seed}`}
+            ref={(el) => {
+              dieRefs.current[i] = el
+            }}
+            className="diceArena__die"
+          >
+            {FACE_IDS.map((face) => (
+              <DiceFace key={face} value={setup.labels[i][face]} transform={FACE_TRANSFORMS[face]} />
+            ))}
           </div>
         ))}
       </div>
     </div>
   )
+}
+
+function DiceFace({ value, transform }: { value: DieValue; transform: string }) {
+  return (
+    <div className="diceArena__face" style={{ transform }} aria-hidden="true">
+      {Array.from({ length: 9 }, (_, i) =>
+        PIPS[value].includes(i) ? <span key={i} className="diceArena__pip" /> : <span key={i} />,
+      )}
+    </div>
+  )
+}
+
+function normalizeValues(input: number[]): DieValue[] {
+  return input
+    .slice(0, 6)
+    .map((v) => Math.round(v))
+    .filter((v): v is DieValue => v >= 1 && v <= 6)
+}
+
+function createSetup(values: DieValue[], seed: number): PhysicsSetup {
+  const rng = mulberry32(seed)
+  const configs = createInitialConfigs(values.length, rng)
+
+  // Dry-Run derselben Physik vor dem ersten sichtbaren Frame → obenliegende
+  // Fläche vorhersagen und die gewünschte Augenzahl dort zuweisen.
+  const { world, bodies } = createWorld(configs)
+  for (let i = 0; i < PRE_SIM_STEPS; i += 1) {
+    world.step(FIXED_STEP)
+    if (i > 90 && allBodiesSlow(bodies)) break
+  }
+
+  const predictedTopFaces = bodies.map(topFaceFromBody)
+  const labels = predictedTopFaces.map((topFace, i) => labelsForTargetTop(topFace, values[i]))
+  return { seed, values, configs, labels, predictedTopFaces }
+}
+
+function createInitialConfigs(count: number, rng: () => number): DieConfig[] {
+  const configs: DieConfig[] = []
+  const cols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(count))))
+
+  for (let i = 0; i < count; i += 1) {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const x = -TRAY_W * 0.33 + col * 0.62 + randRange(rng, -0.1, 0.1)
+    const z = -TRAY_D * 0.28 + row * 0.56 + randRange(rng, -0.12, 0.12)
+    const y = 2.1 + i * 0.13 + randRange(rng, -0.08, 0.12)
+
+    const quaternion = new CANNON.Quaternion()
+    quaternion.setFromEuler(randRange(rng, 0, Math.PI * 2), randRange(rng, 0, Math.PI * 2), randRange(rng, 0, Math.PI * 2), 'XYZ')
+
+    configs.push({
+      position: new CANNON.Vec3(x, y, z),
+      quaternion,
+      velocity: new CANNON.Vec3(randRange(rng, 1.8, 3.4), randRange(rng, 0.15, 1.2), randRange(rng, 1.1, 2.7)),
+      angularVelocity: new CANNON.Vec3(randRange(rng, -12, 12), randRange(rng, -16, 16), randRange(rng, -13, 13)),
+    })
+  }
+  return configs
+}
+
+function createWorld(configs: DieConfig[]) {
+  const world = new CANNON.World()
+  world.gravity.set(0, -GRAVITY, 0)
+  world.allowSleep = true
+  world.broadphase = new CANNON.NaiveBroadphase()
+  const solver = world.solver as CANNON.GSSolver
+  solver.iterations = 12
+  solver.tolerance = 0.001
+
+  const diceMat = new CANNON.Material('bone-dice')
+  const trayMat = new CANNON.Material('felt-tray')
+
+  world.addContactMaterial(
+    new CANNON.ContactMaterial(diceMat, trayMat, {
+      friction: 0.62,
+      restitution: 0.31,
+      contactEquationStiffness: 1e7,
+      contactEquationRelaxation: 4,
+    }),
+  )
+  world.addContactMaterial(
+    new CANNON.ContactMaterial(diceMat, diceMat, {
+      friction: 0.45,
+      restitution: 0.38,
+      contactEquationStiffness: 1e7,
+      contactEquationRelaxation: 4,
+    }),
+  )
+
+  const floor = new CANNON.Body({ mass: 0, material: trayMat })
+  floor.addShape(new CANNON.Box(new CANNON.Vec3(TRAY_W / 2, 0.05, TRAY_D / 2)))
+  floor.position.set(0, -0.05, 0)
+  world.addBody(floor)
+
+  addWall(world, trayMat, 0, WALL_H / 2, -TRAY_D / 2 - WALL_THICKNESS / 2, TRAY_W / 2 + WALL_THICKNESS, WALL_H / 2, WALL_THICKNESS / 2)
+  addWall(world, trayMat, 0, WALL_H / 2, TRAY_D / 2 + WALL_THICKNESS / 2, TRAY_W / 2 + WALL_THICKNESS, WALL_H / 2, WALL_THICKNESS / 2)
+  addWall(world, trayMat, -TRAY_W / 2 - WALL_THICKNESS / 2, WALL_H / 2, 0, WALL_THICKNESS / 2, WALL_H / 2, TRAY_D / 2)
+  addWall(world, trayMat, TRAY_W / 2 + WALL_THICKNESS / 2, WALL_H / 2, 0, WALL_THICKNESS / 2, WALL_H / 2, TRAY_D / 2)
+
+  const diceShape = new CANNON.Box(new CANNON.Vec3(DIE_HALF, DIE_HALF, DIE_HALF))
+  const bodies = configs.map((cfg) => {
+    const body = new CANNON.Body({ mass: 1, material: diceMat })
+    body.addShape(diceShape)
+    body.position.copy(cfg.position)
+    body.quaternion.copy(cfg.quaternion)
+    body.velocity.copy(cfg.velocity)
+    body.angularVelocity.copy(cfg.angularVelocity)
+    body.linearDamping = 0.18
+    body.angularDamping = 0.32
+    body.sleepSpeedLimit = 0.12
+    body.sleepTimeLimit = 0.28
+    world.addBody(body)
+    return body
+  })
+
+  return { world, bodies }
+}
+
+function addWall(
+  world: CANNON.World,
+  material: CANNON.Material,
+  x: number,
+  y: number,
+  z: number,
+  hx: number,
+  hy: number,
+  hz: number,
+) {
+  const wall = new CANNON.Body({ mass: 0, material })
+  wall.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz)))
+  wall.position.set(x, y, z)
+  world.addBody(wall)
+}
+
+function labelsForTargetTop(topFace: FaceId, target: DieValue): FaceLabels {
+  const labels = {} as FaceLabels
+  labels[topFace] = target
+
+  const oppositeFace = OPPOSITE[topFace]
+  const oppositeValue = (7 - target) as DieValue
+  labels[oppositeFace] = oppositeValue
+
+  const remainingFaces = FACE_IDS.filter((f) => labels[f] === undefined)
+  const remainingValues = ([1, 2, 3, 4, 5, 6] as DieValue[]).filter((v) => v !== target && v !== oppositeValue)
+
+  for (let i = 0; i < remainingFaces.length; i += 1) labels[remainingFaces[i]] = remainingValues[i]
+  return labels
+}
+
+function topFaceFromBody(body: CANNON.Body): FaceId {
+  let best: FaceId = 'py'
+  let bestDot = -Infinity
+  for (const face of FACE_IDS) {
+    const normal = body.quaternion.vmult(FACE_NORMALS[face])
+    const dot = normal.y
+    if (dot > bestDot) {
+      best = face
+      bestDot = dot
+    }
+  }
+  return best
+}
+
+function allBodiesSlow(bodies: CANNON.Body[]): boolean {
+  return bodies.every(
+    (body) =>
+      body.sleepState === CANNON.Body.SLEEPING ||
+      (body.velocity.lengthSquared() < 0.015 && body.angularVelocity.lengthSquared() < 0.12 && body.position.y < DIE_HALF + 0.09),
+  )
+}
+
+function updateDom(
+  bodies: CANNON.Body[],
+  dieEls: Array<HTMLDivElement | null>,
+  shadowEls: Array<HTMLSpanElement | null>,
+) {
+  for (let i = 0; i < bodies.length; i += 1) {
+    const body = bodies[i]
+    const die = dieEls[i]
+    if (die) die.style.transform = physicsToCssMatrix(body.position, body.quaternion)
+
+    const shadow = shadowEls[i]
+    if (shadow) {
+      const height = Math.max(0, body.position.y - DIE_HALF)
+      const scale = clamp(1.08 - height * 0.34, 0.34, 1.08)
+      const opacity = clamp(0.76 - height * 0.26, 0.16, 0.76)
+      shadow.style.opacity = String(opacity)
+      shadow.style.transform = `translate3d(${round3(body.position.x * SCALE)}px, ${round3(body.position.z * SCALE)}px, 1px) scale(${round3(scale)})`
+    }
+  }
+}
+
+function physicsToCssMatrix(position: CANNON.Vec3, q: CANNON.Quaternion): string {
+  const x = q.x
+  const y = q.y
+  const z = q.z
+  const w = q.w
+  const xx = x * x
+  const yy = y * y
+  const zz = z * z
+  const xy = x * y
+  const xz = x * z
+  const yz = y * z
+  const wx = w * x
+  const wy = w * y
+  const wz = w * z
+
+  const r00 = 1 - 2 * (yy + zz)
+  const r01 = 2 * (xy - wz)
+  const r02 = 2 * (xz + wy)
+  const r10 = 2 * (xy + wz)
+  const r11 = 1 - 2 * (xx + zz)
+  const r12 = 2 * (yz - wx)
+  const r20 = 2 * (xz - wy)
+  const r21 = 2 * (yz + wx)
+  const r22 = 1 - 2 * (xx + yy)
+
+  // Achsen-Remap A*R*A^T mit CSS-Achsen [Physik X, Physik Z, Physik Y].
+  const c00 = r00
+  const c01 = r02
+  const c02 = r01
+  const c10 = r20
+  const c11 = r22
+  const c12 = r21
+  const c20 = r10
+  const c21 = r12
+  const c22 = r11
+
+  const tx = position.x * SCALE
+  const ty = position.z * SCALE
+  const tz = position.y * SCALE
+
+  return `matrix3d(${round5(c00)},${round5(c10)},${round5(c20)},0,${round5(c01)},${round5(c11)},${round5(c21)},0,${round5(c02)},${round5(c12)},${round5(c22)},0,${round3(tx)},${round3(ty)},${round3(tz)},1)`
+}
+
+function makeSeed(): number {
+  try {
+    const a = new Uint32Array(1)
+    crypto.getRandomValues(a)
+    return a[0] || Date.now()
+  } catch {
+    return Date.now()
+  }
+}
+
+function mulberry32(seed: number) {
+  let t = seed >>> 0
+  return function rng() {
+    t += 0x6d2b79f5
+    let r = Math.imul(t ^ (t >>> 15), 1 | t)
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r)
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function randRange(rng: () => number, min: number, max: number): number {
+  return min + (max - min) * rng()
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v))
+}
+
+function round3(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(3) : '0'
+}
+
+function round5(v: number): string {
+  return Number.isFinite(v) ? v.toFixed(5) : '0'
 }
