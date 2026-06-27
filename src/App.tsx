@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { GameState, Player } from './lib/types'
+import type { GameState, Player, Turn } from './lib/types'
 import {
   clearActiveGame,
   loadActiveGame,
@@ -31,6 +31,7 @@ interface Snapshot {
   accumulated: number
   inHand: number
   turnHasPasch: boolean
+  turns: Turn[]
   action: string
 }
 
@@ -57,6 +58,8 @@ export function App() {
   const [inHand, setInHand] = useState(6)
   // Liegt in diesem Zug bereits ein Drilling/Pasch? → aktiviert Risiko-Szenario B.
   const [turnHasPasch, setTurnHasPasch] = useState(false)
+  // Zug-für-Zug-Verlauf für die Runden-Analyse.
+  const [turns, setTurns] = useState<Turn[]>([])
   const [toast, setToast] = useState('')
   // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
@@ -99,6 +102,7 @@ export function App() {
         accumulated,
         inHand,
         turnHasPasch,
+        turns,
         savedAt: new Date().toISOString(),
       })
     }
@@ -115,6 +119,7 @@ export function App() {
     accumulated,
     inHand,
     turnHasPasch,
+    turns,
   ])
 
   const showToast = useCallback((msg: string) => {
@@ -136,6 +141,7 @@ export function App() {
     setAccumulated(0)
     setInHand(6)
     setTurnHasPasch(false)
+    setTurns([])
     setUndoStack([])
     setResumable(null)
     setToast('')
@@ -161,6 +167,7 @@ export function App() {
     setAccumulated(g.accumulated)
     setInHand(g.inHand)
     setTurnHasPasch(g.turnHasPasch)
+    setTurns(g.turns ?? [])
     setWinner(null)
     setUndoStack([])
     setResumable(null)
@@ -192,11 +199,12 @@ export function App() {
             accumulated,
             inHand,
             turnHasPasch,
+            turns: [...turns],
             action,
           },
         ].slice(-UNDO_LIMIT),
       ),
-    [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch],
+    [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch, turns],
   )
 
   const undo = () => {
@@ -211,6 +219,7 @@ export function App() {
     setAccumulated(snap.accumulated)
     setInHand(snap.inHand)
     setTurnHasPasch(snap.turnHasPasch)
+    setTurns(snap.turns)
     setWinner(null)
     setUndoStack((stack) => stack.slice(0, -1))
     showToast('Rückgängig')
@@ -218,7 +227,7 @@ export function App() {
 
   // --- Zug-Auflösung (rein, ohne Seiteneffekte) ---
   const resolveTurn = useCallback(
-    (nextPlayers: Player[], justScored: number) => {
+    (nextPlayers: Player[], justScored: number, nextTurns: Turn[]) => {
       const n = nextPlayers.length
       const last = n - 1
 
@@ -230,7 +239,7 @@ export function App() {
         setPhase('finished')
         // Testspiele werden weder lokal noch in der Cloud gespeichert.
         if (!testMode) {
-          const record = saveGame(win, nextPlayers, event)
+          const record = saveGame(win, nextPlayers, event, nextTurns)
           void pushGame(record) // fire-and-forget: offline bleibt es lokal, Sync später
         }
         clearActiveGame() // Spiel ist vorbei → nicht mehr fortsetzbar
@@ -299,7 +308,9 @@ export function App() {
     const newPlayers = players.map((p, i) =>
       i === idx ? { ...p, score: p.score + pot } : p,
     )
-    resolveTurn(newPlayers, newPlayers[idx].score)
+    const nextTurns = [...turns, { round, player: players[idx].name, points: pot, bust: false }]
+    setTurns(nextTurns)
+    resolveTurn(newPlayers, newPlayers[idx].score, nextTurns)
   }
 
   const handleBust = () => {
@@ -307,7 +318,9 @@ export function App() {
     buzz([18, 30, 18])
     showToast('Niete!')
     const newPlayers = players.map((p, i) => (i === idx ? { ...p, busts: p.busts + 1 } : p))
-    resolveTurn(newPlayers, newPlayers[idx].score)
+    const nextTurns = [...turns, { round, player: players[idx].name, points: 0, bust: true }]
+    setTurns(nextTurns)
+    resolveTurn(newPlayers, newPlayers[idx].score, nextTurns)
   }
 
   // --- Abgeleitete Werte ---

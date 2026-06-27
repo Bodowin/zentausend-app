@@ -5,6 +5,7 @@ import { cloudEnabled } from '../lib/supabase'
 import type { GameRecord } from '../lib/types'
 import { IconBack, IconChart, IconTrash, IconTrophy } from './Icons'
 import { SettingsModal } from './SettingsModal'
+import { AnalysisScreen } from './AnalysisScreen'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
 
@@ -15,6 +16,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [filter, setFilter] = useState<string>('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -49,6 +51,10 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       return
     }
     setGames((prev) => prev.filter((x) => x.id !== g.id))
+  }
+
+  if (analysisGame) {
+    return <AnalysisScreen game={analysisGame} onBack={() => setAnalysisGame(null)} />
   }
 
   return (
@@ -162,7 +168,11 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
               Verlauf ({filtered.length})
             </h2>
             {filtered.map((g) => (
-              <div key={g.id} className="rounded-2xl border border-ink-700/70 bg-ink-850/70 p-4">
+              <button
+                key={g.id}
+                onClick={() => setAnalysisGame(g)}
+                className="block w-full rounded-2xl border border-ink-700/70 bg-ink-850/70 p-4 text-left transition-colors hover:border-ink-600"
+              >
                 <div className="mb-1.5 flex items-center justify-between">
                   <div className="text-[11px] text-fog-500">
                     {new Date(g.date).toLocaleDateString('de-DE')}
@@ -172,17 +182,23 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                     <div className="flex items-center gap-1.5 text-sm font-bold text-gold-400">
                       <IconTrophy className="h-3.5 w-3.5" /> {g.winner}
                     </div>
-                    <button
-                      onClick={() => handleDelete(g)}
-                      disabled={busyId === g.id}
-                      className="p-1.5 text-fog-600 transition-colors hover:text-coral-400 disabled:opacity-40"
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleDelete(g)
+                      }}
+                      className={`p-1.5 text-fog-600 transition-colors hover:text-coral-400 ${
+                        busyId === g.id ? 'opacity-40' : ''
+                      }`}
                       aria-label="Spiel löschen"
                     >
                       <IconTrash className="h-4 w-4" />
-                    </button>
+                    </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-fog-400">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-fog-400">
                   {[...g.players]
                     .sort((a, b) => b.score - a.score)
                     .map((pl) => (
@@ -190,8 +206,9 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                         {pl.name} <span className="font-mono text-fog-300">{fmt(pl.score)}</span>
                       </span>
                     ))}
+                  <span className="ml-auto text-[10px] text-fog-600">Analyse ›</span>
                 </div>
-              </div>
+              </button>
             ))}
           </section>
         </>

@@ -1,4 +1,4 @@
-import type { GameState, Player } from './types'
+import type { GameState, Player, Turn } from './types'
 
 const KEY = '10k_active_game'
 
@@ -15,6 +15,7 @@ export interface ActiveGame {
   accumulated: number
   inHand: number
   turnHasPasch: boolean
+  turns: Turn[]
   savedAt: string
 }
 
