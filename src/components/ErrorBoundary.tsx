@@ -19,7 +19,21 @@ export class ErrorBoundary extends Component<Props, { error: string | null }> {
   }
 
   render() {
-    if (this.state.error !== null) return this.props.fallback ?? null
+    if (this.state.error !== null) {
+      return (
+        this.props.fallback ?? (
+          <div className="grid h-full place-items-center p-6 text-center">
+            <div>
+              <div className="mb-2 text-sm font-bold text-coral-400">3D nicht verfügbar</div>
+              <div className="break-words text-[11px] leading-relaxed text-fog-400">{this.state.error}</div>
+              <div className="mt-2 text-[10px] text-fog-600">
+                (Bitte Screenshot schicken. „Überspringen" → Spiel läuft normal weiter.)
+              </div>
+            </div>
+          </div>
+        )
+      )
+    }
     return this.props.children
   }
 }
