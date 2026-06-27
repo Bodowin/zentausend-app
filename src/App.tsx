@@ -165,6 +165,11 @@ export function App() {
     setView('setup')
   }
 
+  const discardResume = () => {
+    clearActiveGame()
+    setResumable(null)
+  }
+
   const resumeGame = (g: ActiveGame) => {
     setPlayers(g.players)
     setIdx(g.idx)
@@ -393,6 +398,7 @@ export function App() {
           onShowHelp={() => setShowIntro(true)}
           resumable={resumable}
           onResume={resumeGame}
+          onDiscardResume={discardResume}
         />
         {showIntro && <IntroScreen onClose={closeIntro} />}
       </>

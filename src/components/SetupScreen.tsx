@@ -1,12 +1,26 @@
 import { useMemo, useState } from 'react'
 import type { DiceMode, Player } from '../lib/types'
 import { getEvents } from '../lib/storage'
-import { IconChart, IconRefresh, IconUserPlus, IconUsers, IconX, IconTag, IconSettings } from './Icons'
+import { getRoster, addToRoster, removeFromRoster, renameInRoster } from '../lib/roster'
+import { hasCliqueCode } from '../lib/cliqueCode'
+import { cloudEnabled } from '../lib/supabase'
+import {
+  IconChart,
+  IconRefresh,
+  IconUserPlus,
+  IconUsers,
+  IconX,
+  IconTag,
+  IconSettings,
+  IconLock,
+  IconPencil,
+  IconCheck,
+} from './Icons'
 import { SettingsModal } from './SettingsModal'
 import { playerColor } from '../lib/colors'
 import type { ActiveGame } from '../lib/activeGame'
 
-const PRESETS = ['Gabi', 'Mabi', 'Dana', 'Bodo']
+const CODE_DISMISS_KEY = '10k_code_dismissed'
 
 interface Props {
   makePlayer: (name: string) => Player
@@ -15,6 +29,7 @@ interface Props {
   onShowHelp: () => void
   resumable: ActiveGame | null
   onResume: (g: ActiveGame) => void
+  onDiscardResume: () => void
 }
 
 export function SetupScreen({
@@ -24,14 +39,26 @@ export function SetupScreen({
   onShowHelp,
   resumable,
   onResume,
+  onDiscardResume,
 }: Props) {
   const [players, setPlayers] = useState<Player[]>([])
+  const [roster, setRoster] = useState<string[]>(() => getRoster())
+  const [manage, setManage] = useState(false)
+  const [newMember, setNewMember] = useState('')
   const [guest, setGuest] = useState('')
   const [event, setEvent] = useState('')
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
   const [showSettings, setShowSettings] = useState(false)
+  const [codeDismissed, setCodeDismissed] = useState(() => {
+    try {
+      return !!localStorage.getItem(CODE_DISMISS_KEY)
+    } catch {
+      return false
+    }
+  })
   const pastEvents = useMemo(() => getEvents(), [])
+  const needsCode = cloudEnabled && !hasCliqueCode() && !codeDismissed
 
   const add = (name: string) => {
     const n = name.trim()
@@ -40,6 +67,23 @@ export function SetupScreen({
     setGuest('')
   }
   const removeAt = (i: number) => setPlayers((prev) => prev.filter((_, j) => j !== i))
+
+  const addMember = () => {
+    const next = addToRoster(newMember)
+    setRoster(next)
+    setNewMember('')
+  }
+  const commitRename = (oldName: string, value: string) => {
+    if (value.trim() && value.trim() !== oldName) setRoster(renameInRoster(oldName, value))
+  }
+  const dismissCode = () => {
+    try {
+      localStorage.setItem(CODE_DISMISS_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setCodeDismissed(true)
+  }
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 pt-[max(env(safe-area-inset-top),1.25rem)] safe-pb">
@@ -74,96 +118,185 @@ export function SetupScreen({
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
-      {resumable && (
-        <button
-          onClick={() => onResume(resumable)}
-          className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 text-left transition-colors hover:bg-gold-500/15 animate-rise"
-        >
+      {/* Einmaliger Hinweis: Clique-Code eingeben, um die Cloud-Sync zu aktivieren. */}
+      {needsCode && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-500/20 text-gold-400">
-            <IconRefresh className="h-5 w-5" />
+            <IconLock className="h-5 w-5" />
           </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="font-bold text-fog-100">Spiel fortsetzen</span>
-            <span className="truncate text-xs text-fog-400">
-              Runde {resumable.round} · {resumable.players.map((p) => p.name).join(', ')}
-              {resumable.testMode ? ' · TEST' : ''}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="font-bold text-fog-100">Cloud-Sync aktivieren</span>
+            <span className="text-xs text-fog-400">Clique-Code einmal eingeben – dann auf allen Geräten gleich.</span>
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="shrink-0 rounded-xl bg-gold-500 px-3 py-2 text-xs font-black uppercase tracking-wide text-ink-950"
+          >
+            Eingeben
+          </button>
+          <button onClick={dismissCode} className="shrink-0 p-1 text-fog-600 hover:text-fog-300" aria-label="Später">
+            <IconX />
+          </button>
+        </div>
+      )}
+
+      {resumable && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
+          <button onClick={() => onResume(resumable)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-500/20 text-gold-400">
+              <IconRefresh className="h-5 w-5" />
             </span>
-          </span>
-        </button>
+            <span className="flex min-w-0 flex-col">
+              <span className="font-bold text-fog-100">Spiel fortsetzen</span>
+              <span className="truncate text-xs text-fog-400">
+                Runde {resumable.round} · {resumable.players.map((p) => p.name).join(', ')}
+                {resumable.testMode ? ' · TEST' : ''}
+              </span>
+            </span>
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm('Laufendes Spiel verwerfen? Der Spielstand geht verloren.')) onDiscardResume()
+            }}
+            className="shrink-0 p-1.5 text-fog-600 transition-colors hover:text-coral-400"
+            aria-label="Laufendes Spiel verwerfen"
+          >
+            <IconX />
+          </button>
+        </div>
       )}
 
       <section className="mb-5 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-5 shadow-2xl shadow-black/40 animate-rise">
-        <h2 className="mb-4 flex items-center gap-2 font-semibold text-fog-100">
-          <IconUsers className="h-5 w-5 text-gold-500" /> Wer spielt mit?
-        </h2>
-
-        <div className="mb-4 grid grid-cols-2 gap-2.5">
-          {PRESETS.map((name) => {
-            const i = players.findIndex((p) => p.name === name)
-            const active = i >= 0
-            return (
-              <button
-                key={name}
-                onClick={() => (active ? removeAt(i) : add(name))}
-                className={`rounded-2xl border-2 px-3 py-3.5 text-sm font-bold transition-all ${
-                  active
-                    ? 'border-mint-400/60 bg-mint-500/15 text-mint-300'
-                    : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600 hover:text-fog-200'
-                }`}
-              >
-                {name}
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="mb-5 flex gap-2">
-          <input
-            type="text"
-            value={guest}
-            onChange={(e) => setGuest(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && add(guest)}
-            placeholder="Gast hinzufügen…"
-            className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
-          />
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold text-fog-100">
+            <IconUsers className="h-5 w-5 text-gold-500" /> Wer spielt mit?
+          </h2>
           <button
-            onClick={() => add(guest)}
-            className="grid w-12 place-items-center rounded-xl border border-ink-700 bg-ink-800 text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
-            aria-label="Gast hinzufügen"
+            onClick={() => setManage((m) => !m)}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+              manage
+                ? 'border-mint-400/60 bg-mint-500/15 text-mint-300'
+                : 'border-ink-700 bg-ink-800 text-fog-400 hover:text-fog-200'
+            }`}
           >
-            <IconUserPlus />
+            {manage ? <IconCheck className="h-3.5 w-3.5" /> : <IconPencil className="h-3.5 w-3.5" />}
+            {manage ? 'Fertig' : 'Kader'}
           </button>
         </div>
 
-        <div className="space-y-2">
-          {players.length === 0 ? (
-            <p className="py-3 text-center text-sm italic text-fog-600">Noch niemand ausgewählt…</p>
-          ) : (
-            players.map((p, i) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2.5 animate-pop"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className="grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-ink-950"
-                    style={{ backgroundColor: playerColor(p.name) }}
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="font-semibold text-fog-100">{p.name}</span>
-                </div>
+        {manage ? (
+          /* Kader-Verwaltung: Stamm-Spieler umbenennen, entfernen, hinzufügen. */
+          <div className="mb-2 space-y-2">
+            {roster.map((name) => (
+              <div key={name} className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: playerColor(name) }}
+                />
+                <input
+                  defaultValue={name}
+                  onBlur={(e) => commitRename(name, e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                  className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-950/60 px-3 py-2 text-sm text-fog-100 focus:border-gold-500/70 focus:outline-none"
+                />
                 <button
-                  onClick={() => removeAt(i)}
-                  className="p-1.5 text-fog-600 transition-colors hover:text-coral-400"
-                  aria-label={`${p.name} entfernen`}
+                  onClick={() => setRoster(removeFromRoster(name))}
+                  className="shrink-0 p-1.5 text-fog-600 transition-colors hover:text-coral-400"
+                  aria-label={`${name} aus dem Kader entfernen`}
                 >
                   <IconX />
                 </button>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <input
+                type="text"
+                value={newMember}
+                onChange={(e) => setNewMember(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addMember()}
+                placeholder="Stamm-Spieler hinzufügen…"
+                className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-950/60 px-3 py-2 text-sm text-fog-100 placeholder:text-fog-600 focus:border-gold-500/70 focus:outline-none"
+              />
+              <button
+                onClick={addMember}
+                className="grid w-11 place-items-center rounded-lg border border-ink-700 bg-ink-800 text-fog-300 transition-colors hover:text-fog-100"
+                aria-label="Stamm-Spieler hinzufügen"
+              >
+                <IconUserPlus />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-2.5">
+              {roster.map((name) => {
+                const i = players.findIndex((p) => p.name === name)
+                const active = i >= 0
+                return (
+                  <button
+                    key={name}
+                    onClick={() => (active ? removeAt(i) : add(name))}
+                    className={`rounded-2xl border-2 px-3 py-3.5 text-sm font-bold transition-all ${
+                      active
+                        ? 'border-mint-400/60 bg-mint-500/15 text-mint-300'
+                        : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600 hover:text-fog-200'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mb-5 flex gap-2">
+              <input
+                type="text"
+                value={guest}
+                onChange={(e) => setGuest(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && add(guest)}
+                placeholder="Gast hinzufügen…"
+                className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
+              />
+              <button
+                onClick={() => add(guest)}
+                className="grid w-12 place-items-center rounded-xl border border-ink-700 bg-ink-800 text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
+                aria-label="Gast hinzufügen"
+              >
+                <IconUserPlus />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {players.length === 0 ? (
+                <p className="py-3 text-center text-sm italic text-fog-600">Noch niemand ausgewählt…</p>
+              ) : (
+                players.map((p, i) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2.5 animate-pop"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-ink-950"
+                        style={{ backgroundColor: playerColor(p.name) }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="font-semibold text-fog-100">{p.name}</span>
+                    </div>
+                    <button
+                      onClick={() => removeAt(i)}
+                      className="p-1.5 text-fog-600 transition-colors hover:text-coral-400"
+                      aria-label={`${p.name} entfernen`}
+                    >
+                      <IconX />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="mb-6 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-5 animate-rise">
