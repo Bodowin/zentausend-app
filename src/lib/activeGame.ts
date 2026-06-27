@@ -1,4 +1,4 @@
-import type { GameState, Player, Turn } from './types'
+import type { DiceMode, GameState, Player, Turn } from './types'
 
 const KEY = '10k_active_game'
 
@@ -11,11 +11,13 @@ export interface ActiveGame {
   target: number
   event: string
   testMode: boolean
+  diceMode: DiceMode
   dice: number[]
   accumulated: number
   inHand: number
   turnHasPasch: boolean
   turns: Turn[]
+  rolled: number[]
   savedAt: string
 }
 

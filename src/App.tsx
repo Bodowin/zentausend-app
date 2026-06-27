@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { GameState, Player, Turn } from './lib/types'
+import type { DiceMode, GameState, Player, Turn } from './lib/types'
 import {
   clearActiveGame,
   loadActiveGame,
@@ -32,6 +32,7 @@ interface Snapshot {
   inHand: number
   turnHasPasch: boolean
   turns: Turn[]
+  rolled: number[]
   action: string
 }
 
@@ -49,6 +50,7 @@ export function App() {
   const [target, setTarget] = useState(0)
   const [winner, setWinner] = useState<Player | null>(null)
   const [testMode, setTestMode] = useState(false)
+  const [diceMode, setDiceMode] = useState<DiceMode>('real')
 
   // --- Zugzustand ---
   const [dice, setDice] = useState<number[]>([])
@@ -60,6 +62,8 @@ export function App() {
   const [turnHasPasch, setTurnHasPasch] = useState(false)
   // Zug-für-Zug-Verlauf für die Runden-Analyse.
   const [turns, setTurns] = useState<Turn[]>([])
+  // Virtueller Modus: aktuell geworfene, noch nicht ausgelegte Würfel.
+  const [rolled, setRolled] = useState<number[]>([])
   const [toast, setToast] = useState('')
   // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
@@ -98,11 +102,13 @@ export function App() {
         target,
         event,
         testMode,
+        diceMode,
         dice,
         accumulated,
         inHand,
         turnHasPasch,
         turns,
+        rolled,
         savedAt: new Date().toISOString(),
       })
     }
@@ -115,11 +121,13 @@ export function App() {
     target,
     event,
     testMode,
+    diceMode,
     dice,
     accumulated,
     inHand,
     turnHasPasch,
     turns,
+    rolled,
   ])
 
   const showToast = useCallback((msg: string) => {
@@ -128,10 +136,12 @@ export function App() {
   }, [])
 
   // --- Setup ---
-  const startGame = (chosen: Player[], evt: string, test: boolean) => {
+  const startGame = (chosen: Player[], evt: string, test: boolean, mode: DiceMode) => {
     setPlayers(chosen.map((p) => ({ ...p, score: 0, busts: 0 })))
     setEvent(evt.trim())
     setTestMode(test)
+    setDiceMode(mode)
+    setRolled([])
     setIdx(0)
     setRound(1)
     setPhase('active')
@@ -168,6 +178,8 @@ export function App() {
     setInHand(g.inHand)
     setTurnHasPasch(g.turnHasPasch)
     setTurns(g.turns ?? [])
+    setDiceMode(g.diceMode ?? 'real')
+    setRolled(g.rolled ?? [])
     setWinner(null)
     setUndoStack([])
     setResumable(null)
@@ -200,11 +212,12 @@ export function App() {
             inHand,
             turnHasPasch,
             turns: [...turns],
+            rolled: [...rolled],
             action,
           },
         ].slice(-UNDO_LIMIT),
       ),
-    [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch, turns],
+    [players, idx, round, phase, target, dice, accumulated, inHand, turnHasPasch, turns, rolled],
   )
 
   const undo = () => {
@@ -220,6 +233,7 @@ export function App() {
     setInHand(snap.inHand)
     setTurnHasPasch(snap.turnHasPasch)
     setTurns(snap.turns)
+    setRolled(snap.rolled)
     setWinner(null)
     setUndoStack((stack) => stack.slice(0, -1))
     showToast('Rückgängig')
@@ -256,6 +270,7 @@ export function App() {
         setDice([])
         setInHand(6)
         setTurnHasPasch(false)
+        setRolled([])
       }
 
       if (phase === 'lastChance') {
@@ -294,7 +309,35 @@ export function App() {
     else if (result.hasJokerTriple) setTurnHasPasch(true)
     setInHand(usedAll ? 6 : inHand - dice.length)
     setDice([])
+    setRolled([]) // virtueller Modus: Rest neu würfeln
     showToast(usedAll ? 'Heiße Würfel!' : 'Weiter!')
+  }
+
+  // --- Virtueller Würfel-Modus ---
+  const rnd6 = () => 1 + Math.floor(Math.random() * 6)
+  const rollDice = () => {
+    if (dice.length > 0 || rolled.length > 0) return
+    buzz([14, 22, 14])
+    setRolled(Array.from({ length: inHand }, rnd6))
+  }
+  // Ausgelegten (geworfenen) Würfel behalten → in die Ablage.
+  const keepDie = (i: number) => {
+    const val = rolled[i]
+    if (val === undefined || dice.length >= inHand) return
+    buzz(6)
+    setRolled((r) => r.filter((_, j) => j !== i))
+    setDice((d) => [...d, val].sort())
+  }
+  // Ausgelegten Würfel zurück auf den Tisch.
+  const returnDie = (i: number) => {
+    const val = dice[i]
+    if (val === undefined) return
+    setDice((d) => d.filter((_, j) => j !== i))
+    setRolled((r) => [...r, val])
+  }
+  const clearKept = () => {
+    setRolled((r) => [...r, ...dice])
+    setDice([])
   }
 
   const handleBank = () => {
@@ -374,7 +417,9 @@ export function App() {
       effectiveTarget={effectiveTarget}
       neededForWin={neededForWin}
       testMode={testMode}
+      diceMode={diceMode}
       dice={dice}
+      rolled={rolled}
       inHand={inHand}
       accumulated={accumulated}
       result={result}
@@ -384,8 +429,10 @@ export function App() {
       winner={winner}
       canUndo={undoStack.length > 0}
       onAddDie={addDie}
-      onRemoveDie={removeDie}
-      onClearDice={clearDice}
+      onRemoveDie={diceMode === 'virtual' ? returnDie : removeDie}
+      onClearDice={diceMode === 'virtual' ? clearKept : clearDice}
+      onRoll={rollDice}
+      onKeep={keepDie}
       onContinue={handleContinue}
       onBank={handleBank}
       onBust={handleBust}

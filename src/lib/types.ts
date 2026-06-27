@@ -8,6 +8,9 @@ export interface Player {
 
 export type GameState = 'setup' | 'active' | 'lastChance' | 'finished'
 
+/** Spielmodus: echte Würfel (Zahlen-Pad) oder virtuelle Würfel (antippen). */
+export type DiceMode = 'real' | 'virtual'
+
 export interface ScoreResult {
   /** Punkte der aktuell eingetippten Würfel. */
   score: number

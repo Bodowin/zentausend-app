@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { Player, ScoreResult, GameState } from '../lib/types'
+import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
 import type { RiskInfo } from '../lib/risk'
-import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
+import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
 import { DiceRoller } from './DiceRoller'
@@ -24,7 +24,9 @@ interface Props {
   effectiveTarget: number
   neededForWin: number
   testMode: boolean
+  diceMode: DiceMode
   dice: number[]
+  rolled: number[]
   inHand: number
   accumulated: number
   result: ScoreResult
@@ -36,6 +38,8 @@ interface Props {
   onAddDie: (v: number) => void
   onRemoveDie: (i: number) => void
   onClearDice: () => void
+  onRoll: () => void
+  onKeep: (i: number) => void
   onContinue: () => void
   onBank: () => void
   onBust: () => void
@@ -56,7 +60,9 @@ export function GameScreen(p: Props) {
     effectiveTarget,
     neededForWin,
     testMode,
+    diceMode,
     dice,
+    rolled,
     inHand,
     accumulated,
     result,
@@ -122,13 +128,15 @@ export function GameScreen(p: Props) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowRoller(true)}
-            className="grid h-9 w-9 place-items-center rounded-full text-base transition-colors hover:bg-ink-800"
-            aria-label="Virtuell würfeln"
-          >
-            🎲
-          </button>
+          {diceMode === 'real' && (
+            <button
+              onClick={() => setShowRoller(true)}
+              className="grid h-9 w-9 place-items-center rounded-full text-base transition-colors hover:bg-ink-800"
+              aria-label="Virtuell würfeln"
+            >
+              🎲
+            </button>
+          )}
           <button
             onClick={p.onUndo}
             disabled={!canUndo}
@@ -334,20 +342,54 @@ export function GameScreen(p: Props) {
           )}
         </div>
 
-        {/* Zahlen-Pad */}
+        {/* Eingabe: Zahlen-Pad (echt) oder virtuelle Würfel */}
         <div className="mt-auto space-y-3">
-          <div className="grid grid-cols-6 gap-2">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <button
-                key={n}
-                onClick={() => p.onAddDie(n)}
-                disabled={dice.length >= inHand || phase === 'finished'}
-                className="h-14 rounded-xl border-b-4 border-ink-950 bg-ink-800 text-xl font-bold text-fog-100 transition-all hover:bg-ink-700 active:translate-y-1 active:border-b-0 disabled:translate-y-0 disabled:opacity-30"
-              >
-                {n}
-              </button>
-            ))}
-          </div>
+          {diceMode === 'real' ? (
+            <div className="grid grid-cols-6 gap-2">
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => p.onAddDie(n)}
+                  disabled={dice.length >= inHand || phase === 'finished'}
+                  className="h-14 rounded-xl border-b-4 border-ink-950 bg-ink-800 text-xl font-bold text-fog-100 transition-all hover:bg-ink-700 active:translate-y-1 active:border-b-0 disabled:translate-y-0 disabled:opacity-30"
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          ) : rolled.length === 0 && dice.length === 0 ? (
+            <button
+              onClick={p.onRoll}
+              disabled={phase === 'finished'}
+              className="flex h-16 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-b from-gold-400 to-gold-500 text-lg font-bold text-ink-950 shadow-[0_4px_0_var(--color-gold-600)] transition-all active:translate-y-1 active:shadow-none"
+            >
+              🎲 Würfeln · {inHand} {inHand === 1 ? 'Würfel' : 'Würfel'}
+            </button>
+          ) : (
+            <div className="min-h-16 rounded-2xl border border-ink-800 bg-ink-900/40 p-2.5">
+              {rolled.length > 0 ? (
+                <>
+                  <div className="mb-1.5 text-center text-[10px] uppercase tracking-wide text-fog-500">
+                    {rollHasScore(rolled) ? 'Tippe die Würfel, die du auslegst' : 'Niete – nichts Wertbares!'}
+                  </div>
+                  <div key={rolled.length} className="flex flex-wrap justify-center gap-2">
+                    {rolled.map((v, i) => (
+                      <PipDie
+                        key={i}
+                        value={v}
+                        onClick={() => p.onKeep(i)}
+                        disabled={dice.length >= inHand}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="grid h-full place-items-center py-3 text-sm italic text-fog-500">
+                  Alle ausgelegt – „Weiter" oder „Sichern".
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Aktionsleiste */}
           <div className="h-14">
@@ -363,7 +405,11 @@ export function GameScreen(p: Props) {
                   )}
                 </button>
                 <div className="grid place-items-center rounded-xl border border-dashed border-ink-800 text-sm italic text-fog-600">
-                  {inHand < 6 ? `${inHand} Würfel werfen…` : 'Auf Wurf warten…'}
+                  {diceMode === 'virtual' && rolled.length > 0
+                    ? 'Würfel auslegen…'
+                    : inHand < 6
+                      ? `${inHand} Würfel werfen…`
+                      : 'Auf Wurf warten…'}
                 </div>
               </div>
             ) : !result.isValid ? (
@@ -471,5 +517,43 @@ export function GameScreen(p: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+// Pip-Positionen im 3×3-Raster je Augenzahl.
+const PIP_LAYOUT: Record<number, number[]> = {
+  1: [4],
+  2: [0, 8],
+  3: [0, 4, 8],
+  4: [0, 2, 6, 8],
+  5: [0, 2, 4, 6, 8],
+  6: [0, 2, 3, 5, 6, 8],
+}
+
+/** Ein antippbarer 2D-Würfel mit Augen (für den virtuellen Modus). */
+function PipDie({
+  value,
+  onClick,
+  disabled,
+}: {
+  value: number
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="grid h-12 w-12 grid-cols-3 grid-rows-3 gap-0.5 rounded-xl border-b-4 border-fog-500 bg-gradient-to-br from-[#f4f7ff] to-[#d9e0f0] p-1.5 shadow-sm transition-transform animate-pop active:scale-90 disabled:opacity-40"
+      aria-label={`Würfel ${value} auslegen`}
+    >
+      {Array.from({ length: 9 }, (_, c) =>
+        PIP_LAYOUT[value].includes(c) ? (
+          <span key={c} className="h-2 w-2 place-self-center rounded-full bg-ink-900" />
+        ) : (
+          <span key={c} />
+        ),
+      )}
+    </button>
   )
 }
