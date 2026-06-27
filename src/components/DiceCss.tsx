@@ -32,6 +32,11 @@ const FACES: { v: number; t: string }[] = [
 
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
+// Wie lange ein Würfel taumelt (muss zur CSS-Transition von .dice-cube passen).
+const TUMBLE_MS = 1050
+// Zeitlicher Versatz zwischen den Würfeln, damit sie nacheinander landen.
+const STAGGER_MS = 90
+
 interface DieState {
   value: number
   rx: number
@@ -45,27 +50,40 @@ interface DieState {
  */
 export default function DiceCss({ values, onSettle }: { values: number[]; onSettle: () => void }) {
   const [dice, setDice] = useState<DieState[]>([])
+  // Index der Würfel, die ihren Aufprall (Squash) bereits gespielt haben.
+  const [landed, setLanded] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     buzz([16, 24, 16])
     setDice(
       values.map((value, i) => {
         const [brx, bry] = BASE[value]
-        return { value, rx: 360 * (3 + rnd(3)) + brx, ry: 360 * (3 + rnd(3)) + bry, delay: i * 70 }
+        return { value, rx: 360 * (3 + rnd(3)) + brx, ry: 360 * (3 + rnd(3)) + bry, delay: i * STAGGER_MS }
       }),
     )
-    const t = window.setTimeout(() => {
-      buzz(12)
-      onSettle()
-    }, 1300 + values.length * 70)
-    return () => window.clearTimeout(t)
+
+    const timers: number[] = []
+    // Pro Würfel ein kurzer Aufprall (Squash + Schatten) genau beim Landen.
+    values.forEach((_, i) => {
+      timers.push(
+        window.setTimeout(() => {
+          buzz(10)
+          setLanded((prev) => new Set(prev).add(i))
+        }, TUMBLE_MS + i * STAGGER_MS),
+      )
+    })
+    // Auflösen, sobald der letzte Würfel liegt (kein toter Moment am Ende).
+    timers.push(
+      window.setTimeout(() => onSettle(), TUMBLE_MS + (values.length - 1) * STAGGER_MS + 240),
+    )
+    return () => timers.forEach((t) => window.clearTimeout(t))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <div className="flex h-full flex-wrap content-center items-center justify-center gap-4 p-4">
+    <div className="flex h-full flex-wrap content-center items-center justify-center gap-5 p-4">
       {dice.map((d, i) => (
-        <div key={i} className="dice-scene">
+        <div key={i} className={`dice-scene${landed.has(i) ? ' dice-scene--landed' : ''}`}>
           <div
             className="dice-cube"
             style={{ transform: `rotateX(${d.rx}deg) rotateY(${d.ry}deg)`, transitionDelay: `${d.delay}ms` }}
@@ -78,6 +96,7 @@ export default function DiceCss({ values, onSettle }: { values: number[]; onSett
               </div>
             ))}
           </div>
+          <span className="dice-shadow" />
         </div>
       ))}
     </div>

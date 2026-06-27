@@ -152,6 +152,7 @@ button {
    Virtuelle 3D-Würfel (CSS-3D, GPU-beschleunigt, offline, design-harmonisch)
    =========================================================================== */
 .dice-scene {
+  position: relative;
   width: 60px;
   height: 60px;
   perspective: 700px;
@@ -161,8 +162,31 @@ button {
   width: 60px;
   height: 60px;
   transform-style: preserve-3d;
-  transition: transform 1.05s cubic-bezier(0.22, 0.68, 0.16, 1.02);
+  /* sanftes Ausrollen statt Überschießen → kein „Schnappen" am Ende */
+  transition: transform 1.05s cubic-bezier(0.2, 0.62, 0.18, 1);
   will-change: transform;
+}
+/* Aufprall: kurzer Squash auf der Scene (2D) – lässt die 3D-Rotation des
+   Cubes unberührt, sonst würde die gelandete Augenzahl verschwinden. */
+.dice-scene--landed {
+  animation: die-land 0.34s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+/* weicher Bodenschatten – erdet die Würfel, zieht sich beim Landen zusammen */
+.dice-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  width: 52px;
+  height: 13px;
+  transform: translateX(-50%) scale(0.55);
+  border-radius: 9999px;
+  background: radial-gradient(ellipse at center, rgba(10, 14, 22, 0.4), rgba(10, 14, 22, 0) 70%);
+  opacity: 0.25;
+  transition: transform 0.34s ease-out, opacity 0.34s ease-out;
+}
+.dice-scene--landed .dice-shadow {
+  transform: translateX(-50%) scale(1);
+  opacity: 0.7;
 }
 .dice-face {
   position: absolute;
@@ -207,5 +231,7 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .dice-cube { transition-duration: 0.25s; }
-  .tray-shake, .die-land { animation: none !important; }
+  .tray-shake { animation: none !important; }
+  .dice-scene--landed { animation: none !important; }
+  .dice-shadow { transition: opacity 0.2s ease-out; }
 }
