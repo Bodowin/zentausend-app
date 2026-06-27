@@ -211,10 +211,13 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
   let cocked = false
   const topSlots: number[] = []
   for (let i = 0; i < n; i++) {
-    const q = quat[i][quat[i].length - 1]
+    const last = quat[i].length - 1
+    const q = quat[i][last]
     const { slot, dot } = topSlotFromQuat(q)
     topSlots.push(slot)
     if (dot < 0.92) cocked = true
+    // Auf einem anderen Würfel gestapelt? Ruht deutlich über dem Boden → neu würfeln.
+    if (pos[i][last][1] > h * 1.7) cocked = true
   }
   return { pos, quat, impacts, topSlots, cocked, frames: pos[0]?.length ?? 0 }
 }
@@ -240,9 +243,9 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     if (n === 0) { onSettleRef.current?.(); return }
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
-    const h = 0.5
-    // Engere Schale → Würfel bleiben mittig beieinander statt an die Wände zu fliegen.
-    const Rb = 1.7 + n * 0.25
+    const h = 0.44
+    // Etwas größere Schale → kleinere Würfel im Verhältnis + mehr Platz (weniger Stapeln).
+    const Rb = 1.9 + n * 0.3
     const y0 = Rb * 0.9 + 3.2
     const S = (minD * 0.4) / Rb
     const sizePx = 2 * h * S
