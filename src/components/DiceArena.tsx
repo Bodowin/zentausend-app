@@ -248,7 +248,9 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     const sizePx = 2 * h * S
     // Filz deckt den ganzen Schalen-Innenraum ab (sonst landen Würfel daneben).
     const feltPx = (2 * Rb + 1.2) * S
-    const camTilt = 56, perspective = minD * 2.2
+    // Stärkere Perspektive + höherer Blickpunkt → die Schale „liegt" wie ein
+    // Tisch, statt flach an der Wand zu kleben.
+    const camTilt = 60, perspective = minD * 1.3
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
     if (reduce) {
@@ -326,7 +328,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     <div className="da-root" ref={rootRef}>
       <style>{CSS}</style>
       {ready && d && (
-        <div className="da-cam" style={{ perspective: `${d.perspective}px`, ['--tilt' as string]: `${d.camTilt}deg` }}>
+        <div className="da-cam" style={{ perspective: `${d.perspective}px`, perspectiveOrigin: '50% 30%', ['--tilt' as string]: `${d.camTilt}deg` }}>
           {/* Filz in eigener 3D-Ebene … */}
           <div className="da-stage">
             <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
