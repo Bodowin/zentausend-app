@@ -106,6 +106,11 @@ function qSlerp(a: Q, b: Q, t: number): Q {
   return [a[0] * s0 + bb[0] * s1, a[1] * s0 + bb[1] * s1, a[2] * s0 + bb[2] * s1, a[3] * s0 + bb[3] * s1]
 }
 
+function qAxisAngle(x: number, y: number, z: number, ang: number): Q {
+  const s = Math.sin(ang / 2)
+  return [x * s, y * s, z * s, Math.cos(ang / 2)]
+}
+
 function matrix3dFor(q: Q, p: V, S: number): string {
   const [x, y, z, w] = q
   const xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, wx = w * x, wy = w * y, wz = w * z
@@ -228,14 +233,33 @@ type ArenaData = {
   frames: number; S: number; sizePx: number; feltPx: number; FIXED_DT: number; camTilt: number; perspective: number
 }
 
+type Phase = 'ready' | 'rolling' | 'landed'
+
 export default function DiceArena({ values, onSettle }: DiceArenaProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const dieRefs = useRef<HTMLDivElement[]>([])
   const shadowRefs = useRef<HTMLDivElement[]>([])
   const dataRef = useRef<ArenaData | null>(null)
+  const reduceRef = useRef(false)
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
   const [ready, setReady] = useState(false)
+  // ready = Würfel drehen sich „in der Hand", warten auf Tipp;
+  // rolling = aufgezeichneter Fall läuft; landed = liegen, warten auf Tipp.
+  const [phase, setPhase] = useState<Phase>('ready')
 
+  // Hilfsfunktion: Würfel + Schatten setzen.
+  const writeDie = (d: ArenaData, i: number, p: V, q: Q, pop = 0) => {
+    const el = dieRefs.current[i]
+    if (el) el.style.transform = `${matrix3dFor(q, p, d.S)} scale(${1 + pop})`
+    const sh = shadowRefs.current[i]
+    if (sh) {
+      const lift = clamp(p[1] / 4, 0, 1)
+      sh.style.transform = `translate3d(${p[0] * d.S}px,0,${p[2] * d.S}px) rotateX(90deg) scale(${0.7 + lift * 0.8})`
+      sh.style.opacity = `${0.4 * (1 - lift * 0.6)}`
+    }
+  }
+
+  // --- Pre-Roll (einmal, beim Mount) ---
   useEffect(() => {
     const root = rootRef.current; if (!root) return
     const vals = values.map((v) => clamp(Math.round(v), 1, 6))
@@ -244,17 +268,14 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
     const h = 0.44
-    // Etwas größere Schale → kleinere Würfel im Verhältnis + mehr Platz (weniger Stapeln).
     const Rb = 1.9 + n * 0.3
     const y0 = Rb * 0.9 + 3.2
     const S = (minD * 0.4) / Rb
     const sizePx = 2 * h * S
-    // Filz deckt den ganzen Schalen-Innenraum ab (sonst landen Würfel daneben).
     const feltPx = (2 * Rb + 1.2) * S
-    // Negativer Tilt → Kamera schaut von OBEN auf den Tisch (statt „von unten an
-    // die Decke"). Stärkere Perspektive für echte Tiefe.
     const camTilt = -60, perspective = minD * 1.3
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    reduceRef.current = !!reduce
 
     if (reduce) {
       const labelings = vals.map((v) => chooseLabeling(2, v))
@@ -262,7 +283,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       const quat: Q[][] = vals.map(() => [[0, 0, 0, 1]])
       dataRef.current = { pos, quat, impacts: [], labelings, frames: 1, S, sizePx, feltPx, FIXED_DT: 1 / 60, camTilt, perspective }
       setReady(true)
-      const t = setTimeout(() => onSettleRef.current?.(), 120)
+      const t = setTimeout(() => onSettleRef.current?.(), 400)
       return () => clearTimeout(t)
     }
 
@@ -279,24 +300,37 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     setReady(true)
   }, [values])
 
+  // --- „In der Hand": Würfel drehen sich an der Startposition, bis getippt wird. ---
   useEffect(() => {
-    if (!ready) return
+    if (!ready || phase !== 'ready' || reduceRef.current) return
     const d = dataRef.current; if (!d) return
-    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.0
+    const n = d.labelings.length
+    const start = performance.now()
+    let raf = 0
+    const spin = (now: number) => {
+      const t = (now - start) / 1000
+      for (let i = 0; i < n; i++) {
+        const p0 = d.pos[i]?.[0]; if (!p0) continue
+        // jeder Würfel um eine eigene, leicht gekippte Achse
+        const ax = Math.cos(i * 2.1), az = Math.sin(i * 2.1)
+        const len = Math.hypot(ax, 0.7, az) || 1
+        const q = qAxisAngle(ax / len, 0.7 / len, az / len, t * (1.7 + i * 0.25))
+        writeDie(d, i, p0, q)
+      }
+      raf = requestAnimationFrame(spin)
+    }
+    raf = requestAnimationFrame(spin)
+    return () => cancelAnimationFrame(raf)
+  }, [ready, phase])
+
+  // --- Wurf: aufgezeichnete Bahn abspielen (nach Tipp). ---
+  useEffect(() => {
+    if (phase !== 'rolling') return
+    const d = dataRef.current; if (!d) return
+    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.6
     const pulses = new Array(n).fill(0)
     let impactPtr = 0, raf = 0
     const start = performance.now()
-
-    const write = (i: number, p: V, q: Q) => {
-      const el = dieRefs.current[i]
-      if (el) el.style.transform = `${matrix3dFor(q, p, d.S)} scale(${1 + pulses[i]})`
-      const sh = shadowRefs.current[i]
-      if (sh) {
-        const lift = clamp(p[1] / 4, 0, 1)
-        sh.style.transform = `translate3d(${p[0] * d.S}px,0,${p[2] * d.S}px) rotateX(90deg) scale(${0.7 + lift * 0.8})`
-        sh.style.opacity = `${0.4 * (1 - lift * 0.6)}`
-      }
-    }
 
     const frame = (now: number) => {
       const f = ((now - start) / 1000) * SPEED / dt
@@ -309,7 +343,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
         const k0 = Math.max(0, Math.min(i0, li)), k1 = Math.max(0, Math.min(i1, li))
         const p0 = arr[k0], p1 = arr[k1]
         const p: V = [p0[0] + (p1[0] - p0[0]) * a, p0[1] + (p1[1] - p0[1]) * a, p0[2] + (p1[2] - p0[2]) * a]
-        write(i, p, qSlerp(qarr[k0], qarr[k1], a))
+        writeDie(d, i, p, qSlerp(qarr[k0], qarr[k1], a), pulses[i])
       }
       while (impactPtr < d.impacts.length && d.impacts[impactPtr].frame <= i0) {
         const im = d.impacts[impactPtr++]
@@ -319,12 +353,17 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       }
       for (let i = 0; i < n; i++) pulses[i] *= 0.84
 
-      if (i0 >= last) { onSettleRef.current?.(); return }
+      if (i0 >= last) { setPhase('landed'); return } // liegen lassen, auf Tipp warten
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
-  }, [ready])
+  }, [phase])
+
+  const handleTap = () => {
+    if (phase === 'ready') setPhase('rolling')
+    else if (phase === 'landed') onSettleRef.current?.()
+  }
 
   const d = dataRef.current
   return (
@@ -332,12 +371,9 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
       <style>{CSS}</style>
       {ready && d && (
         <div className="da-cam" style={{ perspective: `${d.perspective}px`, perspectiveOrigin: '50% 30%', ['--tilt' as string]: `${d.camTilt}deg` }}>
-          {/* Filz in eigener 3D-Ebene … */}
           <div className="da-stage">
             <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
           </div>
-          {/* … Würfel + Schatten in zweiter Ebene → werden IMMER über dem Filz
-              gezeichnet (gleiche Transform = deckungsgleich, kein Verdecken). */}
           <div className="da-stage">
             {d.labelings.map((_, i) => (
               <div
@@ -366,6 +402,13 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
           </div>
         </div>
       )}
+
+      {/* Tipp-Fläche + Hinweis (nur in den Wartephasen aktiv). */}
+      {(phase === 'ready' || phase === 'landed') && (
+        <button className="da-tap" onClick={handleTap} aria-label={phase === 'ready' ? 'Würfeln' : 'Weiter'} />
+      )}
+      {phase === 'ready' && <div className="da-hint">Tippen zum Würfeln</div>}
+      {phase === 'landed' && <div className="da-hint">Tippen für weiter</div>}
     </div>
   )
 }
@@ -401,4 +444,12 @@ const CSS = `
 .da-pip{place-self:center;width:62%;height:62%;border-radius:50%;
   background:radial-gradient(closest-side, #2b2b2b, #131313);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.18), 0 1px 1px rgba(0,0,0,.35);}
+.da-tap{position:absolute;inset:0;padding:0;margin:0;border:0;background:transparent;
+  cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent;}
+.da-hint{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  pointer-events:none;white-space:nowrap;color:#f3deA0;
+  font:800 12px/1 ui-sans-serif,system-ui,-apple-system,sans-serif;
+  letter-spacing:.16em;text-transform:uppercase;
+  text-shadow:0 1px 6px rgba(0,0,0,.6);animation:da-pulse 1.5s ease-in-out infinite;}
+@keyframes da-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 `

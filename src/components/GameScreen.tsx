@@ -483,13 +483,12 @@ export function GameScreen(p: Props) {
       {/* Würfel-Wurf (Virtuell-Modus) */}
       {rolling3D && (
         <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
-          <div className="mb-2 text-sm font-bold uppercase tracking-widest text-gold-400">Würfelt…</div>
-          <div className="relative h-[55vh] w-full max-w-lg overflow-hidden rounded-3xl">
+          <div className="relative h-[58vh] w-full max-w-lg overflow-hidden rounded-3xl">
             <DiceArena values={rolled} onSettle={() => setRolling3D(false)} />
           </div>
           <button
             onClick={() => setRolling3D(false)}
-            className="mt-2 rounded-xl px-4 py-2 text-xs text-fog-500 hover:text-fog-200"
+            className="mt-3 rounded-xl px-4 py-2 text-xs text-fog-500 hover:text-fog-200"
           >
             Überspringen
           </button>
