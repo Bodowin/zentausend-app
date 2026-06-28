@@ -314,7 +314,7 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
         // jeder Würfel um eine eigene, leicht gekippte Achse
         const ax = Math.cos(i * 2.1), az = Math.sin(i * 2.1)
         const len = Math.hypot(ax, 0.7, az) || 1
-        const q = qAxisAngle(ax / len, 0.7 / len, az / len, t * (1.7 + i * 0.25))
+        const q = qAxisAngle(ax / len, 0.7 / len, az / len, t * (3.4 + i * 0.4))
         writeDie(d, i, p0, q)
       }
       raf = requestAnimationFrame(spin)

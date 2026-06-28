@@ -86,7 +86,7 @@ export function SetupScreen({
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 pt-[max(env(safe-area-inset-top),1.25rem)] safe-pb">
+    <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 pt-[max(env(safe-area-inset-top),1.25rem)]">
       <header className="mb-7 mt-2 flex items-center justify-between animate-rise">
         <div className="flex items-baseline gap-2.5">
           <span className="font-display text-4xl font-black tracking-tighter text-gold-500">10.000</span>
@@ -379,15 +379,18 @@ export function SetupScreen({
         </span>
       </button>
 
-      <button
-        onClick={() => onStart(players, event, testMode, diceMode)}
-        disabled={players.length < 2}
-        className="mb-6 mt-auto w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
-      >
-        {players.length < 2
-          ? 'Mind. 2 Spieler wählen'
-          : `${testMode ? 'Testspiel' : 'Spiel'} starten · ${players.length} Spieler`}
-      </button>
+      {/* Start-Button klebt unten am Bildschirm → immer sichtbar, kein Scrollen nötig. */}
+      <div className="sticky bottom-0 z-20 -mx-4 mt-auto bg-gradient-to-t from-ink-900 via-ink-900 to-transparent px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-5">
+        <button
+          onClick={() => onStart(players, event, testMode, diceMode)}
+          disabled={players.length < 2}
+          className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
+        >
+          {players.length < 2
+            ? 'Mind. 2 Spieler wählen'
+            : `${testMode ? 'Testspiel' : 'Spiel'} starten · ${players.length} Spieler`}
+        </button>
+      </div>
     </div>
   )
 }
