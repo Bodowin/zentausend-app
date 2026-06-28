@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
 import { explainRisk, recommendAction } from '../lib/risk'
-import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
+import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
 import DiceArena from './DiceArena'
@@ -29,6 +29,10 @@ interface Props {
   kept: number[]
   dice: number[]
   rolled: number[]
+  /** Virtueller Modus: Augen des aktuellen Wurfs (stabile Reihenfolge). */
+  thrown: number[]
+  /** Hochzählender Wurf-Zähler – setzt die Schale je Wurf frisch auf. */
+  throwSeq: number
   inHand: number
   accumulated: number
   result: ScoreResult
@@ -40,8 +44,7 @@ interface Props {
   onAddDie: (v: number) => void
   onRemoveDie: (i: number) => void
   onClearDice: () => void
-  onRoll: () => void
-  onKeep: (i: number) => void
+  onBowlSelect: (selected: number[], remaining: number[]) => void
   onContinue: () => void
   onBank: () => void
   onBust: () => void
@@ -68,6 +71,8 @@ export function GameScreen(p: Props) {
     kept,
     dice,
     rolled,
+    thrown,
+    throwSeq,
     inHand,
     accumulated,
     result,
@@ -78,12 +83,10 @@ export function GameScreen(p: Props) {
     canUndo,
   } = p
 
-  const [rolling3D, setRolling3D] = useState(false)
   const [showRiskInfo, setShowRiskInfo] = useState(false)
-  const handleRoll3D = () => {
-    setRolling3D(true)
-    p.onRoll()
-  }
+  // Wurfphase der Schale – das Punkte/Ablage-Overlay erst beim Liegen zeigen,
+  // damit es die kreiselnden Würfel nicht überlagert.
+  const [bowlPhase, setBowlPhase] = useState<'ready' | 'rolling' | 'landed'>('ready')
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
@@ -264,84 +267,138 @@ export function GameScreen(p: Props) {
           )}
         </div>
 
-        {/* Würfel-Ablage */}
-        <div
-          className={`relative flex min-h-[96px] flex-col items-center justify-center gap-3 rounded-3xl border-2 p-3 transition-colors ${
-            result.isValid ? 'border-ink-800 bg-ink-900/50' : 'border-coral-500/40 bg-coral-500/5'
-          }`}
-        >
-          {kept.length === 0 && dice.length === 0 ? (
-            <span className="text-sm italic text-fog-600">
-              {inHand < 6 ? `${inHand} Würfel geworfen – Gewertete eintippen…` : 'Gewertete Würfel eintippen…'}
-            </span>
-          ) : (
-            <div className="flex flex-wrap justify-center gap-2">
-              {/* Bereits ausgelegte Würfel dieser Hand (fixiert) */}
-              {kept.map((val, i) => (
-                <span
-                  key={`k${i}`}
-                  className="grid h-12 w-12 place-items-center rounded-xl border-b-4 border-gold-600/70 bg-gold-300/90 text-xl font-bold text-ink-900 shadow-sm"
-                >
-                  {val}
-                </span>
-              ))}
-              {/* Aktueller Wurf (antippbar zum Entfernen) */}
-              {dice.map((val, i) => {
-                const bad = result.invalidDice.includes(val)
-                return (
-                  <button
-                    key={`d${i}`}
-                    onClick={() => p.onRemoveDie(i)}
-                    className={`grid h-12 w-12 place-items-center rounded-xl border-b-4 text-xl font-bold shadow-sm transition-colors animate-pop ${
-                      bad
-                        ? 'border-coral-600 bg-coral-400 text-white'
-                        : 'border-fog-500 bg-fog-100 text-ink-900'
-                    }`}
-                  >
-                    {val}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          {dice.length > 0 && (
-            <button
-              onClick={p.onClearDice}
-              className="absolute right-2 top-2 p-2 text-fog-600 transition-colors hover:text-fog-300"
-              aria-label="Würfel löschen"
+        {diceMode === 'virtual' ? (
+          /* Virtuell: Würfelschale auf EINEM Screen – Würfel direkt antippen. */
+          <div className="relative min-h-[260px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
+            {thrown.length > 0 && (
+              <DiceArena
+                key={throwSeq}
+                values={thrown}
+                selectable
+                invalidValues={result.invalidDice}
+                onSelectionChange={p.onBowlSelect}
+                onPhaseChange={setBowlPhase}
+              />
+            )}
+            {/* Overlay oben (erst wenn gelandet): ausgelegte (gold) + Live-Punkte */}
+            <div
+              className={`pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-1.5 p-2.5 transition-opacity duration-200 ${
+                bowlPhase === 'landed' ? 'opacity-100' : 'opacity-0'
+              }`}
             >
-              <IconTrash />
-            </button>
-          )}
-        </div>
-
-        {/* Hinweis-Zeile */}
-        <div className="mt-1 flex h-5 items-center justify-center text-center">
-          {!result.isValid && dice.length > 0 ? (
-            <span className="text-xs font-bold text-coral-400">Ungültige Würfel – bitte entfernen!</span>
-          ) : (
-            toast && (
-              <span className="text-xs font-bold uppercase tracking-widest text-gold-400 animate-pop">{toast}</span>
-            )
-          )}
-        </div>
-
-        {/* Punkte-Anzeige */}
-        <div className="flex flex-1 flex-col items-center justify-center py-1">
-          <div
-            key={result.score}
-            className={`font-mono text-6xl font-black tracking-tighter transition-colors animate-pop ${
-              result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-ink-600') : 'text-ink-700'
-            }`}
-          >
-            +{fmt(result.score)}
-          </div>
-          {totalPotential > 0 && result.isValid && (
-            <div className="mt-1 text-[11px] uppercase tracking-widest text-fog-500">
-              Gesamt im Zug: <span className="font-bold text-fog-100">{fmt(totalPotential)}</span>
+              {kept.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {kept.map((val, i) => (
+                    <span
+                      key={`k${i}`}
+                      className="grid h-9 w-9 place-items-center rounded-lg border-b-2 border-gold-600/70 bg-gold-300/90 text-base font-bold text-ink-900 shadow"
+                    >
+                      {val}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div
+                key={result.score}
+                className={`font-mono text-5xl font-black tracking-tighter drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)] animate-pop ${
+                  result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
+                }`}
+              >
+                +{fmt(result.score)}
+              </div>
+              {totalPotential > 0 && result.isValid ? (
+                <div className="text-[10px] uppercase tracking-widest text-fog-300">
+                  Gesamt im Zug: <span className="font-bold text-fog-100">{fmt(totalPotential)}</span>
+                </div>
+              ) : (
+                toast && (
+                  <div className="text-xs font-bold uppercase tracking-widest text-gold-400 animate-pop">{toast}</div>
+                )
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            {/* Würfel-Ablage (echte Würfel: Zahlen-Pad) */}
+            <div
+              className={`relative flex min-h-[96px] flex-col items-center justify-center gap-3 rounded-3xl border-2 p-3 transition-colors ${
+                result.isValid ? 'border-ink-800 bg-ink-900/50' : 'border-coral-500/40 bg-coral-500/5'
+              }`}
+            >
+              {kept.length === 0 && dice.length === 0 ? (
+                <span className="text-sm italic text-fog-600">
+                  {inHand < 6 ? `${inHand} Würfel geworfen – Gewertete eintippen…` : 'Gewertete Würfel eintippen…'}
+                </span>
+              ) : (
+                <div className="flex flex-wrap justify-center gap-2">
+                  {/* Bereits ausgelegte Würfel dieser Hand (fixiert) */}
+                  {kept.map((val, i) => (
+                    <span
+                      key={`k${i}`}
+                      className="grid h-12 w-12 place-items-center rounded-xl border-b-4 border-gold-600/70 bg-gold-300/90 text-xl font-bold text-ink-900 shadow-sm"
+                    >
+                      {val}
+                    </span>
+                  ))}
+                  {/* Aktueller Wurf (antippbar zum Entfernen) */}
+                  {dice.map((val, i) => {
+                    const bad = result.invalidDice.includes(val)
+                    return (
+                      <button
+                        key={`d${i}`}
+                        onClick={() => p.onRemoveDie(i)}
+                        className={`grid h-12 w-12 place-items-center rounded-xl border-b-4 text-xl font-bold shadow-sm transition-colors animate-pop ${
+                          bad
+                            ? 'border-coral-600 bg-coral-400 text-white'
+                            : 'border-fog-500 bg-fog-100 text-ink-900'
+                        }`}
+                      >
+                        {val}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {dice.length > 0 && (
+                <button
+                  onClick={p.onClearDice}
+                  className="absolute right-2 top-2 p-2 text-fog-600 transition-colors hover:text-fog-300"
+                  aria-label="Würfel löschen"
+                >
+                  <IconTrash />
+                </button>
+              )}
+            </div>
+
+            {/* Hinweis-Zeile */}
+            <div className="mt-1 flex h-5 items-center justify-center text-center">
+              {!result.isValid && dice.length > 0 ? (
+                <span className="text-xs font-bold text-coral-400">Ungültige Würfel – bitte entfernen!</span>
+              ) : (
+                toast && (
+                  <span className="text-xs font-bold uppercase tracking-widest text-gold-400 animate-pop">{toast}</span>
+                )
+              )}
+            </div>
+
+            {/* Punkte-Anzeige */}
+            <div className="flex flex-1 flex-col items-center justify-center py-1">
+              <div
+                key={result.score}
+                className={`font-mono text-6xl font-black tracking-tighter transition-colors animate-pop ${
+                  result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-ink-600') : 'text-ink-700'
+                }`}
+              >
+                +{fmt(result.score)}
+              </div>
+              {totalPotential > 0 && result.isValid && (
+                <div className="mt-1 text-[11px] uppercase tracking-widest text-fog-500">
+                  Gesamt im Zug: <span className="font-bold text-fog-100">{fmt(totalPotential)}</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Risiko-Meter + Coach */}
         <div className="mb-3 h-12">
@@ -376,9 +433,9 @@ export function GameScreen(p: Props) {
           )}
         </div>
 
-        {/* Eingabe: Zahlen-Pad (echt) oder virtuelle Würfel */}
+        {/* Eingabe: Zahlen-Pad (echt). Virtuell wird direkt in der Schale getippt. */}
         <div className="mt-auto space-y-3">
-          {diceMode === 'real' ? (
+          {diceMode === 'real' && (
             <div className="grid grid-cols-6 gap-2">
               {[1, 2, 3, 4, 5, 6].map((n) => (
                 <button
@@ -390,38 +447,6 @@ export function GameScreen(p: Props) {
                   {n}
                 </button>
               ))}
-            </div>
-          ) : rolled.length === 0 && dice.length === 0 ? (
-            <button
-              onClick={handleRoll3D}
-              disabled={phase === 'finished'}
-              className="flex h-16 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-b from-gold-400 to-gold-500 text-lg font-bold text-ink-950 shadow-[0_4px_0_var(--color-gold-600)] transition-all active:translate-y-1 active:shadow-none"
-            >
-              🎲 Würfeln · {inHand} Würfel
-            </button>
-          ) : (
-            <div className="min-h-16 rounded-2xl border border-ink-800 bg-ink-900/40 p-2.5">
-              {rolled.length > 0 ? (
-                <>
-                  <div className="mb-1.5 text-center text-[10px] uppercase tracking-wide text-fog-500">
-                    {rollHasScore(rolled) ? 'Tippe die Würfel, die du auslegst' : 'Niete – nichts Wertbares!'}
-                  </div>
-                  <div key={rolled.length} className="flex flex-wrap justify-center gap-2">
-                    {rolled.map((v, i) => (
-                      <PipDie
-                        key={i}
-                        value={v}
-                        onClick={() => p.onKeep(i)}
-                        disabled={dice.length >= inHand}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="grid h-full place-items-center py-3 text-sm italic text-fog-500">
-                  Alle ausgelegt – „Weiter" oder „Sichern".
-                </div>
-              )}
             </div>
           )}
 
@@ -501,21 +526,6 @@ export function GameScreen(p: Props) {
           </div>
         </div>
       </div>
-
-      {/* Würfel-Wurf (Virtuell-Modus) */}
-      {rolling3D && (
-        <div className="glass fixed inset-0 z-[60] flex flex-col items-center justify-center">
-          <div className="relative h-[58vh] w-full max-w-lg overflow-hidden rounded-3xl">
-            <DiceArena values={rolled} onSettle={() => setRolling3D(false)} />
-          </div>
-          <button
-            onClick={() => setRolling3D(false)}
-            className="mt-3 rounded-xl px-4 py-2 text-xs text-fog-500 hover:text-fog-200"
-          >
-            Überspringen
-          </button>
-        </div>
-      )}
 
       {/* Risiko-Erklärung (optionaler Info-Knopf) */}
       {showRiskInfo && risk && (
@@ -611,43 +621,5 @@ export function GameScreen(p: Props) {
         </div>
       )}
     </div>
-  )
-}
-
-// Pip-Positionen im 3×3-Raster je Augenzahl.
-const PIP_LAYOUT: Record<number, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
-}
-
-/** Ein antippbarer 2D-Würfel mit Augen (für den virtuellen Modus). */
-function PipDie({
-  value,
-  onClick,
-  disabled,
-}: {
-  value: number
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="grid h-12 w-12 grid-cols-3 grid-rows-3 gap-0.5 rounded-xl border-b-4 border-fog-500 bg-gradient-to-br from-[#f4f7ff] to-[#d9e0f0] p-1.5 shadow-sm transition-transform animate-pop active:scale-90 disabled:opacity-40"
-      aria-label={`Würfel ${value} auslegen`}
-    >
-      {Array.from({ length: 9 }, (_, c) =>
-        PIP_LAYOUT[value].includes(c) ? (
-          <span key={c} className="h-2 w-2 place-self-center rounded-full bg-ink-900" />
-        ) : (
-          <span key={c} />
-        ),
-      )}
-    </button>
   )
 }
