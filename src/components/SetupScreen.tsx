@@ -49,6 +49,7 @@ export function SetupScreen({
   const [event, setEvent] = useState('')
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
+  const [optsOpen, setOptsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [codeDismissed, setCodeDismissed] = useState(() => {
     try {
@@ -299,88 +300,91 @@ export function SetupScreen({
         )}
       </section>
 
-      <section className="mb-6 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-5 animate-rise">
-        <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-fog-200">
-          <IconTag className="h-4 w-4 text-gold-500" /> Anlass <span className="font-normal text-fog-600">(optional)</span>
-        </label>
-        <input
-          type="text"
-          value={event}
-          onChange={(e) => setEvent(e.target.value)}
-          placeholder="z. B. Skiurlaub 2025"
-          className="w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
-        />
-        {pastEvents.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {pastEvents.map((e) => (
-              <button
-                key={e}
-                onClick={() => setEvent(e)}
-                className="rounded-full border border-ink-700 bg-ink-800 px-3 py-1 text-xs text-fog-400 transition-colors hover:border-gold-500/50 hover:text-gold-400"
-              >
-                {e}
-              </button>
-            ))}
+      {/* Optionen (Anlass + Testspiel) eingeklappt → hält den Startbildschirm aufgeräumt. */}
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setOptsOpen((o) => !o)}
+          className="flex w-full items-center justify-between rounded-2xl border border-ink-700/80 bg-ink-850/60 px-4 py-3 text-left"
+        >
+          <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-fog-200">
+            <IconTag className="h-4 w-4 shrink-0 text-gold-500" /> Optionen
+            <span className="truncate text-xs font-normal text-fog-500">
+              {[event && `„${event}"`, testMode && 'Testspiel'].filter(Boolean).join(' · ') || 'Anlass · Testspiel'}
+            </span>
+          </span>
+          <span className={`shrink-0 text-fog-500 transition-transform ${optsOpen ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+
+        {optsOpen && (
+          <div className="mt-3 space-y-3 animate-rise">
+            <div>
+              <input
+                type="text"
+                value={event}
+                onChange={(e) => setEvent(e.target.value)}
+                placeholder="Anlass, z. B. Skiurlaub 2025"
+                className="w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
+              />
+              {pastEvents.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {pastEvents.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => setEvent(e)}
+                      className="rounded-full border border-ink-700 bg-ink-800 px-3 py-1 text-xs text-fog-400 transition-colors hover:border-gold-500/50 hover:text-gold-400"
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={testMode}
+              onClick={() => setTestMode((v) => !v)}
+              className={`flex w-full items-center justify-between rounded-2xl border bg-ink-850/60 px-4 py-3 text-left transition-colors ${
+                testMode ? 'border-gold-500/50' : 'border-ink-700/80'
+              }`}
+            >
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold text-fog-200">Testspiel</span>
+                <span className="text-[11px] text-fog-500">Zählt nicht für die Statistik</span>
+              </span>
+              <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${testMode ? 'bg-gold-500' : 'bg-ink-600'}`}>
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${testMode ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+              </span>
+            </button>
           </div>
         )}
-      </section>
+      </div>
 
-      <div className="mb-4 rounded-2xl border border-ink-700/80 bg-ink-850/60 p-3">
-        <div className="mb-2 px-1 text-sm font-semibold text-fog-200">Würfel</div>
-        <div className="grid grid-cols-2 gap-2">
+      {/* Würfel-Modus + Start kleben unten → beides immer sichtbar, kein Scrollen nötig. */}
+      <div className="sticky bottom-0 z-20 -mx-4 mt-auto bg-gradient-to-t from-ink-900 via-ink-900 to-transparent px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-5">
+        <div className="mb-2.5 grid grid-cols-2 gap-2">
           {(
             [
-              { v: 'real', label: '🎯 Echte', sub: 'Werte eintippen' },
-              { v: 'virtual', label: '🎲 Virtuelle', sub: 'In der App würfeln' },
+              { v: 'real', label: '🎯 Echte Würfel' },
+              { v: 'virtual', label: '🎲 Virtuelle' },
             ] as const
           ).map((m) => (
             <button
               key={m.v}
               type="button"
               onClick={() => setDiceMode(m.v)}
-              className={`flex flex-col items-center rounded-xl border-2 px-3 py-2.5 transition-all ${
+              className={`rounded-xl border-2 py-2 text-sm font-bold transition-all ${
                 diceMode === m.v
-                  ? 'border-gold-500/60 bg-gold-500/10'
-                  : 'border-ink-700 bg-ink-800 hover:border-ink-600'
+                  ? 'border-gold-500/60 bg-gold-500/10 text-gold-400'
+                  : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600'
               }`}
             >
-              <span className={`text-sm font-bold ${diceMode === m.v ? 'text-gold-400' : 'text-fog-300'}`}>
-                {m.label}
-              </span>
-              <span className="text-[10px] text-fog-500">{m.sub}</span>
+              {m.label}
             </button>
           ))}
         </div>
-      </div>
-
-      <button
-        type="button"
-        role="switch"
-        aria-checked={testMode}
-        onClick={() => setTestMode((v) => !v)}
-        className={`mb-4 flex w-full items-center justify-between rounded-2xl border bg-ink-850/60 px-4 py-3 text-left transition-colors ${
-          testMode ? 'border-gold-500/50' : 'border-ink-700/80'
-        }`}
-      >
-        <span className="flex flex-col">
-          <span className="text-sm font-semibold text-fog-200">Testspiel</span>
-          <span className="text-[11px] text-fog-500">Zählt nicht für die Statistik</span>
-        </span>
-        <span
-          className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${
-            testMode ? 'bg-gold-500' : 'bg-ink-600'
-          }`}
-        >
-          <span
-            className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
-              testMode ? 'translate-x-[26px]' : 'translate-x-1'
-            }`}
-          />
-        </span>
-      </button>
-
-      {/* Start-Button klebt unten am Bildschirm → immer sichtbar, kein Scrollen nötig. */}
-      <div className="sticky bottom-0 z-20 -mx-4 mt-auto bg-gradient-to-t from-ink-900 via-ink-900 to-transparent px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-5">
         <button
           onClick={() => onStart(players, event, testMode, diceMode)}
           disabled={players.length < 2}
