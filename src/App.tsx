@@ -68,6 +68,10 @@ export function App() {
   const [turns, setTurns] = useState<Turn[]>([])
   // Virtueller Modus: aktuell geworfene, noch nicht ausgelegte Würfel.
   const [rolled, setRolled] = useState<number[]>([])
+  // Virtueller Modus: die Augen des aktuellen Wurfs (stabile Reihenfolge für die
+  // Schale) + Zähler, der die Schale bei jedem neuen Wurf frisch aufsetzt.
+  const [thrown, setThrown] = useState<number[]>([])
+  const [throwSeq, setThrowSeq] = useState(0)
   const [toast, setToast] = useState('')
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
   // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
@@ -148,6 +152,7 @@ export function App() {
     setTestMode(test)
     setDiceMode(mode)
     setRolled([])
+    setThrown([])
     setIdx(0)
     setRound(1)
     setPhase('active')
@@ -204,11 +209,13 @@ export function App() {
     setEvent(g.event)
     setTestMode(g.testMode)
     setKept(g.kept ?? [])
-    setDice(g.dice)
     setAccumulated(g.accumulated)
     setTurns(g.turns ?? [])
     setDiceMode(g.diceMode ?? 'real')
-    setRolled(g.rolled ?? [])
+    // Virtueller Modus: laufenden Wurf nicht fortsetzen – Effekt wirft frisch.
+    setDice(g.diceMode === 'virtual' ? [] : g.dice)
+    setRolled(g.diceMode === 'virtual' ? [] : (g.rolled ?? []))
+    setThrown([])
     setWinner(null)
     setUndoStack([])
     setResumable(null)
@@ -257,10 +264,12 @@ export function App() {
     setPhase(snap.phase)
     setTarget(snap.target)
     setKept(snap.kept)
-    setDice(snap.dice)
     setAccumulated(snap.accumulated)
     setTurns(snap.turns)
-    setRolled(snap.rolled)
+    // Virtueller Modus: laufenden Wurf nicht rekonstruieren – frische Schale.
+    setDice(diceMode === 'virtual' ? [] : snap.dice)
+    setRolled(diceMode === 'virtual' ? [] : snap.rolled)
+    setThrown([])
     setWinner(null)
     setUndoStack((stack) => stack.slice(0, -1))
     showToast('Rückgängig')
@@ -297,6 +306,7 @@ export function App() {
         setKept([])
         setDice([])
         setRolled([])
+        setThrown([])
       }
 
       if (phase === 'lastChance') {
@@ -340,7 +350,8 @@ export function App() {
       if (!cel) showToast('Weiter!')
     }
     setDice([])
-    setRolled([]) // virtueller Modus: Rest neu würfeln
+    setRolled([])
+    setThrown([]) // virtueller Modus: Effekt präsentiert den nächsten Wurf
   }
 
   // Würfel-Modus mitten im Spiel wechseln (nur sinnvoll am Zug-Anfang).
@@ -348,34 +359,44 @@ export function App() {
     setDiceMode((m) => (m === 'real' ? 'virtual' : 'real'))
     setRolled([])
     setDice([])
+    setThrown([])
   }
 
-  // --- Virtueller Würfel-Modus ---
+  // --- Virtueller Würfel-Modus (Schale auf einem Screen) ---
   const rnd6 = () => 1 + Math.floor(Math.random() * 6)
-  const rollDice = () => {
-    if (dice.length > 0 || rolled.length > 0) return
-    buzz([14, 22, 14])
-    // Aufsteigend sortiert → übersichtlichere Auswahl-Reihe.
-    setRolled(Array.from({ length: inHand }, rnd6).sort((a, b) => a - b))
-  }
-  // Ausgelegten (geworfenen) Würfel behalten → in die Ablage.
-  const keepDie = (i: number) => {
-    const val = rolled[i]
-    if (val === undefined || dice.length >= inHand) return
-    buzz(6)
-    setRolled((r) => r.filter((_, j) => j !== i))
-    setDice((d) => [...d, val].sort())
-  }
-  // Ausgelegten Würfel zurück auf den Tisch.
-  const returnDie = (i: number) => {
-    const val = dice[i]
-    if (val === undefined) return
-    setDice((d) => d.filter((_, j) => j !== i))
-    setRolled((r) => [...r, val].sort((a, b) => a - b))
-  }
-  const clearKept = () => {
-    setRolled((r) => [...r, ...dice])
+  // Neuen Wurf in die Schale legen: Augen vorab bestimmen (Physik landet genau
+  // darauf), nichts ausgewählt. Die Schale setzt über throwSeq frisch auf.
+  const newThrow = useCallback(() => {
+    const n = 6 - kept.length
+    if (n <= 0) return
+    const vals = Array.from({ length: n }, rnd6).sort((a, b) => a - b)
+    setThrown(vals)
+    setRolled(vals)
     setDice([])
+    setThrowSeq((s) => s + 1)
+  }, [kept.length])
+
+  // Sobald ein neuer Wurf fällig ist (Zuganfang, nach „Weiter", heiße Würfel),
+  // automatisch eine frische Schale präsentieren – getippt wird in der Schale.
+  useEffect(() => {
+    if (
+      diceMode === 'virtual' &&
+      view === 'game' &&
+      (phase === 'active' || phase === 'lastChance') &&
+      !winner &&
+      thrown.length === 0 &&
+      dice.length === 0 &&
+      kept.length < 6
+    ) {
+      newThrow()
+    }
+  }, [diceMode, view, phase, winner, thrown.length, dice.length, kept.length, newThrow])
+
+  // Auswahl aus der Schale übernehmen: ausgelegte = gewertete Augen.
+  const handleBowlSelect = (selected: number[], remaining: number[]) => {
+    buzz(6)
+    setDice([...selected].sort((a, b) => a - b))
+    setRolled([...remaining].sort((a, b) => a - b))
   }
 
   const handleBank = () => {
@@ -466,6 +487,8 @@ export function App() {
       kept={kept}
       dice={dice}
       rolled={rolled}
+      thrown={thrown}
+      throwSeq={throwSeq}
       inHand={inHand}
       accumulated={accumulated}
       result={result}
@@ -475,10 +498,9 @@ export function App() {
       winner={winner}
       canUndo={undoStack.length > 0}
       onAddDie={addDie}
-      onRemoveDie={diceMode === 'virtual' ? returnDie : removeDie}
-      onClearDice={diceMode === 'virtual' ? clearKept : clearDice}
-      onRoll={rollDice}
-      onKeep={keepDie}
+      onRemoveDie={removeDie}
+      onClearDice={clearDice}
+      onBowlSelect={handleBowlSelect}
       onContinue={handleContinue}
       onBank={handleBank}
       onBust={handleBust}

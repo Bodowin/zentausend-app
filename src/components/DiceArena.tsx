@@ -19,7 +19,19 @@
 import * as CANNON from 'cannon-es'
 import { useEffect, useRef, useState } from 'react'
 
-type DiceArenaProps = { values: number[]; onSettle?: () => void }
+type DiceArenaProps = {
+  values: number[]
+  /** Optionaler Abschluss-Hook, wenn die Würfel zur Ruhe gekommen sind. */
+  onSettle?: () => void
+  /** Erlaubt das Antippen der gelandeten Würfel zur Auswahl (Auslegen). */
+  selectable?: boolean
+  /** Augenzahlen, die aktuell ungültig sind → ausgewählte Würfel rot statt gold. */
+  invalidValues?: number[]
+  /** Meldet die aktuelle Auswahl (ausgelegte vs. liegengebliebene Augen). */
+  onSelectionChange?: (selected: number[], remaining: number[]) => void
+  /** Meldet die Wurfphase (ready = kreiselt, rolling = fällt, landed = liegt). */
+  onPhaseChange?: (phase: 'ready' | 'rolling' | 'landed') => void
+}
 
 /* ============================ Würfel-Logik ============================== */
 // Slots (Body-lokal): 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z
@@ -235,17 +247,31 @@ type ArenaData = {
 
 type Phase = 'ready' | 'rolling' | 'landed'
 
-export default function DiceArena({ values, onSettle }: DiceArenaProps) {
+// Wie weit ein ausgewählter Würfel zum Auslegen aus der Schale steigt (Bowl-Einheiten).
+const LIFT = 1.9
+
+export default function DiceArena({
+  values,
+  onSettle,
+  selectable = false,
+  invalidValues = [],
+  onSelectionChange,
+  onPhaseChange,
+}: DiceArenaProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const dieRefs = useRef<HTMLDivElement[]>([])
   const shadowRefs = useRef<HTMLDivElement[]>([])
   const dataRef = useRef<ArenaData | null>(null)
   const reduceRef = useRef(false)
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
+  const onSelRef = useRef(onSelectionChange); onSelRef.current = onSelectionChange
+  const onPhaseRef = useRef(onPhaseChange); onPhaseRef.current = onPhaseChange
   const [ready, setReady] = useState(false)
   // ready = Würfel drehen sich „in der Hand", warten auf Tipp;
-  // rolling = aufgezeichneter Fall läuft; landed = liegen, warten auf Tipp.
+  // rolling = aufgezeichneter Fall läuft; landed = liegen, antippbar zum Auslegen.
   const [phase, setPhase] = useState<Phase>('ready')
+  // Welche gelandeten Würfel sind ausgewählt (ausgelegt)?
+  const [sel, setSel] = useState<boolean[]>([])
 
   // Hilfsfunktion: Würfel + Schatten setzen.
   const writeDie = (d: ArenaData, i: number, p: V, q: Q, pop = 0) => {
@@ -265,11 +291,14 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     const vals = values.map((v) => clamp(Math.round(v), 1, 6))
     const n = vals.length
     if (n === 0) { onSettleRef.current?.(); return }
+    setSel(new Array(n).fill(false))
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
     const h = 0.44
     const Rb = 1.9 + n * 0.3
-    const y0 = Rb * 0.9 + 3.2
+    // Etwas niedrigere Abwurfhöhe: die „in der Hand" kreisenden Würfel bleiben
+    // dadurch komplett in der (nach oben gerückten) Schale sichtbar.
+    const y0 = Rb * 0.5 + 2.2
     const S = (minD * 0.4) / Rb
     const sizePx = 2 * h * S
     const feltPx = (2 * Rb + 1.2) * S
@@ -360,12 +389,47 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
     return () => cancelAnimationFrame(raf)
   }, [phase])
 
+  // Wurfphase nach außen melden (z. B. um Overlays erst beim Liegen zu zeigen).
+  useEffect(() => { onPhaseRef.current?.(phase) }, [phase])
+
+  // --- Gelandet: Würfel an ihre Ruhepose schreiben, Ausgewählte heben. ---
+  useEffect(() => {
+    if (phase !== 'landed') return
+    const d = dataRef.current; if (!d) return
+    for (let i = 0; i < d.labelings.length; i++) {
+      const arr = d.pos[i], qarr = d.quat[i]
+      if (!arr?.length) continue
+      const li = arr.length - 1
+      const base = arr[li]
+      const p: V = sel[i] ? [base[0], base[1] + LIFT, base[2]] : base
+      writeDie(d, i, p, qarr[li])
+    }
+  }, [phase, sel])
+
   const handleTap = () => {
     if (phase === 'ready') setPhase('rolling')
-    else if (phase === 'landed') onSettleRef.current?.()
+    else if (phase === 'landed' && !selectable) onSettleRef.current?.()
+  }
+
+  // Einen gelandeten Würfel aus-/abwählen und die neue Auswahl melden.
+  const toggleDie = (i: number) => {
+    if (phase !== 'landed' || !selectable) return
+    navigator.vibrate?.(8)
+    setSel((prev) => {
+      const next = [...prev]
+      next[i] = !next[i]
+      const vals = values.map((v) => clamp(Math.round(v), 1, 6))
+      const selected: number[] = []
+      const remaining: number[] = []
+      for (let j = 0; j < vals.length; j++) (next[j] ? selected : remaining).push(vals[j])
+      onSelRef.current?.(selected, remaining)
+      return next
+    })
   }
 
   const d = dataRef.current
+  const vals = values.map((v) => clamp(Math.round(v), 1, 6))
+  const tappable = phase === 'landed' && selectable
   return (
     <div className="da-root" ref={rootRef}>
       <style>{CSS}</style>
@@ -386,9 +450,18 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
             {d.labelings.map((L, i) => (
               <div
                 key={'d' + i}
-                className="da-die"
+                className={`da-die${phase === 'landed' ? ' da-landed' : ''}${
+                  sel[i] ? (invalidValues.includes(vals[i]) ? ' invalid' : ' sel') : ''
+                }`}
                 ref={(el) => { if (el) dieRefs.current[i] = el }}
-                style={{ width: d.sizePx, height: d.sizePx, ['--h' as string]: `${d.sizePx / 2}px` }}
+                onClick={tappable ? () => toggleDie(i) : undefined}
+                style={{
+                  width: d.sizePx,
+                  height: d.sizePx,
+                  ['--h' as string]: `${d.sizePx / 2}px`,
+                  pointerEvents: tappable ? 'auto' : 'none',
+                  cursor: tappable ? 'pointer' : 'default',
+                }}
               >
                 {SLOT_TF.map((tf, s) => (
                   <div key={s} className="da-face" style={{ transform: tf }}>
@@ -403,12 +476,13 @@ export default function DiceArena({ values, onSettle }: DiceArenaProps) {
         </div>
       )}
 
-      {/* Tipp-Fläche + Hinweis (nur in den Wartephasen aktiv). */}
-      {(phase === 'ready' || phase === 'landed') && (
+      {/* Tipp-Fläche zum Werfen (und „weiter" nur im nicht-auswählbaren Alt-Modus). */}
+      {(phase === 'ready' || (phase === 'landed' && !selectable)) && (
         <button className="da-tap" onClick={handleTap} aria-label={phase === 'ready' ? 'Würfeln' : 'Weiter'} />
       )}
       {phase === 'ready' && <div className="da-hint">Tippen zum Würfeln</div>}
-      {phase === 'landed' && <div className="da-hint">Tippen für weiter</div>}
+      {phase === 'landed' && selectable && <div className="da-hint">Würfel antippen, die zählen</div>}
+      {phase === 'landed' && !selectable && <div className="da-hint">Tippen für weiter</div>}
     </div>
   )
 }
@@ -434,6 +508,21 @@ const CSS = `
   translate:-50% -50%;}
 .da-die{position:absolute;left:0;top:0;transform-style:preserve-3d;will-change:transform;
   translate:-50% -50%;}
+.da-die.da-landed{transition:transform .18s ease-out;}
+/* Ausgewählt (ausgelegt) → goldene Flächen, passend zur Ablage. */
+.da-die.sel .da-face{
+  background:radial-gradient(120% 120% at 30% 22%, #ffe9a8 0%, #f5c84e 55%, #e0a92e 100%);
+  box-shadow:inset 0 0 0 1px rgba(150,108,20,.4),
+             inset 0 6px 10px rgba(255,255,255,.5),
+             0 0 16px rgba(245,184,61,.55);}
+/* Ausgewählt, aber ungültig → rot. */
+.da-die.invalid .da-face{
+  background:radial-gradient(120% 120% at 30% 22%, #ffc1c1 0%, #ff6b6b 60%, #d83a3a 100%);
+  box-shadow:inset 0 0 0 1px rgba(150,30,30,.4),
+             inset 0 6px 10px rgba(255,255,255,.4),
+             0 0 16px rgba(255,107,107,.5);}
+.da-die.sel .da-pip,.da-die.invalid .da-pip{
+  background:radial-gradient(closest-side, #3a2a05, #161003);}
 .da-face{position:absolute;inset:0;display:grid;box-sizing:border-box;
   grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
   padding:13%;border-radius:15%;backface-visibility:hidden;
