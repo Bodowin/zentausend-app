@@ -418,7 +418,7 @@ const CSS = `
 .da-root{position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:inherit;
   background:radial-gradient(130% 100% at 50% 6%, #0c2b25 0%, #07201d 52%, #050b0d 100%);}
 .da-cam{position:absolute;inset:0;}
-.da-stage{position:absolute;left:50%;top:60%;transform-style:preserve-3d;
+.da-stage{position:absolute;left:50%;top:50%;transform-style:preserve-3d;
   transform:rotateX(var(--tilt));transform-origin:center;}
 .da-floor{position:absolute;left:0;top:0;transform:translate(-50%,-50%) rotateX(90deg);
   border-radius:50%;
