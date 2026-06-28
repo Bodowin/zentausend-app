@@ -321,7 +321,8 @@ export function App() {
   const rollDice = () => {
     if (dice.length > 0 || rolled.length > 0) return
     buzz([14, 22, 14])
-    setRolled(Array.from({ length: inHand }, rnd6))
+    // Aufsteigend sortiert → übersichtlichere Auswahl-Reihe.
+    setRolled(Array.from({ length: inHand }, rnd6).sort((a, b) => a - b))
   }
   // Ausgelegten (geworfenen) Würfel behalten → in die Ablage.
   const keepDie = (i: number) => {
@@ -336,7 +337,7 @@ export function App() {
     const val = dice[i]
     if (val === undefined) return
     setDice((d) => d.filter((_, j) => j !== i))
-    setRolled((r) => [...r, val])
+    setRolled((r) => [...r, val].sort((a, b) => a - b))
   }
   const clearKept = () => {
     setRolled((r) => [...r, ...dice])
