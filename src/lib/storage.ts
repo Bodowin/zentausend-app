@@ -246,6 +246,41 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
     })
   }
 
+  // Bester Einzelzug (höchste in einem Zug gesicherte Punktzahl).
+  let bestTurn = { name: '', points: 0 }
+  for (const g of games) {
+    for (const t of g.turns ?? []) {
+      if (t.points > bestTurn.points) bestTurn = { name: t.player, points: t.points }
+    }
+  }
+  if (bestTurn.points > 0) {
+    awards.push({
+      key: 'bestturn',
+      emoji: '🚀',
+      title: 'Bester Einzelzug',
+      name: bestTurn.name,
+      detail: bestTurn.points.toLocaleString('de-DE'),
+    })
+  }
+
+  // Schnellster Sieg (Spiel mit den wenigsten Runden).
+  let fastest = { name: '', rounds: Infinity }
+  for (const g of games) {
+    const ts = g.turns ?? []
+    if (!ts.length) continue
+    const rounds = Math.max(...ts.map((t) => t.round))
+    if (rounds < fastest.rounds) fastest = { name: g.winner, rounds }
+  }
+  if (fastest.rounds !== Infinity && fastest.rounds > 0) {
+    awards.push({
+      key: 'fastest',
+      emoji: '⚡',
+      title: 'Schnellster Sieg',
+      name: fastest.name,
+      detail: `${fastest.rounds} ${fastest.rounds === 1 ? 'Runde' : 'Runden'}`,
+    })
+  }
+
   // Längste Siegesserie (chronologisch aufeinanderfolgende Siege).
   const byDate = [...games].sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
   let best = { name: '', len: 0 }
