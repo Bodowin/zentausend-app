@@ -214,6 +214,93 @@ export function computeForm(history = getHistory(), event?: string, limit = 5): 
     )
 }
 
+export interface HeadToHead {
+  a: string
+  b: string
+  /** Spiele, in denen beide mitgespielt haben. */
+  games: number
+  /** Spiele, in denen A vor B landete (höherer Endstand). */
+  aAhead: number
+  bAhead: number
+  /** Gesamtsiege im direkten Vergleich (A bzw. B war Spielsieger). */
+  aWins: number
+  bWins: number
+  aBest: number
+  bBest: number
+  aAvg: number
+  bAvg: number
+}
+
+/**
+ * Direkter Vergleich zweier Spieler über alle Spiele, in denen beide dabei
+ * waren. „Ahead" = wer im jeweiligen Spiel den höheren Endstand hatte.
+ */
+export function computeHeadToHead(
+  a: string,
+  b: string,
+  history = getHistory(),
+  event?: string,
+): HeadToHead {
+  const games = event ? history.filter((g) => g.event === event) : history
+  const h: HeadToHead = { a, b, games: 0, aAhead: 0, bAhead: 0, aWins: 0, bWins: 0, aBest: 0, bBest: 0, aAvg: 0, bAvg: 0 }
+  if (a === b) return h
+
+  let aSum = 0
+  let bSum = 0
+  for (const g of games) {
+    const pa = g.players.find((p) => p.name === a)
+    const pb = g.players.find((p) => p.name === b)
+    if (!pa || !pb) continue
+    h.games += 1
+    aSum += pa.score
+    bSum += pb.score
+    h.aBest = Math.max(h.aBest, pa.score)
+    h.bBest = Math.max(h.bBest, pb.score)
+    if (pa.score > pb.score) h.aAhead += 1
+    else if (pb.score > pa.score) h.bAhead += 1
+    if (g.winner === a) h.aWins += 1
+    if (g.winner === b) h.bWins += 1
+  }
+  h.aAvg = h.games ? Math.round(aSum / h.games) : 0
+  h.bAvg = h.games ? Math.round(bSum / h.games) : 0
+  return h
+}
+
+/**
+ * „Angstgegner" eines Spielers: der Gegenspieler, der in gemeinsamen Spielen
+ * am häufigsten vor ihm landete (mindestens zwei Duelle). null, wenn es keinen
+ * solchen Gegner gibt.
+ */
+export function computeNemesis(
+  name: string,
+  history = getHistory(),
+  event?: string,
+): { name: string; ahead: number; of: number } | null {
+  const games = (event ? history.filter((g) => g.event === event) : history).filter((g) =>
+    g.players.some((p) => p.name === name),
+  )
+  const tally = new Map<string, { ahead: number; of: number }>()
+  for (const g of games) {
+    const me = g.players.find((p) => p.name === name)
+    if (!me) continue
+    for (const p of g.players) {
+      if (p.name === name) continue
+      const t = tally.get(p.name) ?? { ahead: 0, of: 0 }
+      t.of += 1
+      if (p.score > me.score) t.ahead += 1
+      tally.set(p.name, t)
+    }
+  }
+  let best: { name: string; ahead: number; of: number } | null = null
+  for (const [opp, t] of tally) {
+    if (t.of < 2 || t.ahead === 0) continue
+    if (!best || t.ahead / t.of > best.ahead / best.of || (t.ahead / t.of === best.ahead / best.of && t.ahead > best.ahead)) {
+      best = { name: opp, ahead: t.ahead, of: t.of }
+    }
+  }
+  return best
+}
+
 export interface Award {
   key: string
   emoji: string

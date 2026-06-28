@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { aggregateStats, computeAwards, computeForm, getEvents } from '../lib/storage'
+import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeNemesis, getEvents } from '../lib/storage'
 import { deleteGame, syncAndMerge } from '../lib/cloud'
 import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
@@ -243,6 +243,11 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             </section>
           )}
 
+          {/* Duell – direkter Vergleich zweier Spieler */}
+          {stats.length >= 2 && (
+            <DuelSection names={stats.map((s) => s.name)} games={games} event={filter || undefined} />
+          )}
+
           {/* Ewige Bestenliste */}
           <section className="mb-6">
             <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">Ewige Bestenliste</h2>
@@ -324,6 +329,129 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
           </section>
         </>
       )}
+    </div>
+  )
+}
+
+function DuelSection({
+  names,
+  games,
+  event,
+}: {
+  names: string[]
+  games: GameRecord[]
+  event?: string
+}) {
+  const [a, setA] = useState(names[0])
+  const [b, setB] = useState(names[1])
+
+  // Falls sich der Kader (z. B. durch Event-Filter) ändert, gültige Auswahl sichern.
+  const aName = names.includes(a) ? a : names[0]
+  const bName = names.includes(b) && b !== aName ? b : names.find((n) => n !== aName) ?? names[1]
+
+  const h = useMemo(() => computeHeadToHead(aName, bName, games, event), [aName, bName, games, event])
+  const nemA = useMemo(() => computeNemesis(aName, games, event), [aName, games, event])
+  const nemB = useMemo(() => computeNemesis(bName, games, event), [bName, games, event])
+
+  const aheadTotal = h.aAhead + h.bAhead
+  const aPct = aheadTotal ? Math.round((h.aAhead / aheadTotal) * 100) : 50
+
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">Duell</h2>
+      <div className="rounded-2xl border border-ink-700/80 bg-ink-850/80 p-4">
+        {/* Auswahl */}
+        <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <select
+            value={aName}
+            onChange={(e) => setA(e.target.value)}
+            className="w-full rounded-xl border border-ink-700 bg-ink-900 px-2.5 py-2 text-sm font-bold text-gold-400"
+          >
+            {names.map((n) => (
+              <option key={n} value={n} disabled={n === bName}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] font-black text-fog-600">vs</span>
+          <select
+            value={bName}
+            onChange={(e) => setB(e.target.value)}
+            className="w-full rounded-xl border border-ink-700 bg-ink-900 px-2.5 py-2 text-right text-sm font-bold text-mint-400"
+          >
+            {names.map((n) => (
+              <option key={n} value={n} disabled={n === aName}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {h.games === 0 ? (
+          <p className="py-3 text-center text-xs text-fog-500">Noch kein gemeinsames Spiel.</p>
+        ) : (
+          <>
+            {/* Vorsprungs-Balken */}
+            <div className="mb-1 flex items-center justify-between text-xs font-bold">
+              <span className="text-gold-400">{h.aAhead}×</span>
+              <span className="text-fog-600">öfter vorn</span>
+              <span className="text-mint-400">{h.bAhead}×</span>
+            </div>
+            <div className="mb-4 flex h-2.5 overflow-hidden rounded-full bg-ink-900">
+              <div className="bg-gold-500/70" style={{ width: `${aPct}%` }} />
+              <div className="bg-mint-400/70" style={{ width: `${100 - aPct}%` }} />
+            </div>
+
+            <DuelRow label={`Spiele zusammen`} a={h.games} b={h.games} same />
+            <DuelRow label="Siege" a={h.aWins} b={h.bWins} />
+            <DuelRow label="Bestwert" a={fmt(h.aBest)} b={fmt(h.bBest)} cmp={[h.aBest, h.bBest]} />
+            <DuelRow label="Ø Punkte" a={fmt(h.aAvg)} b={fmt(h.bAvg)} cmp={[h.aAvg, h.bAvg]} />
+
+            {(nemA || nemB) && (
+              <div className="mt-3 border-t border-ink-800 pt-3 text-[11px] text-fog-500">
+                {nemA && (
+                  <p>
+                    😨 <span className="font-semibold text-fog-300">{aName}</span>s Angstgegner:{' '}
+                    <span className="font-semibold text-coral-400">{nemA.name}</span> ({nemA.ahead}/{nemA.of} vorn)
+                  </p>
+                )}
+                {nemB && (
+                  <p className="mt-0.5">
+                    😨 <span className="font-semibold text-fog-300">{bName}</span>s Angstgegner:{' '}
+                    <span className="font-semibold text-coral-400">{nemB.name}</span> ({nemB.ahead}/{nemB.of} vorn)
+                  </p>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function DuelRow({
+  label,
+  a,
+  b,
+  cmp,
+  same,
+}: {
+  label: string
+  a: string | number
+  b: string | number
+  cmp?: [number, number]
+  same?: boolean
+}) {
+  const av = cmp ? cmp[0] : typeof a === 'number' ? a : 0
+  const bv = cmp ? cmp[1] : typeof b === 'number' ? b : 0
+  const aWin = !same && av > bv
+  const bWin = !same && bv > av
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-ink-800/50 py-2 text-sm last:border-0">
+      <span className={`w-1/3 font-mono font-bold ${aWin ? 'text-gold-400' : 'text-fog-400'}`}>{a}</span>
+      <span className="text-[10px] uppercase tracking-wide text-fog-600">{label}</span>
+      <span className={`w-1/3 text-right font-mono font-bold ${bWin ? 'text-mint-400' : 'text-fog-400'}`}>{b}</span>
     </div>
   )
 }
