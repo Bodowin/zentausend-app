@@ -8,8 +8,8 @@ import { shareResultImage } from '../lib/shareImage'
 import DiceArena from './DiceArena'
 import {
   IconCheck,
+  IconPause,
   IconRefresh,
-  IconRotate,
   IconShare,
   IconTrash,
   IconTrophy,
@@ -48,6 +48,7 @@ interface Props {
   onUndo: () => void
   onExit: () => void
   onNewGame: () => void
+  onToggleDiceMode: () => void
 }
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
@@ -138,21 +139,32 @@ export function GameScreen(p: Props) {
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={p.onToggleDiceMode}
+            disabled={dice.length > 0 || rolled.length > 0}
+            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30"
+            aria-label="Würfel-Modus wechseln"
+          >
+            <span className="text-base leading-none">{diceMode === 'virtual' ? '🎲' : '🎯'}</span>
+            <span className="text-[8px] font-bold uppercase tracking-wide">{diceMode === 'virtual' ? 'Virtuell' : 'Echt'}</span>
+          </button>
           <button
             onClick={p.onUndo}
             disabled={!canUndo}
-            className="grid h-9 w-9 place-items-center rounded-full text-fog-500 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30"
-            aria-label="Rückgängig"
+            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30"
+            aria-label="Letzte Aktion rückgängig"
           >
             <IconUndo className="h-4 w-4" />
+            <span className="text-[8px] font-bold uppercase tracking-wide">Zurück</span>
           </button>
           <button
             onClick={p.onExit}
-            className="grid h-9 w-9 place-items-center rounded-full text-fog-500 transition-colors hover:bg-ink-800 hover:text-fog-200"
-            aria-label="Spiel beenden"
+            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200"
+            aria-label="Spiel pausieren"
           >
-            <IconRotate className="h-4 w-4" />
+            <IconPause className="h-4 w-4" />
+            <span className="text-[8px] font-bold uppercase tracking-wide">Pause</span>
           </button>
         </div>
       </header>

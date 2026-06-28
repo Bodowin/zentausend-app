@@ -316,6 +316,13 @@ export function App() {
     setRolled([]) // virtueller Modus: Rest neu würfeln
   }
 
+  // Würfel-Modus mitten im Spiel wechseln (nur sinnvoll am Zug-Anfang).
+  const toggleDiceMode = () => {
+    setDiceMode((m) => (m === 'real' ? 'virtual' : 'real'))
+    setRolled([])
+    setDice([])
+  }
+
   // --- Virtueller Würfel-Modus ---
   const rnd6 = () => 1 + Math.floor(Math.random() * 6)
   const rollDice = () => {
@@ -445,6 +452,7 @@ export function App() {
       onUndo={undo}
       onExit={exitToSetup}
       onNewGame={exitToSetup}
+      onToggleDiceMode={toggleDiceMode}
     />
   )
 }

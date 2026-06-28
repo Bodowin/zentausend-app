@@ -200,7 +200,8 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
     awards.push({
       key: 'wins',
       emoji: '👑',
-      title: 'Meiste Siege',
+      // Bei Event-Filter wird der Champion dieses Anlasses gekrönt.
+      title: event ? `${event}-Champion` : 'Meiste Siege',
       name: champ.name,
       detail: `${champ.wins} ${champ.wins === 1 ? 'Sieg' : 'Siege'}`,
     })
