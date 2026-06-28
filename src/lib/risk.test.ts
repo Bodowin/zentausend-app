@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeRisk, recommendAction } from './risk'
+import { computeRisk, explainRisk, recommendAction } from './risk'
 
 /**
  * Unabhängige Wahrscheinlichkeits-Verifikation: Wir zählen über ALLE 6^k
@@ -110,5 +110,25 @@ describe('recommendAction – topf-bewusste Empfehlung', () => {
   })
   it('niedrige Chance → sichern', () => {
     expect(recommendAction(33, 400, true, false)).toEqual({ text: 'Lieber sichern', tone: 'danger' })
+  })
+})
+
+describe('explainRisk', () => {
+  it('nennt die Prozentzahl und 2 Rettungs-Augen in Szenario A', () => {
+    const info = computeRisk(5, false)!
+    const lines = explainRisk(info)
+    expect(lines).toHaveLength(4)
+    expect(lines.some((l) => l.includes('2 von 6'))).toBe(true)
+    expect(lines[lines.length - 1]).toContain('92 %')
+  })
+
+  it('erwähnt den Pasch und 3 Rettungs-Augen in Szenario B', () => {
+    const lines = explainRisk(computeRisk(3, true)!)
+    expect(lines.some((l) => l.includes('Pasch'))).toBe(true)
+    expect(lines.some((l) => l.includes('3 von 6'))).toBe(true)
+  })
+
+  it('rechnet bei 1 Würfel direkt die Bruchchance vor', () => {
+    expect(explainRisk(computeRisk(1, false)!).some((l) => l.includes('2 von 6 = 33 %'))).toBe(true)
   })
 })

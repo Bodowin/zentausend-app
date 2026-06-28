@@ -52,6 +52,8 @@ export function App() {
   const [winner, setWinner] = useState<Player | null>(null)
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
+  // Vorbelegung des Setup-Screens für eine Revanche (gleicher Kader, Sieger beginnt).
+  const [setupSeed, setSetupSeed] = useState<{ players: Player[]; event: string; diceMode: DiceMode } | null>(null)
 
   // --- Zugzustand ---
   // Bereits ausgelegte Würfel dieser "Hand" (über mehrere Würfe hinweg, bis
@@ -164,7 +166,27 @@ export function App() {
   const exitToSetup = () => {
     setPhase('setup')
     setWinner(null)
+    setSetupSeed(null) // „Neues Spiel" startet mit leerem Kader
     setResumable(loadActiveGame()) // unterbrochenes Spiel ggf. zum Fortsetzen anbieten
+    setView('setup')
+  }
+
+  // Revanche: gleicher Kader, Sieger beginnt, Reihenfolge im Uhrzeigersinn
+  // beibehalten. Der Setup-Screen wird damit vorbelegt – die Reihenfolge bleibt
+  // dort frei änderbar, bevor man erneut startet.
+  const startRematch = () => {
+    const wi = winner ? players.findIndex((p) => p.id === winner.id) : 0
+    const start = wi < 0 ? 0 : wi
+    const ordered = [...players.slice(start), ...players.slice(0, start)].map((p) => ({
+      ...p,
+      score: 0,
+      busts: 0,
+    }))
+    clearActiveGame()
+    setSetupSeed({ players: ordered, event, diceMode })
+    setPhase('setup')
+    setWinner(null)
+    setResumable(null)
     setView('setup')
   }
 
@@ -414,6 +436,9 @@ export function App() {
           resumable={resumable}
           onResume={resumeGame}
           onDiscardResume={discardResume}
+          initialPlayers={setupSeed?.players}
+          initialEvent={setupSeed?.event}
+          initialDiceMode={setupSeed?.diceMode}
         />
         {showIntro && <IntroScreen onClose={closeIntro} />}
       </>
@@ -460,6 +485,7 @@ export function App() {
       onUndo={undo}
       onExit={exitToSetup}
       onNewGame={exitToSetup}
+      onRematch={startRematch}
       onToggleDiceMode={toggleDiceMode}
       />
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}

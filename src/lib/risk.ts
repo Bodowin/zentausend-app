@@ -69,6 +69,31 @@ export function computeRisk(remainingDice: number, scenarioB: boolean): RiskInfo
   return { pct, dice: remainingDice, scenarioB, ...classify(pct) }
 }
 
+/**
+ * Erklärt in einfachen Worten, wie die Erfolgswahrscheinlichkeit zustande kommt
+ * (für den optionalen Info-Knopf am Risiko-Meter). Liefert ein paar kurze Zeilen.
+ */
+export function explainRisk(info: RiskInfo): string[] {
+  const { dice: n, scenarioB, pct } = info
+  const bust = 100 - pct
+  const savers = scenarioB ? 3 : 2 // 1 & 5 (+ Pasch-Augenzahl in Szenario B)
+  // Näherung „alle Würfel daneben" ohne Drilling-Rettung: ((6-savers)/6)^n.
+  const naive = Math.pow((6 - savers) / 6, n) * 100
+  const lines = [
+    `Eine Niete heißt: KEIN Würfel zählt – keine 1, keine 5${
+      scenarioB ? ', nicht die Pasch-Augenzahl' : ''
+    } und kein neuer Drilling.`,
+    scenarioB
+      ? `Ein Pasch ist aktiv: gleich 3 Augenzahlen retten dich (1, 5 und die Pasch-Zahl) – also 3 von 6 je Würfel.`
+      : `Pro Würfel retten dich 2 von 6 Augen: die 1 und die 5.`,
+    n === 1
+      ? `Bei 1 Würfel sind das genau ${savers} von 6 = ${pct.toFixed(0)} %.`
+      : `Dass ALLE ${n} Würfel daneben liegen, wäre rund ${naive.toFixed(0)} %. Zufällige Drillinge retten zusätzlich – echte Niete-Chance: ${bust.toFixed(0)} %.`,
+    `Ergebnis: ${pct.toFixed(0)} % Chance auf mindestens einen wertbaren Würfel.`,
+  ]
+  return lines
+}
+
 export type CoachTone = 'good' | 'ok' | 'warn' | 'danger'
 export interface CoachAdvice {
   text: string

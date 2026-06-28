@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
-import { recommendAction } from '../lib/risk'
+import { explainRisk, recommendAction } from '../lib/risk'
 import { ENTRY_MIN, rollHasScore, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
@@ -48,6 +48,7 @@ interface Props {
   onUndo: () => void
   onExit: () => void
   onNewGame: () => void
+  onRematch: () => void
   onToggleDiceMode: () => void
 }
 
@@ -78,6 +79,7 @@ export function GameScreen(p: Props) {
   } = p
 
   const [rolling3D, setRolling3D] = useState(false)
+  const [showRiskInfo, setShowRiskInfo] = useState(false)
   const handleRoll3D = () => {
     setRolling3D(true)
     p.onRoll()
@@ -345,9 +347,17 @@ export function GameScreen(p: Props) {
         <div className="mb-3 h-12">
           {risk && (
             <div className="flex items-center gap-3 rounded-xl border border-ink-800 bg-ink-900/60 p-2.5 animate-pop">
-              <div className="w-20 text-[10px] uppercase leading-tight text-fog-500">
+              <button
+                type="button"
+                onClick={() => setShowRiskInfo(true)}
+                className="flex w-20 items-center gap-1 text-left text-[10px] uppercase leading-tight text-fog-500 transition-colors hover:text-fog-300"
+                aria-label="Wahrscheinlichkeit erklären"
+              >
                 {risk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
-              </div>
+                <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-fog-600 text-[8px] font-black not-italic text-fog-500">
+                  i
+                </span>
+              </button>
               <div className="flex-1">
                 <div className="mb-1 flex justify-between text-xs font-bold">
                   <span className={risk.color}>{risk.label}</span>
@@ -507,6 +517,43 @@ export function GameScreen(p: Props) {
         </div>
       )}
 
+      {/* Risiko-Erklärung (optionaler Info-Knopf) */}
+      {showRiskInfo && risk && (
+        <div
+          className="glass absolute inset-0 z-50 flex items-center justify-center p-6 animate-pop"
+          onClick={() => setShowRiskInfo(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-ink-700 bg-ink-850 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-black text-fog-100">
+                Warum {risk.pct.toFixed(0)} %?
+              </h3>
+              <span className={`rounded-lg px-2 py-1 text-xs font-bold ${risk.color}`}>{risk.label}</span>
+            </div>
+            <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-ink-800">
+              <div className={`h-full rounded-full ${risk.bar}`} style={{ width: `${risk.pct}%` }} />
+            </div>
+            <ul className="space-y-2.5 text-sm leading-snug text-fog-300">
+              {explainRisk(risk).map((line, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="mt-0.5 text-gold-500">•</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={() => setShowRiskInfo(false)}
+              className="mt-5 w-full rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
+            >
+              Verstanden
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sieg-Overlay */}
       {winner && (
         <div className="glass absolute inset-0 z-50 flex flex-col items-center justify-center p-6 animate-pop">
@@ -534,20 +581,31 @@ export function GameScreen(p: Props) {
                   </div>
                 ))}
             </div>
-            <div className="grid grid-cols-[1fr_auto] gap-3">
+            <div className="space-y-3">
               <button
-                onClick={p.onNewGame}
-                className="rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
+                onClick={p.onRematch}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
               >
-                Neues Spiel
+                <IconRefresh className="h-5 w-5" /> Revanche
               </button>
-              <button
-                onClick={() => shareResultImage(winner, players, event)}
-                className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                aria-label="Ergebnis als Bild teilen"
-              >
-                <IconShare className="h-5 w-5" />
-              </button>
+              <p className="-mt-1 text-[11px] text-fog-500">
+                Gleiche Runde, {winner.name} beginnt – Reihenfolge vorm Start frei änderbar.
+              </p>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <button
+                  onClick={p.onNewGame}
+                  className="rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
+                >
+                  Neues Spiel
+                </button>
+                <button
+                  onClick={() => shareResultImage(winner, players, event)}
+                  className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
+                  aria-label="Ergebnis als Bild teilen"
+                >
+                  <IconShare className="h-5 w-5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

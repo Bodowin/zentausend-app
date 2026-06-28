@@ -30,6 +30,10 @@ interface Props {
   resumable: ActiveGame | null
   onResume: (g: ActiveGame) => void
   onDiscardResume: () => void
+  /** Vorbelegung (z. B. Revanche): Kader, Anlass und Würfel-Modus. */
+  initialPlayers?: Player[]
+  initialEvent?: string
+  initialDiceMode?: DiceMode
 }
 
 export function SetupScreen({
@@ -40,15 +44,18 @@ export function SetupScreen({
   resumable,
   onResume,
   onDiscardResume,
+  initialPlayers,
+  initialEvent,
+  initialDiceMode,
 }: Props) {
-  const [players, setPlayers] = useState<Player[]>([])
+  const [players, setPlayers] = useState<Player[]>(() => initialPlayers ?? [])
   const [roster, setRoster] = useState<string[]>(() => getRoster())
   const [manage, setManage] = useState(false)
   const [newMember, setNewMember] = useState('')
   const [guest, setGuest] = useState('')
-  const [event, setEvent] = useState('')
+  const [event, setEvent] = useState(initialEvent ?? '')
   const [testMode, setTestMode] = useState(false)
-  const [diceMode, setDiceMode] = useState<DiceMode>('real')
+  const [diceMode, setDiceMode] = useState<DiceMode>(initialDiceMode ?? 'real')
   const [optsOpen, setOptsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [codeDismissed, setCodeDismissed] = useState(() => {
@@ -68,6 +75,15 @@ export function SetupScreen({
     setGuest('')
   }
   const removeAt = (i: number) => setPlayers((prev) => prev.filter((_, j) => j !== i))
+  // Reihenfolge verschieben (oben = beginnt). Üblich: Sieger beginnt, Uhrzeigersinn bleibt.
+  const move = (i: number, dir: -1 | 1) =>
+    setPlayers((prev) => {
+      const j = i + dir
+      if (j < 0 || j >= prev.length) return prev
+      const next = [...prev]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
 
   const addMember = () => {
     const next = addToRoster(newMember)
@@ -271,29 +287,54 @@ export function SetupScreen({
               {players.length === 0 ? (
                 <p className="py-3 text-center text-sm italic text-fog-600">Noch niemand ausgewählt…</p>
               ) : (
-                players.map((p, i) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2.5 animate-pop"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-ink-950"
-                        style={{ backgroundColor: playerColor(p.name) }}
-                      >
-                        {i + 1}
-                      </span>
-                      <span className="font-semibold text-fog-100">{p.name}</span>
-                    </div>
-                    <button
-                      onClick={() => removeAt(i)}
-                      className="p-1.5 text-fog-600 transition-colors hover:text-coral-400"
-                      aria-label={`${p.name} entfernen`}
+                <>
+                  {players.length > 1 && (
+                    <p className="px-1 pb-1 text-[11px] text-fog-500">
+                      Reihenfolge: <span className="text-fog-300">Nr. 1 beginnt</span> · mit ↑↓ verschieben
+                    </p>
+                  )}
+                  {players.map((p, i) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2 animate-pop"
                     >
-                      <IconX />
-                    </button>
-                  </div>
-                ))
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold text-ink-950"
+                          style={{ backgroundColor: playerColor(p.name) }}
+                        >
+                          {i + 1}
+                        </span>
+                        <span className="font-semibold text-fog-100">{p.name}</span>
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => move(i, -1)}
+                          disabled={i === 0}
+                          className="grid h-7 w-7 place-items-center rounded-lg text-fog-400 transition-colors hover:text-fog-100 disabled:opacity-25"
+                          aria-label={`${p.name} nach oben`}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => move(i, 1)}
+                          disabled={i === players.length - 1}
+                          className="grid h-7 w-7 place-items-center rounded-lg text-fog-400 transition-colors hover:text-fog-100 disabled:opacity-25"
+                          aria-label={`${p.name} nach unten`}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          onClick={() => removeAt(i)}
+                          className="ml-1 p-1.5 text-fog-600 transition-colors hover:text-coral-400"
+                          aria-label={`${p.name} entfernen`}
+                        >
+                          <IconX />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           </>
