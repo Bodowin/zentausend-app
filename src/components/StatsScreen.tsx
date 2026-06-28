@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { aggregateStats, computeAwards, getEvents } from '../lib/storage'
+import { aggregateStats, computeAwards, computeForm, getEvents } from '../lib/storage'
 import { deleteGame, syncAndMerge } from '../lib/cloud'
 import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
@@ -63,6 +63,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const events = useMemo(() => getEvents(games), [games])
   const stats = useMemo(() => aggregateStats(games, filter || undefined), [games, filter])
   const awards = useMemo(() => computeAwards(games, filter || undefined), [games, filter])
+  const form = useMemo(() => computeForm(games, filter || undefined), [games, filter])
   const filtered = useMemo(
     () => (filter ? games.filter((g) => g.event === filter) : games),
     [games, filter],
@@ -207,6 +208,41 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             </section>
           )}
 
+          {/* Aktuelle Form – wer läuft gerade heiß? (letzte 5 Spiele, neuestes links) */}
+          {form.length > 0 && (
+            <section className="mb-6">
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">
+                Aktuelle Form
+              </h2>
+              <div className="overflow-hidden rounded-2xl border border-ink-700/80 bg-ink-850/80">
+                {form.map((f) => (
+                  <div
+                    key={f.name}
+                    className="flex items-center justify-between gap-3 border-b border-ink-800/60 px-4 py-2.5 last:border-0"
+                  >
+                    <span className="truncate text-sm font-semibold text-fog-100">{f.name}</span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {f.results.map((won, j) => (
+                        <span
+                          key={j}
+                          title={won ? 'Sieg' : 'verloren'}
+                          className={`grid h-5 w-5 place-items-center rounded-full text-[10px] font-black ${
+                            won
+                              ? 'bg-gold-500/20 text-gold-400'
+                              : 'bg-ink-800 text-fog-600'
+                          }`}
+                        >
+                          {won ? 'S' : '·'}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10px] text-fog-600">Letzte Spiele · neuestes links · S = Sieg</p>
+            </section>
+          )}
+
           {/* Ewige Bestenliste */}
           <section className="mb-6">
             <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">Ewige Bestenliste</h2>
@@ -223,7 +259,9 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                   className="grid grid-cols-[1.6fr_0.6fr_0.6fr_0.9fr] items-center gap-2 border-b border-ink-800/60 px-4 py-2.5 text-sm last:border-0"
                 >
                   <span className="flex items-center gap-2 font-semibold text-fog-100">
-                    {i === 0 && <IconTrophy className="h-3.5 w-3.5 text-gold-400" />}
+                    <span className="w-4 shrink-0 text-center text-xs">
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-fog-600">{i + 1}</span>}
+                    </span>
                     {s.name}
                     <span className="text-[10px] font-normal text-fog-600">{s.games} Sp.</span>
                   </span>
