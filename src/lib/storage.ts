@@ -179,6 +179,41 @@ export function computeGameAnalysis(game: GameRecord): GameAnalysis {
   }
 }
 
+export interface PlayerForm {
+  name: string
+  /** Letzte Spiele (neuestes zuerst): true = gewonnen, false = mitgespielt, verloren. */
+  results: boolean[]
+  games: number
+}
+
+/**
+ * „Aktuelle Form": pro Spieler die Ergebnisse der letzten `limit` Spiele
+ * (neuestes zuerst). Nur Spieler mit mindestens zwei Spielen, sortiert nach
+ * den meisten Siegen im betrachteten Fenster. Optional auf ein Event gefiltert.
+ */
+export function computeForm(history = getHistory(), event?: string, limit = 5): PlayerForm[] {
+  const games = (event ? history.filter((g) => g.event === event) : history)
+    .slice()
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+
+  const map = new Map<string, boolean[]>()
+  for (const g of games) {
+    for (const p of g.players) {
+      const arr = map.get(p.name) ?? []
+      if (arr.length < limit) arr.push(g.winner === p.name)
+      map.set(p.name, arr)
+    }
+  }
+
+  return [...map.entries()]
+    .map(([name, results]) => ({ name, results, games: results.length }))
+    .filter((f) => f.games >= 2)
+    .sort(
+      (a, b) =>
+        b.results.filter(Boolean).length - a.results.filter(Boolean).length || b.games - a.games,
+    )
+}
+
 export interface Award {
   key: string
   emoji: string
