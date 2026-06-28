@@ -15,6 +15,19 @@ import { SetupScreen } from './components/SetupScreen'
 import { GameScreen } from './components/GameScreen'
 import { StatsScreen } from './components/StatsScreen'
 import { IntroScreen } from './components/IntroScreen'
+import { Celebration, type CelebrationData } from './components/Celebration'
+import type { ScoreResult } from './lib/types'
+
+/** Highlight-Feier für besondere Würfe (Straße, Pasch, „Alles zählt"). */
+function specialCelebration(result: ScoreResult, isHotDice: boolean): CelebrationData | null {
+  if (!result.isValid) return null
+  if (result.label === 'Straße!') return { title: 'STRASSE!', sub: '1.500 Punkte' }
+  if (result.label === '3 Paare!') return { title: 'DREI PAARE!', sub: '1.500 Punkte' }
+  if (/er-Pasch!$/.test(result.label))
+    return { title: result.label.replace('!', '').toUpperCase(), sub: `${result.score.toLocaleString('de-DE')} Punkte` }
+  if (isHotDice) return { title: 'ALLES ZÄHLT!', sub: 'Heiße Würfel – weiter geht’s!' }
+  return null
+}
 
 const INTRO_KEY = '10k_seen_intro'
 
@@ -65,6 +78,7 @@ export function App() {
   // Virtueller Modus: aktuell geworfene, noch nicht ausgelegte Würfel.
   const [rolled, setRolled] = useState<number[]>([])
   const [toast, setToast] = useState('')
+  const [celebration, setCelebration] = useState<CelebrationData | null>(null)
   // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const UNDO_LIMIT = 30
@@ -303,14 +317,16 @@ export function App() {
     takeSnapshot('continue')
     buzz(10)
     const newKept = [...kept, ...dice]
+    const cel = specialCelebration(result, newKept.length === 6)
+    if (cel) setCelebration(cel)
     if (newKept.length === 6) {
       // Heiße Würfel: die ganze Hand ist gewertet → Punkte sichern, frisch starten.
       setAccumulated((a) => a + calculateScore(newKept).score)
       setKept([])
-      showToast('Heiße Würfel!')
+      if (!cel) showToast('Heiße Würfel!')
     } else {
       setKept(newKept)
-      showToast('Weiter!')
+      if (!cel) showToast('Weiter!')
     }
     setDice([])
     setRolled([]) // virtueller Modus: Rest neu würfeln
@@ -357,6 +373,8 @@ export function App() {
     if (pot === 0) return
     // Einstiegsregel: wer noch bei 0 steht, braucht mindestens ENTRY_MIN.
     if (players[idx].score === 0 && pot < ENTRY_MIN) return
+    const cel = specialCelebration(result, combined.length === 6)
+    if (cel) setCelebration(cel)
     takeSnapshot('bank')
     buzz(14)
     const newPlayers = players.map((p, i) =>
@@ -420,7 +438,8 @@ export function App() {
   }
 
   return (
-    <GameScreen
+    <>
+      <GameScreen
       players={players}
       idx={idx}
       round={round}
@@ -453,6 +472,8 @@ export function App() {
       onExit={exitToSetup}
       onNewGame={exitToSetup}
       onToggleDiceMode={toggleDiceMode}
-    />
+      />
+      {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
+    </>
   )
 }

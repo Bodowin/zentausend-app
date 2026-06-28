@@ -148,3 +148,66 @@ button {
   -webkit-backdrop-filter: blur(14px);
 }
 
+/* ===========================================================================
+   Ereignis-Feier (Straße, Pasch, „Alles zählt" …)
+   =========================================================================== */
+.celebr {
+  overflow: hidden;
+  animation: celebr-bg 1.7s ease-out forwards;
+}
+@keyframes celebr-bg {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.celebr-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 45% at 50% 45%, rgba(245, 184, 61, 0.28), transparent 70%);
+}
+.celebr-title {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2.5rem, 13vw, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 4px 28px rgba(245, 184, 61, 0.55), 0 2px 6px rgba(0, 0, 0, 0.5);
+  animation: celebr-pop 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.celebr-sub {
+  position: relative;
+  margin-top: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: #ffcb5c;
+  animation: celebr-pop 0.6s 0.1s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+@keyframes celebr-pop {
+  0% { transform: scale(0.6) translateY(8px); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.confetti {
+  position: absolute;
+  top: -8vh;
+  border-radius: 2px;
+  will-change: transform, opacity;
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+@keyframes confetti-fall {
+  0% { transform: translateY(0) rotate(var(--rot)); opacity: 1; }
+  100% { transform: translateY(115vh) rotate(calc(var(--rot) + 900deg)); opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti { display: none; }
+  .celebr-title, .celebr-sub { animation: none; }
+}
+
