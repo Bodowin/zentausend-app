@@ -3,6 +3,8 @@
 
 const KEY = '10k_prefs_v1'
 
+import type { DiceMode } from './types'
+
 export type DiceTheme = 'classic' | 'ruby' | 'onyx' | 'sky' | 'emerald'
 
 export interface Prefs {
@@ -10,9 +12,21 @@ export interface Prefs {
   sound: boolean
   /** Optik der virtuellen Würfel. */
   diceTheme: DiceTheme
+  /** Zuletzt genutzter Würfelmodus (Vorauswahl im Startbildschirm). */
+  defaultDiceMode: DiceMode
+  /** „X ist dran"-Einblendung beim Spielerwechsel. */
+  handoff: boolean
+  /** Mini-Punktekurve in den Spieler-Kacheln. */
+  miniChart: boolean
 }
 
-const DEFAULTS: Prefs = { sound: true, diceTheme: 'classic' }
+const DEFAULTS: Prefs = {
+  sound: true,
+  diceTheme: 'classic',
+  defaultDiceMode: 'real',
+  handoff: true,
+  miniChart: true,
+}
 
 export function getPrefs(): Prefs {
   try {

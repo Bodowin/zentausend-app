@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { DiceMode, Player } from '../lib/types'
 import { getEvents } from '../lib/storage'
 import { getRoster, addToRoster, removeFromRoster, renameInRoster } from '../lib/roster'
+import { getPrefs, setPrefs } from '../lib/prefs'
 import { hasCliqueCode } from '../lib/cliqueCode'
 import { cloudEnabled } from '../lib/supabase'
 import {
@@ -69,7 +70,7 @@ export function SetupScreen({
   const [guest, setGuest] = useState('')
   const [event, setEvent] = useState(initialEvent ?? '')
   const [testMode, setTestMode] = useState(false)
-  const [diceMode, setDiceMode] = useState<DiceMode>(initialDiceMode ?? 'real')
+  const [diceMode, setDiceMode] = useState<DiceMode>(initialDiceMode ?? getPrefs().defaultDiceMode)
   const [goalScore, setGoalScore] = useState(initialGoalScore ?? 10000)
   const [entryMin, setEntryMin] = useState(initialEntryMin ?? 350)
   const [optsOpen, setOptsOpen] = useState(false)
@@ -480,7 +481,10 @@ export function SetupScreen({
             <button
               key={m.v}
               type="button"
-              onClick={() => setDiceMode(m.v)}
+              onClick={() => {
+                setDiceMode(m.v)
+                setPrefs({ defaultDiceMode: m.v }) // Wahl merken
+              }}
               className={`rounded-xl border-2 py-2 text-sm font-bold transition-all ${
                 diceMode === m.v
                   ? 'border-gold-500/60 bg-gold-500/10 text-gold-400'

@@ -96,6 +96,40 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             </span>
           </button>
 
+          {/* „X ist dran"-Übergabe */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={prefs.handoff}
+            onClick={() => updatePrefs({ handoff: !prefs.handoff })}
+            className="mt-4 flex w-full items-center justify-between"
+          >
+            <span className="flex flex-col text-left">
+              <span className="text-sm font-bold text-fog-200">„X ist dran"-Übergabe</span>
+              <span className="text-[11px] text-fog-500">Kurze Einblendung beim Spielerwechsel</span>
+            </span>
+            <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.handoff ? 'bg-mint-500' : 'bg-ink-600'}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${prefs.handoff ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+            </span>
+          </button>
+
+          {/* Mini-Punktekurve */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={prefs.miniChart}
+            onClick={() => updatePrefs({ miniChart: !prefs.miniChart })}
+            className="mt-4 flex w-full items-center justify-between"
+          >
+            <span className="flex flex-col text-left">
+              <span className="text-sm font-bold text-fog-200">Mini-Punktekurve</span>
+              <span className="text-[11px] text-fog-500">Kleiner Verlauf in den Spieler-Kacheln</span>
+            </span>
+            <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.miniChart ? 'bg-mint-500' : 'bg-ink-600'}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${prefs.miniChart ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+            </span>
+          </button>
+
           <div className="mt-4">
             <span className="text-sm font-bold text-fog-200">Würfel-Design</span>
             <div className="mt-2 flex flex-wrap gap-2">

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState, Turn } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
-import { explainRisk, recommendAction } from '../lib/risk'
+import { computeRisk, explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
+import { getPrefs } from '../lib/prefs'
 import { shareResultImage } from '../lib/shareImage'
 import DiceArena from './DiceArena'
 import {
@@ -92,6 +93,8 @@ export function GameScreen(p: Props) {
   } = p
 
   const [showRiskInfo, setShowRiskInfo] = useState(false)
+  // Wurfphase der Schale, um den Coach schon während des Drehens zu zeigen.
+  const [bowlPhase, setBowlPhase] = useState<'ready' | 'rolling' | 'landed'>('ready')
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
@@ -109,6 +112,15 @@ export function GameScreen(p: Props) {
   const leader = lastChance ? [...players].sort((a, b) => b.score - a.score)[0] : null
   const beatScore = effectiveTarget - 1
 
+  // Risiko schon WÄHREND des virtuellen Wurfs zeigen (Würfel drehen/fallen, noch
+  // nichts ausgewählt) → man kann sich rechtzeitig fürs Sichern entscheiden.
+  const preThrow =
+    diceMode === 'virtual' &&
+    dice.length === 0 &&
+    kept.length < 6 &&
+    (bowlPhase === 'ready' || bowlPhase === 'rolling')
+  const meterRisk = preThrow ? computeRisk(inHand, result.hasJokerTriple) : risk
+
   // Risiko-Coach: Empfehlung, die nicht nur die Bust-Chance, sondern auch den
   // Topf-Einsatz berücksichtigt (großer Topf → vorsichtiger raten).
   const TONE_CLASS: Record<CoachTone, string> = {
@@ -118,10 +130,10 @@ export function GameScreen(p: Props) {
     danger: 'text-coral-400',
   }
   const coach: { text: string; tone: string } | null =
-    !risk || totalPotential === 0
+    !meterRisk || totalPotential === 0
       ? null
       : (() => {
-          const a = recommendAction(risk.pct, totalPotential, canBank, neededAfterBank <= 0)
+          const a = recommendAction(meterRisk.pct, totalPotential, canBank, neededAfterBank <= 0)
           return { text: a.text, tone: TONE_CLASS[a.tone] }
         })()
 
@@ -130,6 +142,7 @@ export function GameScreen(p: Props) {
   // macht diese Augenzahl zur Rettung – das hebt der „Pasch"-Hinweis hervor.
   // Gemeinsame y-Skala für die Mini-Punktekurven (höchster Punktestand).
   const maxScore = Math.max(1, ...players.map((pl) => pl.score))
+  const showMiniChart = getPrefs().miniChart
   const laidOut = [...kept, ...dice]
   const laidGroups = [1, 2, 3, 4, 5, 6]
     .map((value) => ({ value, count: laidOut.filter((x) => x === value).length }))
@@ -240,7 +253,9 @@ export function GameScreen(p: Props) {
                 {fmt(pl.score)}
               </span>
               <span className="mt-0.5 text-[9px] text-fog-600">{pl.busts} Nieten</span>
-              <Sparkline turns={turns} name={pl.name} maxScore={maxScore} color={playerColor(pl.name)} />
+              {showMiniChart && (
+                <Sparkline turns={turns} name={pl.name} maxScore={maxScore} color={playerColor(pl.name)} />
+              )}
             </div>
           )
         })}
@@ -355,6 +370,7 @@ export function GameScreen(p: Props) {
                   selectable
                   invalidValues={result.invalidDice}
                   onSelectionChange={p.onBowlSelect}
+                  onPhaseChange={setBowlPhase}
                 />
               )}
               {/* kurzer Hinweis-Toast (z. B. „Weiter!") oben mittig */}
@@ -451,7 +467,7 @@ export function GameScreen(p: Props) {
         {/* Risiko-Meter + Coach – zwei Zeilen, damit die Empfehlung immer voll
             sichtbar ist und nichts abgeschnitten wird. */}
         <div className="mb-3">
-          {risk && (
+          {meterRisk && (
             <div className="rounded-xl border border-ink-800 bg-ink-900/60 px-3 py-2 animate-pop">
               {/* Zeile 1: Label + Info (links) · Empfehlung des Coaches (rechts) */}
               <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -461,7 +477,7 @@ export function GameScreen(p: Props) {
                   className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-fog-500 transition-colors hover:text-fog-300"
                   aria-label="Wahrscheinlichkeit erklären"
                 >
-                  {risk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
+                  {preThrow ? 'Nächster Wurf' : meterRisk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
                   <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-fog-600 text-[8px] font-black not-italic text-fog-500">
                     i
                   </span>
@@ -473,10 +489,10 @@ export function GameScreen(p: Props) {
               {/* Zeile 2: Balken · Bewertung · Prozent */}
               <div className="flex items-center gap-2.5">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-800">
-                  <div className={`h-full rounded-full ${risk.bar}`} style={{ width: `${risk.pct}%` }} />
+                  <div className={`h-full rounded-full ${meterRisk.bar}`} style={{ width: `${meterRisk.pct}%` }} />
                 </div>
-                <span className={`shrink-0 text-xs font-bold ${risk.color}`}>{risk.label}</span>
-                <span className="shrink-0 text-xs font-bold tabular-nums text-fog-400">{risk.pct.toFixed(0)}%</span>
+                <span className={`shrink-0 text-xs font-bold ${meterRisk.color}`}>{meterRisk.label}</span>
+                <span className="shrink-0 text-xs font-bold tabular-nums text-fog-400">{meterRisk.pct.toFixed(0)}%</span>
               </div>
             </div>
           )}
@@ -591,7 +607,7 @@ export function GameScreen(p: Props) {
       </div>
 
       {/* Risiko-Erklärung (optionaler Info-Knopf) */}
-      {showRiskInfo && risk && (
+      {showRiskInfo && meterRisk && (
         <div
           className="glass absolute inset-0 z-50 flex items-center justify-center p-6 animate-pop"
           onClick={() => setShowRiskInfo(false)}
@@ -602,15 +618,15 @@ export function GameScreen(p: Props) {
           >
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-black text-fog-100">
-                Warum {risk.pct.toFixed(0)} %?
+                Warum {meterRisk.pct.toFixed(0)} %?
               </h3>
-              <span className={`rounded-lg px-2 py-1 text-xs font-bold ${risk.color}`}>{risk.label}</span>
+              <span className={`rounded-lg px-2 py-1 text-xs font-bold ${meterRisk.color}`}>{meterRisk.label}</span>
             </div>
             <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-ink-800">
-              <div className={`h-full rounded-full ${risk.bar}`} style={{ width: `${risk.pct}%` }} />
+              <div className={`h-full rounded-full ${meterRisk.bar}`} style={{ width: `${meterRisk.pct}%` }} />
             </div>
             <ul className="space-y-2.5 text-sm leading-snug text-fog-300">
-              {explainRisk(risk).map((line, i) => (
+              {explainRisk(meterRisk).map((line, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="mt-0.5 text-gold-500">•</span>
                   <span>{line}</span>
