@@ -24,17 +24,29 @@ const CODE_DISMISS_KEY = '10k_code_dismissed'
 
 interface Props {
   makePlayer: (name: string) => Player
-  onStart: (players: Player[], event: string, testMode: boolean, diceMode: DiceMode) => void
+  onStart: (
+    players: Player[],
+    event: string,
+    testMode: boolean,
+    diceMode: DiceMode,
+    goalScore: number,
+    entryMin: number,
+  ) => void
   onShowStats: () => void
   onShowHelp: () => void
   resumable: ActiveGame | null
   onResume: (g: ActiveGame) => void
   onDiscardResume: () => void
-  /** Vorbelegung (z. B. Revanche): Kader, Anlass und Würfel-Modus. */
+  /** Vorbelegung (z. B. Revanche): Kader, Anlass, Würfel-Modus, Ziel, Einstieg. */
   initialPlayers?: Player[]
   initialEvent?: string
   initialDiceMode?: DiceMode
+  initialGoalScore?: number
+  initialEntryMin?: number
 }
+
+const GOAL_PRESETS = [5000, 10000, 15000]
+const ENTRY_PRESETS = [0, 350, 500, 1000]
 
 export function SetupScreen({
   makePlayer,
@@ -47,6 +59,8 @@ export function SetupScreen({
   initialPlayers,
   initialEvent,
   initialDiceMode,
+  initialGoalScore,
+  initialEntryMin,
 }: Props) {
   const [players, setPlayers] = useState<Player[]>(() => initialPlayers ?? [])
   const [roster, setRoster] = useState<string[]>(() => getRoster())
@@ -56,6 +70,8 @@ export function SetupScreen({
   const [event, setEvent] = useState(initialEvent ?? '')
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>(initialDiceMode ?? 'real')
+  const [goalScore, setGoalScore] = useState(initialGoalScore ?? 10000)
+  const [entryMin, setEntryMin] = useState(initialEntryMin ?? 350)
   const [optsOpen, setOptsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [codeDismissed, setCodeDismissed] = useState(() => {
@@ -351,7 +367,14 @@ export function SetupScreen({
           <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-fog-200">
             <IconTag className="h-4 w-4 shrink-0 text-gold-500" /> Optionen
             <span className="truncate text-xs font-normal text-fog-500">
-              {[event && `„${event}"`, testMode && 'Testspiel'].filter(Boolean).join(' · ') || 'Anlass · Testspiel'}
+              {[
+                event && `„${event}"`,
+                goalScore !== 10000 && `Ziel ${goalScore.toLocaleString('de-DE')}`,
+                entryMin !== 350 && (entryMin === 0 ? 'kein Einstieg' : `Einstieg ${entryMin}`),
+                testMode && 'Testspiel',
+              ]
+                .filter(Boolean)
+                .join(' · ') || 'Anlass · Ziel · Testspiel'}
             </span>
           </span>
           <span className={`shrink-0 text-fog-500 transition-transform ${optsOpen ? 'rotate-180' : ''}`}>▾</span>
@@ -380,6 +403,48 @@ export function SetupScreen({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Ziel-Punktzahl */}
+            <div>
+              <div className="mb-1.5 text-xs font-semibold text-fog-400">Ziel-Punktzahl</div>
+              <div className="flex gap-2">
+                {GOAL_PRESETS.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGoalScore(g)}
+                    className={`flex-1 rounded-xl border px-2 py-2 text-sm font-bold transition-colors ${
+                      goalScore === g
+                        ? 'border-gold-500/60 bg-gold-500/10 text-gold-400'
+                        : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600'
+                    }`}
+                  >
+                    {g.toLocaleString('de-DE')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Einstieg (Mindestpunkte fürs erste Sichern) */}
+            <div>
+              <div className="mb-1.5 text-xs font-semibold text-fog-400">Einstieg</div>
+              <div className="flex gap-2">
+                {ENTRY_PRESETS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setEntryMin(e)}
+                    className={`flex-1 rounded-xl border px-2 py-2 text-sm font-bold transition-colors ${
+                      entryMin === e
+                        ? 'border-gold-500/60 bg-gold-500/10 text-gold-400'
+                        : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600'
+                    }`}
+                  >
+                    {e === 0 ? 'Aus' : e}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button
@@ -427,7 +492,7 @@ export function SetupScreen({
           ))}
         </div>
         <button
-          onClick={() => onStart(players, event, testMode, diceMode)}
+          onClick={() => onStart(players, event, testMode, diceMode, goalScore, entryMin)}
           disabled={players.length < 2}
           className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
         >

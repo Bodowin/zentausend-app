@@ -52,8 +52,17 @@ export function App() {
   const [winner, setWinner] = useState<Player | null>(null)
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
+  // Konfigurierbares Ziel + Einstiegsgrenze (Standard: 10.000 / 350).
+  const [goalScore, setGoalScore] = useState(WINNING_SCORE)
+  const [entryMin, setEntryMin] = useState(ENTRY_MIN)
   // Vorbelegung des Setup-Screens für eine Revanche (gleicher Kader, Sieger beginnt).
-  const [setupSeed, setSetupSeed] = useState<{ players: Player[]; event: string; diceMode: DiceMode } | null>(null)
+  const [setupSeed, setSetupSeed] = useState<{
+    players: Player[]
+    event: string
+    diceMode: DiceMode
+    goalScore: number
+    entryMin: number
+  } | null>(null)
 
   // --- Zugzustand ---
   // Bereits ausgelegte Würfel dieser "Hand" (über mehrere Würfe hinweg, bis
@@ -115,6 +124,8 @@ export function App() {
         event,
         testMode,
         diceMode,
+        goalScore,
+        entryMin,
         kept,
         dice,
         accumulated,
@@ -133,6 +144,8 @@ export function App() {
     event,
     testMode,
     diceMode,
+    goalScore,
+    entryMin,
     kept,
     dice,
     accumulated,
@@ -146,11 +159,20 @@ export function App() {
   }, [])
 
   // --- Setup ---
-  const startGame = (chosen: Player[], evt: string, test: boolean, mode: DiceMode) => {
+  const startGame = (
+    chosen: Player[],
+    evt: string,
+    test: boolean,
+    mode: DiceMode,
+    goal: number,
+    entry: number,
+  ) => {
     setPlayers(chosen.map((p) => ({ ...p, score: 0, busts: 0 })))
     setEvent(evt.trim())
     setTestMode(test)
     setDiceMode(mode)
+    setGoalScore(goal)
+    setEntryMin(entry)
     setRolled([])
     setThrown([])
     setIdx(0)
@@ -188,7 +210,7 @@ export function App() {
       busts: 0,
     }))
     clearActiveGame()
-    setSetupSeed({ players: ordered, event, diceMode })
+    setSetupSeed({ players: ordered, event, diceMode, goalScore, entryMin })
     setPhase('setup')
     setWinner(null)
     setResumable(null)
@@ -208,6 +230,8 @@ export function App() {
     setTarget(g.target)
     setEvent(g.event)
     setTestMode(g.testMode)
+    setGoalScore(g.goalScore ?? WINNING_SCORE)
+    setEntryMin(g.entryMin ?? ENTRY_MIN)
     setKept(g.kept ?? [])
     setAccumulated(g.accumulated)
     setTurns(g.turns ?? [])
@@ -317,7 +341,7 @@ export function App() {
       }
 
       // phase === 'active'
-      if (justScored >= WINNING_SCORE) {
+      if (justScored >= goalScore) {
         if (idx === last) return finish()
         showToast('Letzte Runde!')
         return advance(idx + 1, 'lastChance', round, justScored)
@@ -327,7 +351,7 @@ export function App() {
       const nextRound = nextIdx === 0 ? round + 1 : round
       return advance(nextIdx, 'active', nextRound, target)
     },
-    [phase, idx, target, round, event, testMode, showToast],
+    [phase, idx, target, round, event, testMode, goalScore, showToast],
   )
 
   // --- Aktionen ---
@@ -403,8 +427,8 @@ export function App() {
     if (!result.isValid) return
     const pot = accumulated + result.score
     if (pot === 0) return
-    // Einstiegsregel: wer noch bei 0 steht, braucht mindestens ENTRY_MIN.
-    if (players[idx].score === 0 && pot < ENTRY_MIN) return
+    // Einstiegsregel: wer noch bei 0 steht, braucht mindestens entryMin.
+    if (players[idx].score === 0 && pot < entryMin) return
     const cel = celebrationFor(combined, combined.length === 6)
     if (cel) setCelebration(cel)
     takeSnapshot('bank')
@@ -429,7 +453,7 @@ export function App() {
 
   // --- Abgeleitete Werte ---
   const current = players[idx]
-  const effectiveTarget = phase === 'lastChance' ? target + 1 : WINNING_SCORE
+  const effectiveTarget = phase === 'lastChance' ? target + 1 : goalScore
   const neededForWin = current ? Math.max(0, effectiveTarget - current.score) : 0
   const totalPotential = accumulated + (result.isValid ? result.score : 0)
 
@@ -460,6 +484,8 @@ export function App() {
           initialPlayers={setupSeed?.players}
           initialEvent={setupSeed?.event}
           initialDiceMode={setupSeed?.diceMode}
+          initialGoalScore={setupSeed?.goalScore}
+          initialEntryMin={setupSeed?.entryMin}
         />
         {showIntro && <IntroScreen onClose={closeIntro} />}
       </>
@@ -484,6 +510,8 @@ export function App() {
       neededForWin={neededForWin}
       testMode={testMode}
       diceMode={diceMode}
+      goalScore={goalScore}
+      entryMin={entryMin}
       kept={kept}
       dice={dice}
       rolled={rolled}
