@@ -12,6 +12,7 @@ import { saveGame } from './lib/storage'
 import { pushGame } from './lib/cloud'
 import { buzz } from './lib/haptics'
 import { playerColor } from './lib/colors'
+import { getPrefs } from './lib/prefs'
 import { SetupScreen } from './components/SetupScreen'
 import { GameScreen } from './components/GameScreen'
 import { StatsScreen } from './components/StatsScreen'
@@ -341,7 +342,7 @@ export function App() {
         setDice([])
         setRolled([])
         setThrown([])
-        setHandoff(nextPlayers[nextIdx].name) // „X ist dran" kurz einblenden
+        if (getPrefs().handoff) setHandoff(nextPlayers[nextIdx].name) // „X ist dran" (optional)
       }
 
       if (phase === 'lastChance') {
