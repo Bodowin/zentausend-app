@@ -120,6 +120,14 @@ export function GameScreen(p: Props) {
           return { text: a.text, tone: TONE_CLASS[a.tone] }
         })()
 
+  // Was wurde in dieser 6er-Hand insgesamt schon ausgelegt? Nach Augenzahl
+  // gruppiert (kept = frühere Würfe, dice = aktuelle Auswahl). Ein Drilling+
+  // macht diese Augenzahl zur Rettung – das hebt der „Pasch"-Hinweis hervor.
+  const laidOut = [...kept, ...dice]
+  const laidGroups = [1, 2, 3, 4, 5, 6]
+    .map((value) => ({ value, count: laidOut.filter((x) => x === value).length }))
+    .filter((g) => g.count > 0)
+
   return (
     <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb">
       {/* Kopfzeile */}
@@ -269,37 +277,54 @@ export function GameScreen(p: Props) {
 
         {diceMode === 'virtual' ? (
           /* Virtuell: Würfelschale auf EINEM Screen – Würfel direkt antippen. */
-          <div className="relative min-h-[260px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
-            {thrown.length > 0 && (
-              <DiceArena
-                key={throwSeq}
-                values={thrown}
-                selectable
-                invalidValues={result.invalidDice}
-                onSelectionChange={p.onBowlSelect}
-                onPhaseChange={setBowlPhase}
-              />
-            )}
-            {/* Overlay oben (erst wenn gelandet): ausgelegte (gold) + Live-Punkte */}
-            <div
-              className={`pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-1.5 p-2.5 transition-opacity duration-200 ${
-                bowlPhase === 'landed' ? 'opacity-100' : 'opacity-0'
-              }`}
-            >
-              {kept.length > 0 && (
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {kept.map((val, i) => (
+          <>
+            {/* Immer sichtbar: was in dieser Hand schon ausgelegt ist (gruppiert). */}
+            <div className="mb-2 flex min-h-[30px] flex-wrap items-center justify-center gap-1.5">
+              {laidGroups.length === 0 ? (
+                <span className="text-[11px] italic text-fog-600">Noch nichts ausgelegt</span>
+              ) : (
+                laidGroups.map((g) => {
+                  const bad = result.invalidDice.includes(g.value)
+                  const pasch = g.count >= 3 && !bad
+                  return (
                     <span
-                      key={`k${i}`}
-                      className="grid h-9 w-9 place-items-center rounded-lg border-b-2 border-gold-600/70 bg-gold-300/90 text-base font-bold text-ink-900 shadow"
+                      key={g.value}
+                      className={`flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-bold ${
+                        bad
+                          ? 'bg-coral-400 text-white'
+                          : pasch
+                            ? 'bg-gold-400 text-ink-900 ring-2 ring-gold-300/80'
+                            : 'bg-gold-300/90 text-ink-900'
+                      }`}
                     >
-                      {val}
+                      {g.count > 1 && <span className="text-xs opacity-70">{g.count}×</span>}
+                      {g.value}
+                      {pasch && <span className="ml-0.5 text-[8px] font-black uppercase tracking-wide">Pasch</span>}
                     </span>
-                  ))}
-                </div>
+                  )
+                })
               )}
+            </div>
+
+            <div className="relative min-h-[230px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
+              {thrown.length > 0 && (
+                <DiceArena
+                  key={throwSeq}
+                  values={thrown}
+                  selectable
+                  invalidValues={result.invalidDice}
+                  onSelectionChange={p.onBowlSelect}
+                  onPhaseChange={setBowlPhase}
+                />
+              )}
+              {/* Overlay oben (erst wenn gelandet): Live-Punkte */}
               <div
-                key={result.score}
+                className={`pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-1.5 p-2.5 transition-opacity duration-200 ${
+                  bowlPhase === 'landed' ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                <div
+                  key={result.score}
                 className={`font-mono text-5xl font-black tracking-tighter drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)] animate-pop ${
                   result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
                 }`}
@@ -315,8 +340,9 @@ export function GameScreen(p: Props) {
                   <div className="text-xs font-bold uppercase tracking-widest text-gold-400 animate-pop">{toast}</div>
                 )
               )}
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <>
             {/* Würfel-Ablage (echte Würfel: Zahlen-Pad) */}
