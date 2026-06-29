@@ -84,9 +84,6 @@ export function GameScreen(p: Props) {
   } = p
 
   const [showRiskInfo, setShowRiskInfo] = useState(false)
-  // Wurfphase der Schale – das Punkte/Ablage-Overlay erst beim Liegen zeigen,
-  // damit es die kreiselnden Würfel nicht überlagert.
-  const [bowlPhase, setBowlPhase] = useState<'ready' | 'rolling' | 'landed'>('ready')
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
@@ -278,35 +275,62 @@ export function GameScreen(p: Props) {
         {diceMode === 'virtual' ? (
           /* Virtuell: Würfelschale auf EINEM Screen – Würfel direkt antippen. */
           <>
-            {/* Immer sichtbar: was in dieser Hand schon ausgelegt ist (gruppiert). */}
-            <div className="mb-2 flex min-h-[30px] flex-wrap items-center justify-center gap-1.5">
-              {laidGroups.length === 0 ? (
-                <span className="text-[11px] italic text-fog-600">Noch nichts ausgelegt</span>
-              ) : (
-                laidGroups.map((g) => {
-                  const bad = result.invalidDice.includes(g.value)
-                  const pasch = g.count >= 3 && !bad
-                  return (
-                    <span
-                      key={g.value}
-                      className={`flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-bold ${
-                        bad
-                          ? 'bg-coral-400 text-white'
-                          : pasch
-                            ? 'bg-gold-400 text-ink-900 ring-2 ring-gold-300/80'
-                            : 'bg-gold-300/90 text-ink-900'
-                      }`}
-                    >
-                      {g.count > 1 && <span className="text-xs opacity-70">{g.count}×</span>}
-                      {g.value}
-                      {pasch && <span className="ml-0.5 text-[8px] font-black uppercase tracking-wide">Pasch</span>}
-                    </span>
-                  )
-                })
-              )}
+            {/* Kopfzeile: Punkte dieser Auswahl (links) · Zug-Gesamt (rechts) ·
+                darunter die ausgelegten Würfel gruppiert. */}
+            <div className="mb-2 rounded-2xl border border-ink-800 bg-ink-900/40 px-3 py-2">
+              <div className="flex items-end justify-between">
+                <div className="flex flex-col leading-none">
+                  <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-fog-500">
+                    Diese Würfel
+                  </span>
+                  <span
+                    key={result.score}
+                    className={`font-mono text-3xl font-black leading-none animate-pop ${
+                      result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
+                    }`}
+                  >
+                    +{fmt(result.score)}
+                  </span>
+                </div>
+                <div className="flex flex-col items-end leading-none">
+                  <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-fog-500">
+                    Zug gesamt
+                  </span>
+                  <span className="font-mono text-2xl font-black leading-none text-gold-400">
+                    {fmt(totalPotential)}
+                  </span>
+                </div>
+              </div>
+              {/* Ausgelegte Würfel, gruppiert (gold = zählt, rot = ungültig, Pasch markiert). */}
+              <div className="mt-2 flex min-h-[28px] flex-wrap items-center gap-1.5">
+                {laidGroups.length === 0 ? (
+                  <span className="text-[11px] italic text-fog-600">Noch nichts ausgelegt</span>
+                ) : (
+                  laidGroups.map((g) => {
+                    const bad = result.invalidDice.includes(g.value)
+                    const pasch = g.count >= 3 && !bad
+                    return (
+                      <span
+                        key={g.value}
+                        className={`flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-bold ${
+                          bad
+                            ? 'bg-coral-400 text-white'
+                            : pasch
+                              ? 'bg-gold-400 text-ink-900 ring-2 ring-gold-300/80'
+                              : 'bg-gold-300/90 text-ink-900'
+                        }`}
+                      >
+                        {g.count > 1 && <span className="text-xs opacity-70">{g.count}×</span>}
+                        {g.value}
+                        {pasch && <span className="ml-0.5 text-[8px] font-black uppercase tracking-wide">Pasch</span>}
+                      </span>
+                    )
+                  })
+                )}
+              </div>
             </div>
 
-            <div className="relative min-h-[230px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
+            <div className="relative min-h-[200px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
               {thrown.length > 0 && (
                 <DiceArena
                   key={throwSeq}
@@ -314,33 +338,14 @@ export function GameScreen(p: Props) {
                   selectable
                   invalidValues={result.invalidDice}
                   onSelectionChange={p.onBowlSelect}
-                  onPhaseChange={setBowlPhase}
                 />
               )}
-              {/* Overlay oben (erst wenn gelandet): Live-Punkte */}
-              <div
-                className={`pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-1.5 p-2.5 transition-opacity duration-200 ${
-                  bowlPhase === 'landed' ? 'opacity-100' : 'opacity-0'
-                }`}
-              >
-                <div
-                  key={result.score}
-                className={`font-mono text-5xl font-black tracking-tighter drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)] animate-pop ${
-                  result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
-                }`}
-              >
-                +{fmt(result.score)}
-              </div>
-              {totalPotential > 0 && result.isValid ? (
-                <div className="text-[10px] uppercase tracking-widest text-fog-300">
-                  Gesamt im Zug: <span className="font-bold text-fog-100">{fmt(totalPotential)}</span>
+              {/* kurzer Hinweis-Toast (z. B. „Weiter!") oben mittig */}
+              {toast && (
+                <div className="pointer-events-none absolute inset-x-0 top-2 z-20 text-center text-xs font-bold uppercase tracking-widest text-gold-400 animate-pop">
+                  {toast}
                 </div>
-              ) : (
-                toast && (
-                  <div className="text-xs font-bold uppercase tracking-widest text-gold-400 animate-pop">{toast}</div>
-                )
               )}
-              </div>
             </div>
           </>
         ) : (
@@ -426,35 +431,36 @@ export function GameScreen(p: Props) {
           </>
         )}
 
-        {/* Risiko-Meter + Coach */}
-        <div className="mb-3 h-12">
+        {/* Risiko-Meter + Coach – zwei Zeilen, damit die Empfehlung immer voll
+            sichtbar ist und nichts abgeschnitten wird. */}
+        <div className="mb-3">
           {risk && (
-            <div className="flex items-center gap-3 rounded-xl border border-ink-800 bg-ink-900/60 p-2.5 animate-pop">
-              <button
-                type="button"
-                onClick={() => setShowRiskInfo(true)}
-                className="flex w-20 items-center gap-1 text-left text-[10px] uppercase leading-tight text-fog-500 transition-colors hover:text-fog-300"
-                aria-label="Wahrscheinlichkeit erklären"
-              >
-                {risk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
-                <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-fog-600 text-[8px] font-black not-italic text-fog-500">
-                  i
-                </span>
-              </button>
-              <div className="flex-1">
-                <div className="mb-1 flex justify-between text-xs font-bold">
-                  <span className={risk.color}>{risk.label}</span>
-                  <span className="text-fog-400">{risk.pct.toFixed(0)}%</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">
+            <div className="rounded-xl border border-ink-800 bg-ink-900/60 px-3 py-2 animate-pop">
+              {/* Zeile 1: Label + Info (links) · Empfehlung des Coaches (rechts) */}
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRiskInfo(true)}
+                  className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-fog-500 transition-colors hover:text-fog-300"
+                  aria-label="Wahrscheinlichkeit erklären"
+                >
+                  {risk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
+                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-fog-600 text-[8px] font-black not-italic text-fog-500">
+                    i
+                  </span>
+                </button>
+                {coach && (
+                  <span className={`text-right text-xs font-bold leading-tight ${coach.tone}`}>{coach.text}</span>
+                )}
+              </div>
+              {/* Zeile 2: Balken · Bewertung · Prozent */}
+              <div className="flex items-center gap-2.5">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-800">
                   <div className={`h-full rounded-full ${risk.bar}`} style={{ width: `${risk.pct}%` }} />
                 </div>
+                <span className={`shrink-0 text-xs font-bold ${risk.color}`}>{risk.label}</span>
+                <span className="shrink-0 text-xs font-bold tabular-nums text-fog-400">{risk.pct.toFixed(0)}%</span>
               </div>
-              {coach && (
-                <div className={`w-16 text-right text-[10px] font-bold leading-tight ${coach.tone}`}>
-                  {coach.text}
-                </div>
-              )}
             </div>
           )}
         </div>
