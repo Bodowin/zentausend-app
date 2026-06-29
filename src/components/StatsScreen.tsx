@@ -3,7 +3,8 @@ import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeN
 import { deleteGame, syncAndMerge } from '../lib/cloud'
 import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
-import type { GameRecord } from '../lib/types'
+import type { GameRecord, PlayerStats } from '../lib/types'
+import { playerColor } from '../lib/colors'
 import { IconBack, IconChart, IconTrash, IconTrophy } from './Icons'
 import { SettingsModal } from './SettingsModal'
 import { AnalysisScreen } from './AnalysisScreen'
@@ -190,6 +191,9 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         </div>
       ) : (
         <>
+          {/* Event-Podest: nur wenn ein Anlass gefiltert ist */}
+          {filter !== '' && stats.length > 0 && <EventPodium event={filter} top={stats.slice(0, 3)} />}
+
           {/* Awards & Rekorde */}
           {awards.length > 0 && (
             <section className="mb-6">
@@ -330,6 +334,40 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         </>
       )}
     </div>
+  )
+}
+
+function EventPodium({ event, top }: { event: string; top: PlayerStats[] }) {
+  // Reihenfolge auf dem Treppchen: 2. links, 1. Mitte (höchste Stufe), 3. rechts.
+  const steps = [
+    { p: top[1], rank: 2, medal: '🥈', h: 'h-16' },
+    { p: top[0], rank: 1, medal: '🥇', h: 'h-24' },
+    { p: top[2], rank: 3, medal: '🥉', h: 'h-11' },
+  ].filter((s) => s.p)
+
+  return (
+    <section className="mb-6">
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-fog-500">
+        🏆 {event} – Podest
+      </h2>
+      <div className="flex items-end justify-center gap-2 rounded-2xl border border-ink-700/70 bg-ink-850/60 px-3 pt-3">
+        {steps.map(({ p, rank, medal, h }) => (
+          <div key={rank} className="flex w-1/3 max-w-[120px] flex-col items-center">
+            <span className="text-2xl">{medal}</span>
+            <span className="max-w-full truncate text-sm font-bold text-fog-100">{p!.name}</span>
+            <span className="mb-1 text-[11px] font-semibold text-gold-400">
+              {p!.wins} {p!.wins === 1 ? 'Sieg' : 'Siege'}
+            </span>
+            <div
+              className={`grid w-full place-items-center rounded-t-xl ${h}`}
+              style={{ background: `linear-gradient(to top, ${playerColor(p!.name)}22, ${playerColor(p!.name)}66)` }}
+            >
+              <span className="font-display text-2xl font-black text-fog-100">{rank}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
