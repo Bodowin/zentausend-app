@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
+import type { DiceMode, Player, ScoreResult, GameState, Turn } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
 import { explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
@@ -32,6 +32,8 @@ interface Props {
   kept: number[]
   dice: number[]
   rolled: number[]
+  /** Zug-für-Zug-Verlauf für die Mini-Punktekurve je Spieler. */
+  turns: Turn[]
   /** Virtueller Modus: Augen des aktuellen Wurfs (stabile Reihenfolge). */
   thrown: number[]
   /** Hochzählender Wurf-Zähler – setzt die Schale je Wurf frisch auf. */
@@ -76,6 +78,7 @@ export function GameScreen(p: Props) {
     kept,
     dice,
     rolled,
+    turns,
     thrown,
     throwSeq,
     inHand,
@@ -125,6 +128,8 @@ export function GameScreen(p: Props) {
   // Was wurde in dieser 6er-Hand insgesamt schon ausgelegt? Nach Augenzahl
   // gruppiert (kept = frühere Würfe, dice = aktuelle Auswahl). Ein Drilling+
   // macht diese Augenzahl zur Rettung – das hebt der „Pasch"-Hinweis hervor.
+  // Gemeinsame y-Skala für die Mini-Punktekurven (höchster Punktestand).
+  const maxScore = Math.max(1, ...players.map((pl) => pl.score))
   const laidOut = [...kept, ...dice]
   const laidGroups = [1, 2, 3, 4, 5, 6]
     .map((value) => ({ value, count: laidOut.filter((x) => x === value).length }))
@@ -235,6 +240,7 @@ export function GameScreen(p: Props) {
                 {fmt(pl.score)}
               </span>
               <span className="mt-0.5 text-[9px] text-fog-600">{pl.busts} Nieten</span>
+              <Sparkline turns={turns} name={pl.name} maxScore={maxScore} color={playerColor(pl.name)} />
             </div>
           )
         })}
@@ -678,5 +684,43 @@ export function GameScreen(p: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+/** Winzige Punktekurve eines Spielers (kumuliert über seine Züge). */
+function Sparkline({
+  turns,
+  name,
+  maxScore,
+  color,
+}: {
+  turns: Turn[]
+  name: string
+  maxScore: number
+  color: string
+}) {
+  const ts = turns.filter((t) => t.player === name)
+  if (ts.length < 2) return null // erst ab dem 2. Zug aussagekräftig
+  const W = 84, H = 18
+  let cum = 0
+  const pts = [`0,${H}`] // Start bei 0 Punkten
+  ts.forEach((t, i) => {
+    cum += t.points
+    const x = ((i + 1) / ts.length) * W
+    const y = Math.max(1, H - (cum / maxScore) * H)
+    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`)
+  })
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="mt-1 h-3.5 w-full opacity-90">
+      <polyline
+        points={pts.join(' ')}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
   )
 }
