@@ -11,6 +11,7 @@ import { computeRisk } from './lib/risk'
 import { saveGame } from './lib/storage'
 import { pushGame } from './lib/cloud'
 import { buzz } from './lib/haptics'
+import { playerColor } from './lib/colors'
 import { SetupScreen } from './components/SetupScreen'
 import { GameScreen } from './components/GameScreen'
 import { StatsScreen } from './components/StatsScreen'
@@ -83,6 +84,8 @@ export function App() {
   const [throwSeq, setThrowSeq] = useState(0)
   const [toast, setToast] = useState('')
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
+  // Kurze „X ist dran"-Einblendung beim Spielerwechsel (Übergabe am Tisch).
+  const [handoff, setHandoff] = useState<string | null>(null)
   // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const UNDO_LIMIT = 30
@@ -157,6 +160,13 @@ export function App() {
     setToast(msg)
     window.setTimeout(() => setToast((t) => (t === msg ? '' : t)), 1800)
   }, [])
+
+  // „X ist dran"-Banner nach kurzer Zeit selbst ausblenden.
+  useEffect(() => {
+    if (!handoff) return
+    const t = window.setTimeout(() => setHandoff(null), 1500)
+    return () => window.clearTimeout(t)
+  }, [handoff])
 
   // --- Setup ---
   const startGame = (
@@ -331,6 +341,7 @@ export function App() {
         setDice([])
         setRolled([])
         setThrown([])
+        setHandoff(nextPlayers[nextIdx].name) // „X ist dran" kurz einblenden
       }
 
       if (phase === 'lastChance') {
@@ -515,6 +526,7 @@ export function App() {
       kept={kept}
       dice={dice}
       rolled={rolled}
+      turns={turns}
       thrown={thrown}
       throwSeq={throwSeq}
       inHand={inHand}
@@ -539,6 +551,19 @@ export function App() {
       onToggleDiceMode={toggleDiceMode}
       />
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
+      {handoff && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[55] flex justify-center px-4 pt-[max(env(safe-area-inset-top),0.5rem)]">
+          <div
+            className="flex items-center gap-2.5 rounded-b-2xl border border-t-0 bg-ink-900/95 px-5 py-2.5 shadow-xl shadow-black/40 animate-rise"
+            style={{ borderColor: `${playerColor(handoff)}66` }}
+          >
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: playerColor(handoff) }} />
+            <span className="text-sm font-semibold text-fog-200">
+              <span className="font-black" style={{ color: playerColor(handoff) }}>{handoff}</span> ist dran
+            </span>
+          </div>
+        </div>
+      )}
     </>
   )
 }
