@@ -2,7 +2,6 @@ import { useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
 import { explainRisk, recommendAction } from '../lib/risk'
-import { ENTRY_MIN, WINNING_SCORE } from '../lib/scoring'
 import { playerColor } from '../lib/colors'
 import { shareResultImage } from '../lib/shareImage'
 import DiceArena from './DiceArena'
@@ -26,6 +25,10 @@ interface Props {
   neededForWin: number
   testMode: boolean
   diceMode: DiceMode
+  /** Ziel-Punktzahl dieses Spiels (Standard 10.000). */
+  goalScore: number
+  /** Einstiegsgrenze dieses Spiels (Standard 350). */
+  entryMin: number
   kept: number[]
   dice: number[]
   rolled: number[]
@@ -68,6 +71,8 @@ export function GameScreen(p: Props) {
     neededForWin,
     testMode,
     diceMode,
+    goalScore,
+    entryMin,
     kept,
     dice,
     rolled,
@@ -87,8 +92,8 @@ export function GameScreen(p: Props) {
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
-  const entryShort = !onBoard && totalPotential > 0 && totalPotential < ENTRY_MIN
-  const canBank = result.isValid && totalPotential > 0 && (onBoard || totalPotential >= ENTRY_MIN)
+  const entryShort = !onBoard && totalPotential > 0 && totalPotential < entryMin
+  const canBank = result.isValid && totalPotential > 0 && (onBoard || totalPotential >= entryMin)
   // Weiterwürfeln möglich, sobald mindestens ein gültiger Würfel gelegt ist.
   const canContinue = result.isValid && result.score > 0 && dice.length >= 1
   // Alle Würfel der Hand gelegt → heiße Würfel (6 neu), sonst Rest neu würfeln.
@@ -189,7 +194,7 @@ export function GameScreen(p: Props) {
       <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-ink-800 px-3 py-3">
         {players.map((pl, i) => {
           const active = i === idx && phase !== 'finished'
-          const reached = pl.score >= WINNING_SCORE
+          const reached = pl.score >= goalScore
           return (
             <div
               key={pl.id}
@@ -203,7 +208,7 @@ export function GameScreen(p: Props) {
             >
               {reached && (
                 <span className="absolute -top-2 right-2 rounded-full bg-gold-500 px-1.5 py-px text-[8px] font-black uppercase tracking-wide text-ink-950 shadow">
-                  🏆 10.000
+                  🏆 {fmt(goalScore)}
                 </span>
               )}
               <div className="mb-0.5 flex items-center justify-between gap-2">
@@ -239,7 +244,7 @@ export function GameScreen(p: Props) {
       {lastChance && leader && (
         <div className="flex items-center justify-center gap-2 border-b border-coral-500/30 bg-coral-500/10 px-4 py-2 text-center text-xs font-bold animate-pop">
           <IconTrophy className="h-4 w-4 text-gold-400" />
-          <span className="text-fog-100">{leader.name} hat 10.000!</span>
+          <span className="text-fog-100">{leader.name} hat {fmt(goalScore)}!</span>
           <span className="text-coral-300">{fmt(beatScore)} muss überboten werden</span>
         </div>
       )}
@@ -553,7 +558,7 @@ export function GameScreen(p: Props) {
                   <div className="flex flex-col items-start leading-none">
                     <span>{fmt(totalPotential)}</span>
                     {entryShort && (
-                      <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {ENTRY_MIN}</span>
+                      <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {entryMin}</span>
                     )}
                   </div>
                 </button>

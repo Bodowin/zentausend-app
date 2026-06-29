@@ -12,6 +12,9 @@ export interface ActiveGame {
   event: string
   testMode: boolean
   diceMode: DiceMode
+  /** Konfiguriertes Ziel + Einstiegsgrenze (ältere Stände: undefined → Standard). */
+  goalScore?: number
+  entryMin?: number
   kept: number[]
   dice: number[]
   accumulated: number
