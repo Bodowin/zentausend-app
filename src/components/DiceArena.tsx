@@ -18,6 +18,7 @@
 
 import * as CANNON from 'cannon-es'
 import { useEffect, useRef, useState } from 'react'
+import { getPrefs, DICE_THEMES } from '../lib/prefs'
 
 type DiceArenaProps = {
   values: number[]
@@ -138,9 +139,12 @@ function matrix3dFor(q: Q, p: V, S: number): string {
 
 /* ================================ Audio ================================ */
 let audioCtx: AudioContext | null = null
+// Sounds nur, wenn in den Einstellungen aktiviert (Standard an). Wird beim
+// ersten Antippen entsperrt (iOS verlangt eine User-Geste).
+const soundOn = () => getPrefs().sound
 /** Muss in einer User-Geste aufgerufen werden, um den Aufprall-Klick zu aktivieren. */
 export function unlockDiceAudio() {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || !soundOn()) return
   if (!audioCtx) {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (AC) audioCtx = new AC()
@@ -149,7 +153,7 @@ export function unlockDiceAudio() {
 }
 function playClick(intensity: number) {
   const ctx = audioCtx
-  if (!ctx || ctx.state !== 'running') return
+  if (!ctx || ctx.state !== 'running' || !soundOn()) return
   const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain()
   o.type = 'triangle'
   o.frequency.setValueAtTime(150 + intensity * 140, t)
@@ -158,6 +162,19 @@ function playClick(intensity: number) {
   g.gain.exponentialRampToValueAtTime(Math.min(0.16, 0.03 + intensity * 0.16), t + 0.005)
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
   o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.1)
+}
+// Heller, kurzer Klick beim Auslegen eines Würfels.
+function playTap() {
+  const ctx = audioCtx
+  if (!ctx || ctx.state !== 'running' || !soundOn()) return
+  const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain()
+  o.type = 'sine'
+  o.frequency.setValueAtTime(660, t)
+  o.frequency.exponentialRampToValueAtTime(990, t + 0.05)
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(0.09, t + 0.005)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1)
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.11)
 }
 
 /* ===================== Pre-Roll (headless Physik) ====================== */
@@ -410,14 +427,18 @@ export default function DiceArena({
   }, [phase, sel])
 
   const handleTap = () => {
-    if (phase === 'ready') setPhase('rolling')
-    else if (phase === 'landed' && !selectable) onSettleRef.current?.()
+    if (phase === 'ready') {
+      unlockDiceAudio() // erste Geste → Sound entsperren
+      setPhase('rolling')
+    } else if (phase === 'landed' && !selectable) onSettleRef.current?.()
   }
 
   // Einen gelandeten Würfel aus-/abwählen und die neue Auswahl melden.
   const toggleDie = (i: number) => {
     if (phase !== 'landed' || !selectable) return
     navigator.vibrate?.(8)
+    unlockDiceAudio()
+    playTap()
     setSel((prev) => {
       const next = [...prev]
       next[i] = !next[i]
@@ -433,8 +454,17 @@ export default function DiceArena({
   const d = dataRef.current
   const vals = values.map((v) => clamp(Math.round(v), 1, 6))
   const tappable = phase === 'landed' && selectable
+  // Würfel-Design aus den Einstellungen → als CSS-Variablen an die Wurzel.
+  const th = DICE_THEMES[getPrefs().diceTheme] ?? DICE_THEMES.classic
+  const themeVars = {
+    ['--die-hi' as string]: th.hi,
+    ['--die-mid' as string]: th.mid,
+    ['--die-lo' as string]: th.lo,
+    ['--die-pip-a' as string]: th.pipA,
+    ['--die-pip-b' as string]: th.pipB,
+  }
   return (
-    <div className="da-root" ref={rootRef}>
+    <div className="da-root" ref={rootRef} style={themeVars}>
       <style>{CSS}</style>
       {ready && d && (
         <div className="da-cam" style={{ perspective: `${d.perspective}px`, perspectiveOrigin: '50% 30%', ['--tilt' as string]: `${d.camTilt}deg` }}>
@@ -529,12 +559,13 @@ const CSS = `
 .da-face{position:absolute;inset:0;display:grid;box-sizing:border-box;
   grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
   padding:13%;border-radius:15%;backface-visibility:hidden;
-  background:radial-gradient(120% 120% at 30% 22%, #fbf8f0 0%, #efeadb 58%, #e1dbca 100%);
+  background:radial-gradient(120% 120% at 30% 22%,
+    var(--die-hi, #fbf8f0) 0%, var(--die-mid, #efeadb) 58%, var(--die-lo, #e1dbca) 100%);
   box-shadow:inset 0 0 0 1px rgba(120,108,86,.18),
-             inset 0 6px 10px rgba(255,255,255,.55),
-             inset 0 -10px 16px rgba(120,104,74,.18);}
+             inset 0 6px 10px rgba(255,255,255,.4),
+             inset 0 -10px 16px rgba(0,0,0,.18);}
 .da-pip{place-self:center;width:62%;height:62%;border-radius:50%;
-  background:radial-gradient(closest-side, #2b2b2b, #131313);
+  background:radial-gradient(closest-side, var(--die-pip-a, #2b2b2b), var(--die-pip-b, #131313));
   box-shadow:inset 0 1px 1px rgba(255,255,255,.18), 0 1px 1px rgba(0,0,0,.35);}
 .da-tap{position:absolute;inset:0;padding:0;margin:0;border:0;background:transparent;
   cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent;}
