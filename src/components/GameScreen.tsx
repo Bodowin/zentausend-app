@@ -134,7 +134,13 @@ export function GameScreen(p: Props) {
         }`}
       >
         <div className="flex items-center gap-3">
-          <span className="font-display text-2xl font-black tracking-tighter text-gold-500">10.000</span>
+          <button
+            onClick={p.onExit}
+            className="font-display text-2xl font-black tracking-tighter text-gold-500 transition-opacity hover:opacity-80"
+            aria-label="Pausieren und zum Startbildschirm"
+          >
+            10.000
+          </button>
           <div className="h-6 w-px bg-ink-700" />
           <div className="flex flex-col leading-tight">
             {lastChance ? (
@@ -495,13 +501,27 @@ export function GameScreen(p: Props) {
                     <span className="mt-0.5 text-[9px] font-normal opacity-80">verliert {fmt(accumulated)}</span>
                   )}
                 </button>
-                <div className="grid place-items-center rounded-xl border border-dashed border-ink-800 text-sm italic text-fog-600">
-                  {diceMode === 'virtual' && rolled.length > 0
-                    ? 'Würfel auslegen…'
-                    : inHand < 6
-                      ? `${inHand} Würfel werfen…`
-                      : 'Auf Wurf warten…'}
-                </div>
+                {canBank ? (
+                  /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
+                  <button
+                    onClick={p.onBank}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-mint-400 to-mint-500 font-bold text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] transition-all active:translate-y-1 active:shadow-none"
+                  >
+                    <IconCheck className="h-5 w-5" />
+                    <div className="flex flex-col items-start leading-none">
+                      <span>Doch sichern</span>
+                      <span className="mt-0.5 text-[10px] font-normal opacity-80">{fmt(totalPotential)}</span>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="grid place-items-center rounded-xl border border-dashed border-ink-800 text-sm italic text-fog-600">
+                    {diceMode === 'virtual' && rolled.length > 0
+                      ? 'Würfel auslegen…'
+                      : inHand < 6
+                        ? `${inHand} Würfel werfen…`
+                        : 'Auf Wurf warten…'}
+                  </div>
+                )}
               </div>
             ) : !result.isValid ? (
               <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
