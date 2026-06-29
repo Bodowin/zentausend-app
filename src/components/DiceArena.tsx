@@ -299,10 +299,13 @@ export default function DiceArena({
     // Etwas niedrigere Abwurfhöhe: die „in der Hand" kreisenden Würfel bleiben
     // dadurch komplett in der (nach oben gerückten) Schale sichtbar.
     const y0 = Rb * 0.5 + 2.2
-    const S = (minD * 0.4) / Rb
+    // Etwas kleinerer Maßstab → die (perspektivisch hohe) Schale passt auch auf
+    // hohen Geräten mit Notch/Home-Indikator komplett ins Bild, ohne oben/unten
+    // abzuschneiden. Würfel und Schale skalieren gemeinsam, bleiben also bündig.
+    const S = (minD * 0.32) / Rb
     const sizePx = 2 * h * S
     const feltPx = (2 * Rb + 1.2) * S
-    const camTilt = -60, perspective = minD * 1.3
+    const camTilt = -60, perspective = minD * 1.5
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     reduceRef.current = !!reduce
 
