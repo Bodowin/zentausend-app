@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getCliqueCode, setCliqueCode } from '../lib/cliqueCode'
 import { getAdminCode, setAdminCode } from '../lib/adminCode'
+import { getPrefs, setPrefs, DICE_THEMES, type DiceTheme } from '../lib/prefs'
 import { IconLock, IconX } from './Icons'
 
 /** Modal für Clique-Code (Schreiben/Sync) und optionalen Admin-Code (Löschen). */
@@ -9,6 +10,9 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
   const [admin, setAdmin] = useState(getAdminCode())
   const [showAdmin, setShowAdmin] = useState(focusAdmin || getAdminCode().length > 0)
   const [saved, setSaved] = useState(false)
+  // Darstellungs-Einstellungen werden sofort gespeichert (unabhängig vom Code).
+  const [prefs, setLocalPrefs] = useState(getPrefs())
+  const updatePrefs = (patch: Partial<ReturnType<typeof getPrefs>>) => setLocalPrefs(setPrefs(patch))
 
   const save = () => {
     setCliqueCode(code)
@@ -73,6 +77,54 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             Admin-Code eingeben (zum Löschen)
           </button>
         )}
+
+        {/* Darstellung & Sound – speichert sofort, gilt für die virtuellen Würfel. */}
+        <div className="mb-4 rounded-2xl border border-ink-700 bg-ink-900/40 p-4">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={prefs.sound}
+            onClick={() => updatePrefs({ sound: !prefs.sound })}
+            className="flex w-full items-center justify-between"
+          >
+            <span className="flex flex-col text-left">
+              <span className="text-sm font-bold text-fog-200">Sound</span>
+              <span className="text-[11px] text-fog-500">Würfel-Klicks im virtuellen Modus</span>
+            </span>
+            <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.sound ? 'bg-mint-500' : 'bg-ink-600'}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${prefs.sound ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+            </span>
+          </button>
+
+          <div className="mt-4">
+            <span className="text-sm font-bold text-fog-200">Würfel-Design</span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(Object.keys(DICE_THEMES) as DiceTheme[]).map((key) => {
+                const t = DICE_THEMES[key]
+                const active = prefs.diceTheme === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => updatePrefs({ diceTheme: key })}
+                    aria-label={t.label}
+                    className={`flex flex-col items-center gap-1 rounded-xl border-2 p-1.5 transition-colors ${
+                      active ? 'border-gold-500/70' : 'border-ink-700 hover:border-ink-600'
+                    }`}
+                  >
+                    <span
+                      className="grid h-8 w-8 place-items-center rounded-lg shadow-inner"
+                      style={{ background: `radial-gradient(120% 120% at 30% 22%, ${t.hi}, ${t.mid} 60%, ${t.lo})` }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: t.pipA }} />
+                    </span>
+                    <span className="text-[9px] font-semibold text-fog-400">{t.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
 
         <button
           onClick={save}
