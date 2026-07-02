@@ -212,12 +212,23 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
   for (let i = 0; i < n; i++) {
     const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
     b.sleepSpeedLimit = 0.15; b.sleepTimeLimit = 0.3; b.linearDamping = 0.01; b.angularDamping = 0.03
-    b.position.set((Math.random() - 0.5) * Rb * 0.3, y0 + Math.random() * 1.5 + i * 0.12, (Math.random() - 0.5) * Rb * 0.3)
+    // Echter Wurf aus der Hand: die Würfel starten als Traube am vorderen Rand
+    // (nah beim Spieler, leicht über der Schale) …
+    b.position.set(
+      (Math.random() - 0.5) * Rb * 0.45,
+      y0 * 0.55 + Math.random() * 0.8 + i * 0.3,
+      Rb * 0.6 + (Math.random() - 0.5) * 0.4,
+    )
     b.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28)
-    // Lebendiger Wurf (höher/schneller + mehr Drall) → längeres Rollen; die engen,
-    // nach innen gekippten Wände halten die Würfel trotzdem in der Mitte.
-    b.velocity.set((Math.random() - 0.5) * 2.2, -(8 + Math.random() * 4), (Math.random() - 0.5) * 2.2)
-    b.angularVelocity.set((Math.random() - 0.5) * 32, (Math.random() - 0.5) * 32, (Math.random() - 0.5) * 32)
+    // … und fliegen in einem flachen Bogen nach vorn in die Schale: Schwung
+    // Richtung Mitte, kaum Aufwärts-Toss, kräftiges Vorwärts-Tumbeln. Flach
+    // genug, dass sie optisch nie über den hinteren Schalenrand hinausschießen.
+    b.velocity.set((Math.random() - 0.5) * 2.4, 1.2 + Math.random() * 0.9, -(4.5 + Math.random() * 2))
+    b.angularVelocity.set(
+      -(16 + Math.random() * 16),
+      (Math.random() - 0.5) * 12,
+      (Math.random() - 0.5) * 12,
+    )
     const idx = i
     b.addEventListener('collide', (e: { contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
       const v = Math.abs(e?.contact?.getImpactVelocityAlongNormal?.() ?? 0)
@@ -276,6 +287,8 @@ export default function DiceArena({
   onPhaseChange,
 }: DiceArenaProps) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const camRef = useRef<HTMLDivElement>(null)
+  const fxRef = useRef<HTMLDivElement>(null)
   const dieRefs = useRef<HTMLDivElement[]>([])
   const shadowRefs = useRef<HTMLDivElement[]>([])
   const dataRef = useRef<ArenaData | null>(null)
@@ -300,6 +313,20 @@ export default function DiceArena({
       sh.style.transform = `translate3d(${p[0] * d.S}px,0,${p[2] * d.S}px) rotateX(90deg) scale(${0.7 + lift * 0.8})`
       sh.style.opacity = `${0.4 * (1 - lift * 0.6)}`
     }
+  }
+
+  // Kleiner Staub-Puff auf dem Filz an der Aufprallstelle (imperativ, ohne React-State).
+  const spawnDust = (d: ArenaData, x: number, z: number, intensity: number) => {
+    const layer = fxRef.current
+    if (!layer) return
+    const el = document.createElement('div')
+    el.className = 'da-dust'
+    const s = d.sizePx * (1 + intensity * 1.3)
+    el.style.width = `${s}px`
+    el.style.height = `${s}px`
+    el.style.transform = `translate3d(${x * d.S}px,0,${z * d.S}px) rotateX(90deg)`
+    el.addEventListener('animationend', () => el.remove())
+    layer.appendChild(el)
   }
 
   // --- Pre-Roll (einmal, beim Mount) ---
@@ -378,7 +405,7 @@ export default function DiceArena({
     const d = dataRef.current; if (!d) return
     const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.6
     const pulses = new Array(n).fill(0)
-    let impactPtr = 0, raf = 0
+    let impactPtr = 0, raf = 0, shake = 0
     const start = performance.now()
 
     const frame = (now: number) => {
@@ -399,14 +426,35 @@ export default function DiceArena({
         pulses[im.die] = Math.min(0.14, pulses[im.die] + im.intensity * 0.13)
         playClick(im.intensity)
         navigator.vibrate?.(Math.round(4 + im.intensity * 10))
+        shake = Math.min(5, shake + im.intensity * 3.5)
+        // Staub nur bei Bodenkontakt (Würfel ist unten, nicht an der Wand).
+        const ip = d.pos[im.die]?.[Math.min(im.frame, (d.pos[im.die]?.length ?? 1) - 1)]
+        if (ip && ip[1] < 1.2 && im.intensity > 0.25) spawnDust(d, ip[0], ip[2], im.intensity)
       }
       for (let i = 0; i < n; i++) pulses[i] *= 0.84
 
-      if (i0 >= last) { setPhase('landed'); return } // liegen lassen, auf Tipp warten
+      // Kamera-Mikro-Wackeln nach harten Aufprallen, klingt schnell ab.
+      const cam = camRef.current
+      if (cam) {
+        cam.style.transform =
+          shake > 0.25
+            ? `translate(${(Math.random() - 0.5) * shake}px, ${(Math.random() - 0.5) * shake}px)`
+            : ''
+        shake *= 0.85
+      }
+
+      if (i0 >= last) {
+        if (cam) cam.style.transform = ''
+        setPhase('landed')
+        return // liegen lassen, auf Tipp warten
+      }
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      cancelAnimationFrame(raf)
+      if (camRef.current) camRef.current.style.transform = ''
+    }
   }, [phase])
 
   // Wurfphase nach außen melden (z. B. um Overlays erst beim Liegen zu zeigen).
@@ -426,9 +474,41 @@ export default function DiceArena({
     }
   }, [phase, sel])
 
+  // --- Schütteln zum Würfeln (DeviceMotion). iOS verlangt eine Erlaubnis, die
+  // nur in einer User-Geste angefragt werden darf → beim ersten Wurf-Tipp.
+  const [motionOk, setMotionOk] = useState(false)
+  const requestMotion = () => {
+    try {
+      const DM = window.DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> } | undefined
+      if (DM?.requestPermission) DM.requestPermission().then((r) => setMotionOk(r === 'granted')).catch(() => {})
+      else if ('DeviceMotionEvent' in window) setMotionOk(true)
+    } catch {
+      /* kein Sensor – ignorieren */
+    }
+  }
+  useEffect(() => {
+    if (!motionOk || phase !== 'ready' || reduceRef.current) return
+    let lastTrigger = 0
+    const onMotion = (e: DeviceMotionEvent) => {
+      const a = e.acceleration
+      if (!a) return
+      const mag = Math.hypot(a.x ?? 0, a.y ?? 0, a.z ?? 0)
+      const now = performance.now()
+      if (mag > 14 && now - lastTrigger > 800) {
+        lastTrigger = now
+        navigator.vibrate?.(20)
+        unlockDiceAudio()
+        setPhase('rolling')
+      }
+    }
+    window.addEventListener('devicemotion', onMotion)
+    return () => window.removeEventListener('devicemotion', onMotion)
+  }, [motionOk, phase])
+
   const handleTap = () => {
     if (phase === 'ready') {
       unlockDiceAudio() // erste Geste → Sound entsperren
+      requestMotion() // ab jetzt geht auch Handy-Schütteln
       setPhase('rolling')
     } else if (phase === 'landed' && !selectable) onSettleRef.current?.()
   }
@@ -439,6 +519,13 @@ export default function DiceArena({
     navigator.vibrate?.(8)
     unlockDiceAudio()
     playTap()
+    // Kurzes Aufblitzen des angetippten Würfels.
+    const el = dieRefs.current[i]
+    if (el) {
+      el.classList.remove('flash')
+      void el.offsetWidth // Reflow → Animation startet erneut
+      el.classList.add('flash')
+    }
     setSel((prev) => {
       const next = [...prev]
       next[i] = !next[i]
@@ -467,11 +554,11 @@ export default function DiceArena({
     <div className="da-root" ref={rootRef} style={themeVars}>
       <style>{CSS}</style>
       {ready && d && (
-        <div className="da-cam" style={{ perspective: `${d.perspective}px`, perspectiveOrigin: '50% 30%', ['--tilt' as string]: `${d.camTilt}deg` }}>
+        <div ref={camRef} className="da-cam" style={{ perspective: `${d.perspective}px`, perspectiveOrigin: '50% 30%', ['--tilt' as string]: `${d.camTilt}deg` }}>
           <div className="da-stage">
             <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
           </div>
-          <div className="da-stage">
+          <div className="da-stage" ref={fxRef}>
             {d.labelings.map((_, i) => (
               <div
                 key={'s' + i}
@@ -513,7 +600,7 @@ export default function DiceArena({
       {(phase === 'ready' || (phase === 'landed' && !selectable)) && (
         <button className="da-tap" onClick={handleTap} aria-label={phase === 'ready' ? 'Würfeln' : 'Weiter'} />
       )}
-      {phase === 'ready' && <div className="da-hint">Tippen zum Würfeln</div>}
+      {phase === 'ready' && <div className="da-hint">{motionOk ? 'Tippen oder schütteln' : 'Tippen zum Würfeln'}</div>}
       {phase === 'landed' && selectable && <div className="da-hint">Würfel antippen, die zählen</div>}
       {phase === 'landed' && !selectable && <div className="da-hint">Tippen für weiter</div>}
     </div>
@@ -556,6 +643,15 @@ const CSS = `
              0 0 16px rgba(255,107,107,.5);}
 .da-die.sel .da-pip,.da-die.invalid .da-pip{
   background:radial-gradient(closest-side, #3a2a05, #161003);}
+/* Kurzes Aufblitzen beim Antippen. */
+.da-die.flash .da-face{animation:da-selflash .45s ease-out;}
+@keyframes da-selflash{0%{filter:brightness(2.1) saturate(1.3)}100%{filter:brightness(1)}}
+/* Staub-Puff auf dem Filz beim Aufprall. */
+.da-dust{position:absolute;left:0;top:0;border-radius:50%;pointer-events:none;
+  translate:-50% -50%;
+  background:radial-gradient(closest-side, rgba(226,214,182,.30), rgba(226,214,182,0) 70%);
+  animation:da-dust .5s ease-out forwards;}
+@keyframes da-dust{from{opacity:.9;scale:.35}to{opacity:0;scale:1.7}}
 .da-face{position:absolute;inset:0;display:grid;box-sizing:border-box;
   grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
   padding:13%;border-radius:15%;backface-visibility:hidden;
