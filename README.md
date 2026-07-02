@@ -3,6 +3,9 @@
 Intelligenter Begleit-Rechner (Companion App) für das physische Würfelspiel
 **Zehntausend** (Farkle, High-Stakes-Variante). Offline-fähige Progressive Web App.
 
+> **Außerdem in diesem Repo:** das **Invest-Cockpit** unter `/cockpit` –
+> ein eigenständiger Stock-Screener + Portfolio-Manager (siehe unten).
+
 ## Stack
 
 - **Vite + React + TypeScript** – schnelles, typsicheres Fundament
@@ -61,6 +64,35 @@ geteilte Tabelle gepusht und die Statistik zieht alle Geräte zusammen.
 
 Auf Vercel die beiden `VITE_SUPABASE_*`-Variablen unter *Settings → Environment
 Variables* setzen (optional – ohne sie greifen die eingebauten Defaults).
+
+## Invest-Cockpit (`/cockpit`)
+
+Zweite, unabhängige App im selben Deployment (eigener Vite-Einstiegspunkt
+`cockpit.html`, Code unter `src/cockpit/`). Design-System „Aurum –
+Mitternachtsbörse“: tiefes Tinten-Navy, Champagner-Gold, Smaragd/Koralle für
+Gewinn/Verlust; die Chart-Palette ist CVD-/Kontrast-validiert.
+
+**Module**
+
+- **Cockpit** – Depotwert, G/V, Verlaufs-Kurve (Wert vs. Einzahlungen),
+  Allokations-Donut, Top/Flop, Watchlist-Scores
+- **Portfolio** – Positionen (Durchschnittskosten aus Transaktionen),
+  Käufe/Verkäufe, Sparpläne, Zinseszins-Projektion mit Slidern
+- **Screener** – ~25 Aktien + 7 ETFs als editierbare Kennzahlen-Bibliothek
+  (Beispieldaten, Stand ca. Mitte 2025), Qualitäts-Score (5 Teil-Scores,
+  gewichtet nach Risikoprofil), Filter/Sortierung, Radar-Vergleich (bis 4 Titel)
+- **DCF** – interaktiver Fair-Value-Rechner (Gordon + Exit-Multiple,
+  Sensitivitätsmatrix WACC × ewiges Wachstum)
+- **Risiko** – Diversifikations-Score, Sektor-/Regionen-Konzentration,
+  Warn-Flags, Stress-Szenarien
+- **Research** – 10 institutionelle Analyse-Prompts (Screening, DCF, Risiko,
+  Earnings, Allokation, TA, Dividenden, Wettbewerb, Muster, Makro),
+  automatisch mit Depot + Profil befüllt, zum Kopieren in Claude
+
+**Daten**: komplett offline-first in `localStorage` (Export/Import als JSON).
+Live-Kurse optional über die Vercel-Function `api/quote.ts` (Yahoo Finance,
+EUR-Umrechnung) – lokal ohne Deployment werden Kurse manuell gepflegt.
+Keine Anlageberatung; alle Kennzahlen sind editierbare Beispieldaten.
 
 ## Status & Roadmap
 

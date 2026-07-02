@@ -12,12 +12,26 @@ export default defineConfig({
       new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
     ),
   },
+  build: {
+    rollupOptions: {
+      input: {
+        // Haupt-App (Würfelspiel) + eigenständiges Invest-Cockpit unter /cockpit
+        main: 'index.html',
+        cockpit: 'cockpit.html',
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      workbox: {
+        // Das Cockpit und die API laufen außerhalb der Spiel-PWA – der
+        // Service-Worker darf Navigationen dorthin nicht auf index.html umbiegen.
+        navigateFallbackDenylist: [/^\/cockpit/, /^\/api\//],
+      },
       manifest: {
         name: '10.000 – Die Clique',
         short_name: '10.000',

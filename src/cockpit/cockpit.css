@@ -1,0 +1,98 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   Invest-Cockpit · Design-System „Aurum – Mitternachtsbörse“
+   Tiefes Tinten-Navy als Bühne (Börsenterminal bei Nacht), Champagner-Gold
+   als Marke/Akzent (Vermögen), Smaragd für Gewinne, Koralle für Verluste.
+   Die 8 Serien-Farben (chart-1..8) sind mit dem Dataviz-Validator gegen die
+   Kartenfläche #0f1626 geprüft (Lightness-Band, Chroma, CVD, Kontrast).
+   =========================================================================== */
+@theme {
+  /* Flächen (von tief nach erhöht) */
+  --color-abyss: #080d18; /* Seiten-Hintergrund */
+  --color-card: #0f1626; /* Karten / Chart-Fläche */
+  --color-raised: #141e33; /* erhöhte Elemente, Hover */
+  --color-inset: #0b111f; /* eingelassene Felder, Inputs */
+  --color-grid: #1d2941; /* Haarlinien-Grid in Charts */
+  --color-edge: #22304d; /* Ränder, Trennlinien */
+
+  /* Tinte */
+  --color-ink: #f1f5fb; /* Primärtext */
+  --color-ink-soft: #a3aec6; /* Sekundärtext */
+  --color-ink-mute: #6b7691; /* Achsen, Labels, Nebentext */
+
+  /* Marke: Champagner-Gold */
+  --color-aurum: #e8c268;
+  --color-aurum-soft: #c9a84c;
+  --color-aurum-deep: #8a7028;
+
+  /* Status: Gewinn / Verlust / Warnung */
+  --color-gain: #3ddc97;
+  --color-gain-deep: #157a52;
+  --color-loss: #ff7a70;
+  --color-loss-deep: #99342e;
+  --color-warn: #fab219;
+
+  /* Kategoriale Serien (validierte Reihenfolge – nie zyklisch erweitern) */
+  --color-chart-1: #3987e5; /* Blau */
+  --color-chart-2: #199e70; /* Aqua */
+  --color-chart-3: #c98500; /* Bernstein */
+  --color-chart-4: #008300; /* Grün */
+  --color-chart-5: #9085e9; /* Violett */
+  --color-chart-6: #e66767; /* Rot */
+  --color-chart-7: #d55181; /* Magenta */
+  --color-chart-8: #d95926; /* Orange */
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--color-abyss);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Zahlenkolonnen bündig (nur in Tabellen/Achsen, nie auf Hero-Zahlen) */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dezente Scrollbars fürs Terminal-Gefühl */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-edge) transparent;
+}
+
+/* Karten-Grundstil */
+.card {
+  background: var(--color-card);
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 16px;
+}
+
+/* Fokus sichtbar, aber im Theme */
+:focus-visible {
+  outline: 2px solid var(--color-aurum);
+  outline-offset: 2px;
+}
+
+input[type='range'] {
+  accent-color: var(--color-aurum);
+}
+
+@keyframes cockpit-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-in {
+  animation: cockpit-fade-in 0.25s ease-out both;
+}
