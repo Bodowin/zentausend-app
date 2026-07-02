@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { GameRecord } from '../lib/types'
 import { computeGameAnalysis } from '../lib/storage'
 import { playerColor } from '../lib/colors'
+import { GameChart } from './GameChart'
 import { IconBack, IconTrophy } from './Icons'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
@@ -64,6 +65,9 @@ export function AnalysisScreen({ game, onBack }: { game: GameRecord; onBack: () 
           </Card>
         </div>
       )}
+
+      {/* Spielverlauf: Kopf-an-Kopf-Rennen als Kurve */}
+      {a.hasTurns && a.roundsCount >= 2 && <GameChart analysis={a} />}
 
       {/* Spieler-Tabelle */}
       <section className="mb-5">
