@@ -12,6 +12,7 @@ function migrate(parsed: CockpitState): CockpitState {
   return {
     ...parsed,
     targets: parsed.targets ?? {},
+    incomes: parsed.incomes ?? [],
     settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
     instruments: parsed.instruments.map((i) =>
       !i.dividend && SEED_DIVIDENDS[i.id] ? { ...i, dividend: SEED_DIVIDENDS[i.id] } : i,
@@ -71,6 +72,7 @@ export function withoutDemoData(state: CockpitState): CockpitState {
     transactions: [],
     plans: [],
     snapshots: [],
+    incomes: [],
   }
 }
 

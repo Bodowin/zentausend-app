@@ -9,6 +9,7 @@ import type { Instrument, Moat, Region, Sector, StockMetrics } from '../lib/type
 import { useCockpit } from '../state'
 import { CHART_COLORS, Radar, ScoreMeter } from './charts'
 import { HistoryChart } from './HistoryChart'
+import { SimulatorModal } from './SimulatorModal'
 import { Badge, Button, Card, Field, inputClass, Modal, NumberInput, selectCompactClass } from './ui'
 
 const SECTORS: Sector[] = [
@@ -40,6 +41,7 @@ export function ScreenerScreen({ onOpenDcf }: { onOpenDcf: (id: string) => void 
   const [isNewEdit, setIsNewEdit] = useState(false)
   const [compareIds, setCompareIds] = useState<string[]>([])
   const [showCompare, setShowCompare] = useState(false)
+  const [simulateId, setSimulateId] = useState<string | null>(null)
 
   const rows: Row[] = useMemo(() => {
     const profile = state.settings.riskProfile
@@ -308,7 +310,14 @@ export function ScreenerScreen({ onOpenDcf }: { onOpenDcf: (id: string) => void 
             onOpenDcf(detail.id)
             setDetail(null)
           }}
+          onSimulate={() => {
+            setSimulateId(detail.id)
+            setDetail(null)
+          }}
         />
+      )}
+      {simulateId && (
+        <SimulatorModal presetInstrumentId={simulateId} onClose={() => setSimulateId(null)} />
       )}
       {editing && (
         <InstrumentEditor
@@ -378,6 +387,7 @@ function StockDetailModal({
   onClose,
   onEdit,
   onDcf,
+  onSimulate,
 }: {
   instrument: Instrument
   score: ScoreBreakdown | null
@@ -386,6 +396,7 @@ function StockDetailModal({
   onClose: () => void
   onEdit: () => void
   onDcf: () => void
+  onSimulate: () => void
 }) {
   const m = instrument.metrics
   const opt = (v: number | undefined, fmt: (x: number) => string) =>
@@ -470,6 +481,9 @@ function StockDetailModal({
         </Button>
         <Button variant="ghost" onClick={onEdit}>
           Kennzahlen bearbeiten
+        </Button>
+        <Button variant="ghost" onClick={onSimulate}>
+          ⚖ Kauf simulieren
         </Button>
         <Button onClick={onDcf}>DCF-Bewertung →</Button>
       </div>

@@ -30,8 +30,11 @@ export function ReportView({ onBack }: { onBack: () => void }) {
   )
   const calendar = useMemo(() => buildDividendCalendar(summary.positions), [summary.positions])
   const tax = useMemo(
-    () => buildTaxReport(summary.positions, state.transactions, state.instruments, state.settings, year),
-    [summary.positions, state.transactions, state.instruments, state.settings, year],
+    () =>
+      buildTaxReport(summary.positions, state.transactions, state.instruments, state.settings, year, {
+        receipts: state.incomes,
+      }),
+    [summary.positions, state.transactions, state.instruments, state.incomes, state.settings, year],
   )
   const flags = useMemo(() => riskFlags(summary), [summary])
   const divScore = diversificationScore(summary)

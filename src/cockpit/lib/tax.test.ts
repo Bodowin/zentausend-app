@@ -75,7 +75,7 @@ describe('buildTaxReport', () => {
     const divStock = inst('D', 100)
     divStock.dividend = { perShare: 5, months: [6] }
     const positions = [pos(divStock, 100, 80)] // 500 € Dividende erwartet
-    const report = buildTaxReport(positions, txs, [a, divStock], settings, 2026)
+    const report = buildTaxReport(positions, txs, [a, divStock], settings, 2026, { asOfMonth: 0 })
     expect(report.aktienLossCarry).toBe(500)
     expect(report.taxableBeforeAllowance).toBeCloseTo(500, 5) // Dividende bleibt voll
   })
@@ -83,10 +83,24 @@ describe('buildTaxReport', () => {
   it('Pauschbetrag deckelt die Steuer auf 0', () => {
     const divStock = inst('D', 100)
     divStock.dividend = { perShare: 5, months: [6] }
-    const report = buildTaxReport([pos(divStock, 100, 80)], [], [divStock], settings, 2026)
+    const report = buildTaxReport([pos(divStock, 100, 80)], [], [divStock], settings, 2026, {
+      asOfMonth: 0,
+    })
     expect(report.taxableAfterAllowance).toBe(0)
     expect(report.estimatedTax).toBe(0)
     expect(report.allowanceRemaining).toBe(500)
+  })
+
+  it('Ist-Dividenden ersetzen die Erwartung vergangener Monate', () => {
+    const divStock = inst('D', 100)
+    divStock.dividend = { perShare: 4, months: [3, 9] } // 2 Zahlungen à 200 €
+    const positions = [pos(divStock, 100, 80)]
+    // Stand Juli: März wurde tatsächlich mit 180 € gezahlt, September steht aus (200 €)
+    const report = buildTaxReport(positions, [], [divStock], settings, 2026, {
+      asOfMonth: 7,
+      receipts: [{ id: 'r1', instrumentId: 'D', date: '2026-03-15', amount: 180 }],
+    })
+    expect(report.dividendsStocks).toBeCloseTo(380, 5)
   })
 
   it('Vorabpauschale nur für thesaurierende ETFs', () => {
@@ -139,6 +153,48 @@ describe('dividends', () => {
     expect(cal.monthTotals[2]).toBeCloseTo(10, 5) // März
     expect(cal.monthTotals[0]).toBe(0)
     expect(cal.yieldOnCostPct).toBeCloseTo(5, 5) // 40 / 800
+  })
+})
+
+describe('simulateBuy', () => {
+  it('zeigt die Gewichts- und Dividendenwirkung eines Kaufs', async () => {
+    const { simulateBuy } = await import('./simulate')
+    const a = inst('A', 100)
+    const b = inst('B', 100)
+    b.dividend = { perShare: 4, months: [6, 12] }
+    const txs: Transaction[] = [
+      { id: '1', instrumentId: 'A', type: 'buy', date: '2026-01-05', shares: 90, price: 100 },
+      { id: '2', instrumentId: 'B', type: 'buy', date: '2026-01-05', shares: 10, price: 100 },
+    ]
+    const result = simulateBuy([a, b], txs, 'B', 1000)!
+    expect(result).not.toBeNull()
+    expect(result.shares).toBeCloseTo(10, 5)
+    expect(result.before.positionWeightPct).toBeCloseTo(10, 3)
+    expect(result.after.positionWeightPct).toBeCloseTo(2000 / 11000 * 100, 3)
+    // Dividende steigt um 10 Stück × 4 € = 40 €
+    expect(result.after.annualDividend - result.before.annualDividend).toBeCloseTo(40, 5)
+    expect(result.after.totalValue).toBeCloseTo(11000, 5)
+  })
+
+  it('null bei ungültigem Betrag', async () => {
+    const { simulateBuy } = await import('./simulate')
+    expect(simulateBuy([inst('A', 100)], [], 'A', 0)).toBeNull()
+  })
+})
+
+describe('receivedByMonth', () => {
+  it('summiert Zahlungen je Monat im Jahr', async () => {
+    const { receivedByMonth } = await import('./dividends')
+    const r = receivedByMonth(
+      [
+        { id: '1', instrumentId: 'A', date: '2026-03-10', amount: 50 },
+        { id: '2', instrumentId: 'A', date: '2026-03-25', amount: 25 },
+        { id: '3', instrumentId: 'A', date: '2025-03-25', amount: 99 }, // anderes Jahr
+      ],
+      2026,
+    )
+    expect(r.monthTotals[2]).toBe(75)
+    expect(r.total).toBe(75)
   })
 })
 

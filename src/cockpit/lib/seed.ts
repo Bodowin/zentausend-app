@@ -399,6 +399,7 @@ export const DEFAULT_SETTINGS: CockpitState['settings'] = {
   churchTaxPct: 0,
   basiszinsPct: 2.5,
   foreignBroker: true,
+  autoRefreshQuotes: true,
 }
 
 export function buildSeed(): CockpitState {
@@ -410,6 +411,13 @@ export function buildSeed(): CockpitState {
     transactions: txs,
     plans: DEMO_PLANS,
     snapshots: demoSnapshots(txs),
+    incomes: [
+      { id: 'demo-inc-alv', instrumentId: 'ALV', date: '2026-05-12', amount: 123.2, note: 'Hauptversammlung' },
+      { id: 'demo-inc-novo', instrumentId: 'NOVO', date: '2026-03-25', amount: 31.0 },
+      { id: 'demo-inc-msft', instrumentId: 'MSFT', date: '2026-03-12', amount: 3.75 },
+      { id: 'demo-inc-msft2', instrumentId: 'MSFT', date: '2026-06-11', amount: 3.75 },
+      { id: 'demo-inc-asml', instrumentId: 'ASML', date: '2026-05-06', amount: 5.1 },
+    ],
     watchlist: ['NVDA', 'ASML', 'MC', 'V', 'COST', 'GOOGL'],
     targets: {},
     settings: { ...DEFAULT_SETTINGS },

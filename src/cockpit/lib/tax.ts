@@ -4,8 +4,7 @@
 // thesaurierende ETFs und daraus abgeleitete Optimierungs-Tipps.
 // Alles Schätzungen zur Orientierung – KEINE Steuerberatung.
 
-import { buildDividendCalendar } from './dividends'
-import type { Instrument, Position, Settings, Transaction } from './types'
+import type { DividendReceipt, Instrument, Position, Settings, Transaction } from './types'
 
 /** Effektiver Steuersatz auf Kapitalerträge in % (KapSt + Soli + KiSt). */
 export function effectiveTaxRatePct(churchTaxPct: 0 | 8 | 9): number {
@@ -90,13 +89,24 @@ export interface TaxReport {
 
 const TEILFREISTELLUNG = 0.3 // Aktienfonds ≥ 51 % Aktienquote
 
+export interface TaxReportOptions {
+  /** tatsächlich erhaltene Ausschüttungen (Ist) */
+  receipts?: DividendReceipt[]
+  /** laufender Monat 1–12; erwartet werden nur noch Monate NACH diesem */
+  asOfMonth?: number
+}
+
 export function buildTaxReport(
   positions: Position[],
   transactions: Transaction[],
   instruments: Instrument[],
   settings: Settings,
   year: number,
+  options: TaxReportOptions = {},
 ): TaxReport {
+  const receipts = options.receipts ?? []
+  const asOfMonth = options.asOfMonth ?? new Date().getMonth() + 1
+  const byId = new Map(instruments.map((i) => [i.id, i]))
   const ratePct = effectiveTaxRatePct(settings.churchTaxPct)
 
   // 1) Realisierte Gewinne/Verluste dieses Jahr, getrennt nach Töpfen
@@ -111,18 +121,25 @@ export function buildTaxReport(
     .reduce((s, e) => s + e.gain, 0)
   const fondsGainsTaxable = fondsGainsRaw * (1 - TEILFREISTELLUNG)
 
-  // 2) Erwartete Dividenden/Ausschüttungen (Kalender, ganzes Jahr)
-  const calendar = buildDividendCalendar(positions)
+  // 2) Dividenden: bereits ERHALTENE Zahlungen (Ist) plus die noch
+  //    ERWARTETEN Zahlungsmonate nach dem laufenden Monat (Soll-Rest).
+  const classOf = (id: string) =>
+    byId.get(id)?.assetClass === 'etf' ? 'etf' : 'stock'
   let dividendsStocks = 0
   let dividendsFundsRaw = 0
+  for (const r of receipts) {
+    if (!r.date.startsWith(String(year))) continue
+    if (classOf(r.instrumentId) === 'etf') dividendsFundsRaw += r.amount
+    else dividendsStocks += r.amount
+  }
   for (const p of positions) {
     const div = p.instrument.dividend
-    if (!div || div.perShare <= 0) continue
-    const annual = div.perShare * p.shares
-    if (p.instrument.assetClass === 'etf') dividendsFundsRaw += annual
-    else dividendsStocks += annual
+    if (!div || div.perShare <= 0 || div.months.length === 0) continue
+    const perPayment = (div.perShare * p.shares) / div.months.length
+    const remaining = div.months.filter((m) => m > asOfMonth).length * perPayment
+    if (p.instrument.assetClass === 'etf') dividendsFundsRaw += remaining
+    else dividendsStocks += remaining
   }
-  void calendar
   const dividendsFundsTaxable = dividendsFundsRaw * (1 - TEILFREISTELLUNG)
 
   // 3) Vorabpauschale: thesaurierende ETFs, Basisertrag = Wert × Basiszins × 70 %

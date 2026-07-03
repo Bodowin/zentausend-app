@@ -92,7 +92,15 @@ Gewinn/Verlust; die Chart-Palette ist CVD-/Kontrast-validiert.
 - **Risiko** – Diversifikations-Score, Sektor-/Regionen-Konzentration,
   Warn-Flags, Stress-Szenarien
 - **Dividenden** – Ausschüttungs-Kalender (erwartete Zahlungen je Monat),
-  Yield on Cost, editierbare Dividenden-Profile je Titel
+  Yield on Cost, editierbare Dividenden-Profile je Titel, **Ist-Erfassung**
+  erhaltener Zahlungen mit Soll/Ist-Vergleich (fließt in die Steuer-Schätzung
+  ein: erhalten + noch erwartete Monate)
+- **Kauf-Simulator** („Was-wäre-wenn“, im Portfolio & Screener-Detail) –
+  zeigt vor dem Kauf die Wirkung auf Positions-/Sektor-/Regionen-Gewicht,
+  Diversifikations-Score, Jahresdividende und neu entstehende Risiko-Flags;
+  auf Wunsch direkt als Kauf buchbar
+- **Auto-Kursupdate** – optional beim Öffnen (max. alle 6 Std., mit
+  Depot-Schnappschuss für die Verlaufs-Kurve; abschaltbar)
 - **Rebalancing** – Ziel-Allokation je Position, Order-Vorschläge wahlweise
   steuerschonend mit frischem Geld (keine Verkäufe) oder als Umschichtung
   inkl. Steuerkosten-Schätzung je Verkauf

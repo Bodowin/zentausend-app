@@ -15,8 +15,11 @@ export function TaxScreen() {
   const s = state.settings
 
   const report = useMemo(
-    () => buildTaxReport(summary.positions, state.transactions, state.instruments, s, year),
-    [summary.positions, state.transactions, state.instruments, s, year],
+    () =>
+      buildTaxReport(summary.positions, state.transactions, state.instruments, s, year, {
+        receipts: state.incomes,
+      }),
+    [summary.positions, state.transactions, state.instruments, state.incomes, s, year],
   )
 
   const allowanceUsedPct =
@@ -96,7 +99,7 @@ export function TaxScreen() {
           {report.aktienLossCarry > 0 &&
             row('Aktien-Verlusttopf', -report.aktienLossCarry, 'nur mit Aktien-Gewinnen verrechenbar')}
           {row('ETF-Gewinne (realisiert)', report.fondsGainsRaw, `→ steuerlich ${fmtEur(report.fondsGainsTaxable)} nach 30 % Teilfreistellung`)}
-          {row('Dividenden Einzelaktien', report.dividendsStocks, 'erwartet, ganzes Jahr')}
+          {row('Dividenden Einzelaktien', report.dividendsStocks, 'erhalten + noch erwartet')}
           {row('ETF-Ausschüttungen', report.dividendsFundsRaw, `→ steuerlich ${fmtEur(report.dividendsFundsTaxable)}`)}
           {row('Vorabpauschale (Basisertrag)', report.vorabRaw, `→ steuerlich ${fmtEur(report.vorabTaxable)}`)}
           {row('Steuerpflichtig vor Pauschbetrag', report.taxableBeforeAllowance, undefined, true)}

@@ -2,7 +2,7 @@
 // Positionen (Jahresdividende je Anteil, gleichmäßig auf die Zahlungsmonate
 // verteilt). Beispieldaten – je Titel editierbar.
 
-import type { Position } from './types'
+import type { DividendReceipt, Position } from './types'
 
 export interface DividendPayment {
   month: number // 1–12
@@ -61,6 +61,29 @@ export function buildDividendCalendar(positions: Position[]): DividendCalendar {
     yieldOnCostPct: invested > 0 ? (yearTotal / invested) * 100 : 0,
     yieldPct: value > 0 ? (yearTotal / value) * 100 : 0,
   }
+}
+
+/** Erhaltene Ausschüttungen eines Jahres: Summe je Monat + Gesamt. */
+export function receivedByMonth(
+  receipts: DividendReceipt[],
+  year: number,
+): { monthTotals: number[]; total: number } {
+  const monthTotals = Array.from({ length: 12 }, () => 0)
+  let total = 0
+  for (const r of receipts) {
+    if (!r.date.startsWith(String(year))) continue
+    const month = parseInt(r.date.slice(5, 7), 10)
+    if (month >= 1 && month <= 12) {
+      monthTotals[month - 1] += r.amount
+      total += r.amount
+    }
+  }
+  return { monthTotals, total }
+}
+
+/** Erwartete Summe der Monate 1..asOfMonth (einschließlich) – für Soll/Ist-Vergleich. */
+export function expectedUntilMonth(calendar: DividendCalendar, asOfMonth: number): number {
+  return calendar.monthTotals.slice(0, Math.max(0, Math.min(12, asOfMonth))).reduce((s, v) => s + v, 0)
 }
 
 export const MONTH_NAMES = [

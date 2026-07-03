@@ -105,6 +105,15 @@ export interface Transaction {
   note?: string
 }
 
+/** Tatsächlich erhaltene Ausschüttung (Ist-Erfassung, brutto in EUR) */
+export interface DividendReceipt {
+  id: string
+  instrumentId: string
+  date: string // ISO yyyy-mm-dd
+  amount: number // EUR brutto
+  note?: string
+}
+
 export interface SavingsPlan {
   id: string
   instrumentId: string
@@ -140,6 +149,8 @@ export interface Settings {
   basiszinsPct: number
   /** Auslands-Broker (z. B. Interactive Brokers): keine automatische Abführung */
   foreignBroker: boolean
+  /** Beim Öffnen automatisch Live-Kurse holen (nur im Deployment wirksam) */
+  autoRefreshQuotes: boolean
 }
 
 export interface CockpitState {
@@ -150,6 +161,8 @@ export interface CockpitState {
   transactions: Transaction[]
   plans: SavingsPlan[]
   snapshots: Snapshot[]
+  /** erhaltene Ausschüttungen (Ist) */
+  incomes: DividendReceipt[]
   /** Favoriten im Screener */
   watchlist: string[]
   /** Ziel-Allokation fürs Rebalancing: instrumentId → Ziel-% (0–100) */

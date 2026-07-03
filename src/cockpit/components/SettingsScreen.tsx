@@ -88,6 +88,14 @@ export function SettingsScreen() {
       </Card>
 
       <Card title="Daten & Backup" subtitle="alles liegt lokal in deinem Browser (localStorage) – kein Server">
+        <label className="mb-4 flex items-center gap-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={s.autoRefreshQuotes}
+            onChange={(e) => updateSettings({ autoRefreshQuotes: e.target.checked })}
+          />
+          Kurse beim Öffnen automatisch aktualisieren (max. alle 6 Std., nur im Deployment wirksam)
+        </label>
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" onClick={doExport}>
             ⬇ Backup exportieren (JSON)

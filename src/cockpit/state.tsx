@@ -17,6 +17,7 @@ import { loadState, resetToSeed, saveState, withoutDemoData } from './lib/store'
 import { todayIso } from './lib/format'
 import type {
   CockpitState,
+  DividendReceipt,
   Instrument,
   PortfolioSummary,
   SavingsPlan,
@@ -45,11 +46,13 @@ interface CockpitContextValue {
   addPlan: (plan: SavingsPlan) => void
   updatePlan: (plan: SavingsPlan) => void
   deletePlan: (id: string) => void
+  addIncome: (income: DividendReceipt) => void
+  deleteIncome: (id: string) => void
   toggleWatch: (id: string) => void
   updateSettings: (patch: Partial<Settings>) => void
   setTargets: (targets: Record<string, number>) => void
   applyInstruments: (updated: Instrument[], created: Instrument[]) => void
-  refreshQuotes: () => Promise<void>
+  refreshQuotes: (silent?: boolean) => Promise<void>
   importState: (next: CockpitState) => void
   clearDemo: () => void
   resetDemo: () => void
@@ -135,6 +138,14 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, plans: s.plans.filter((p) => p.id !== id) }))
   }, [])
 
+  const addIncome = useCallback((income: DividendReceipt) => {
+    setState((s) => ({ ...s, incomes: [...s.incomes, income] }))
+  }, [])
+
+  const deleteIncome = useCallback((id: string) => {
+    setState((s) => ({ ...s, incomes: s.incomes.filter((i) => i.id !== id) }))
+  }, [])
+
   const toggleWatch = useCallback((id: string) => {
     setState((s) => ({
       ...s,
@@ -163,12 +174,12 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const refreshQuotes = useCallback(async () => {
+  const refreshQuotes = useCallback(async (silent = false) => {
     setQuotesLoading(true)
     try {
       const result = await fetchQuotes(state.instruments)
       if (result.updates.length === 0) {
-        notify('Keine Kurse erhalten – Symbole prüfen.', 'error')
+        if (!silent) notify('Keine Kurse erhalten – Symbole prüfen.', 'error')
         return
       }
       setState((s) => {
@@ -198,14 +209,30 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
           : `${result.updates.length} Kurse aktualisiert (in EUR umgerechnet).`,
       )
     } catch {
-      notify(
-        'Live-Kurse nicht erreichbar. Im Vercel-Deployment verfügbar – bis dahin Kurse manuell pflegen.',
-        'error',
-      )
+      if (!silent) {
+        notify(
+          'Live-Kurse nicht erreichbar. Im Vercel-Deployment verfügbar – bis dahin Kurse manuell pflegen.',
+          'error',
+        )
+      }
     } finally {
       setQuotesLoading(false)
     }
   }, [state.instruments, notify])
+
+  // Auto-Update beim Öffnen: höchstens alle 6 Stunden, Fehler still
+  // (lokal ohne Deployment gibt es keine Kurs-API).
+  useEffect(() => {
+    if (!state.settings.autoRefreshQuotes) return
+    const newest = state.instruments.reduce(
+      (max, i) => (i.priceUpdatedAt && i.priceUpdatedAt > max ? i.priceUpdatedAt : max),
+      '',
+    )
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+    if (newest && newest > sixHoursAgo) return
+    void refreshQuotes(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const importState = useCallback(
     (next: CockpitState) => {
@@ -239,6 +266,8 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     addPlan,
     updatePlan,
     deletePlan,
+    addIncome,
+    deleteIncome,
     toggleWatch,
     updateSettings,
     setTargets,
