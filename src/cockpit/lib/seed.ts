@@ -5,6 +5,7 @@
 
 import type {
   CockpitState,
+  DividendInfo,
   Instrument,
   Moat,
   Region,
@@ -273,6 +274,43 @@ export const SEED_ETFS: Instrument[] = [
   }),
 ]
 
+// --- Dividenden-Profile (EUR je Anteil/Jahr + typische Zahlungsmonate) -------
+// Beispieldaten für den Dividenden-Kalender, pro Titel editierbar.
+
+export const SEED_DIVIDENDS: Record<string, DividendInfo> = {
+  AAPL: { perShare: 0.95, months: [2, 5, 8, 11] },
+  MSFT: { perShare: 3.0, months: [3, 6, 9, 12] },
+  NVDA: { perShare: 0.04, months: [3, 6, 9, 12] },
+  GOOGL: { perShare: 0.78, months: [3, 6, 9, 12] },
+  META: { perShare: 1.95, months: [3, 6, 9, 12] },
+  AVGO: { perShare: 2.6, months: [3, 6, 9, 12] },
+  V: { perShare: 2.35, months: [3, 6, 9, 12] },
+  MA: { perShare: 2.8, months: [2, 5, 8, 11] },
+  JNJ: { perShare: 4.6, months: [3, 6, 9, 12] },
+  PG: { perShare: 3.9, months: [2, 5, 8, 11] },
+  KO: { perShare: 1.9, months: [4, 7, 10, 12] },
+  MCD: { perShare: 6.7, months: [3, 6, 9, 12] },
+  COST: { perShare: 4.4, months: [2, 5, 8, 11] },
+  JPM: { perShare: 5.5, months: [1, 4, 7, 10] },
+  XOM: { perShare: 3.6, months: [3, 6, 9, 12] },
+  O: { perShare: 3.0, months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+  ASML: { perShare: 6.8, months: [2, 5, 8, 11] },
+  SAP: { perShare: 2.35, months: [5] },
+  SIE: { perShare: 5.2, months: [2] },
+  ALV: { perShare: 15.4, months: [5] },
+  MC: { perShare: 13.0, months: [4, 12] },
+  NOVO: { perShare: 1.55, months: [3, 8] },
+  NESN: { perShare: 3.05, months: [4] },
+  EXSA: { perShare: 1.6, months: [3, 6, 9, 12] },
+  ISPA: { perShare: 1.65, months: [1, 4, 7, 10] },
+}
+
+function withDividends(instruments: Instrument[]): Instrument[] {
+  return instruments.map((i) =>
+    SEED_DIVIDENDS[i.id] ? { ...i, dividend: SEED_DIVIDENDS[i.id] } : i,
+  )
+}
+
 // --- Demo-Portfolio ---------------------------------------------------------
 // 18 Monate ETF-Sparplan + einige Einzelkäufe, deterministisch erzeugt.
 
@@ -350,22 +388,30 @@ const DEMO_PLANS: SavingsPlan[] = [
   { id: 'plan-is3n', instrumentId: 'IS3N', monthlyAmount: 100, dayOfMonth: 1, active: true },
 ]
 
+export const DEFAULT_SETTINGS: CockpitState['settings'] = {
+  riskProfile: 'wachstum',
+  monthlyBudget: 500,
+  horizonYears: 20,
+  expectedReturnPct: 6.5,
+  cashReserve: 5000,
+  taxAllowance: 1000,
+  taxAllowanceUsedElsewhere: 0,
+  churchTaxPct: 0,
+  basiszinsPct: 2.5,
+  foreignBroker: true,
+}
+
 export function buildSeed(): CockpitState {
   const txs = demoTransactions()
   return {
     version: 1,
     demo: true,
-    instruments: [...SEED_ETFS, ...SEED_STOCKS],
+    instruments: withDividends([...SEED_ETFS, ...SEED_STOCKS]),
     transactions: txs,
     plans: DEMO_PLANS,
     snapshots: demoSnapshots(txs),
     watchlist: ['NVDA', 'ASML', 'MC', 'V', 'COST', 'GOOGL'],
-    settings: {
-      riskProfile: 'wachstum',
-      monthlyBudget: 500,
-      horizonYears: 20,
-      expectedReturnPct: 6.5,
-      cashReserve: 5000,
-    },
+    targets: {},
+    settings: { ...DEFAULT_SETTINGS },
   }
 }

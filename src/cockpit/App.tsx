@@ -1,27 +1,73 @@
-// App-Shell des Invest-Cockpits: Sidebar (Desktop) / Bottom-Tabs (Mobil),
-// Kopfzeile mit Live-Kurs-Update, Toasts und Screen-Routing.
+// App-Shell des Invest-Cockpits: Sidebar mit Sektionen (Desktop) /
+// Bottom-Tabs + „Mehr“-Menü (Mobil), Kopfzeile mit Live-Kurs-Update,
+// Toasts und Screen-Routing.
 
 import { useState } from 'react'
 import { Dashboard } from './components/Dashboard'
 import { DcfScreen } from './components/DcfScreen'
+import { DividendsScreen } from './components/DividendsScreen'
 import { PortfolioScreen } from './components/PortfolioScreen'
 import { PromptsScreen } from './components/PromptsScreen'
+import { RebalanceScreen } from './components/RebalanceScreen'
 import { RiskScreen } from './components/RiskScreen'
 import { ScreenerScreen } from './components/ScreenerScreen'
 import { SettingsScreen } from './components/SettingsScreen'
+import { TaxScreen } from './components/TaxScreen'
 import { CockpitProvider, useCockpit } from './state'
 
-type Tab = 'cockpit' | 'portfolio' | 'screener' | 'dcf' | 'risiko' | 'research' | 'settings'
+type Tab =
+  | 'cockpit'
+  | 'portfolio'
+  | 'screener'
+  | 'dcf'
+  | 'risiko'
+  | 'dividenden'
+  | 'rebalancing'
+  | 'steuer'
+  | 'research'
+  | 'settings'
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'cockpit', label: 'Cockpit', icon: '◆' },
-  { id: 'portfolio', label: 'Portfolio', icon: '▤' },
-  { id: 'screener', label: 'Screener', icon: '⌕' },
-  { id: 'dcf', label: 'DCF', icon: '∑' },
-  { id: 'risiko', label: 'Risiko', icon: '⛨' },
-  { id: 'research', label: 'Research', icon: '✦' },
-  { id: 'settings', label: 'Einstellungen', icon: '⚙' },
+interface TabDef {
+  id: Tab
+  label: string
+  icon: string
+}
+
+const SECTIONS: { title: string; tabs: TabDef[] }[] = [
+  {
+    title: 'Übersicht',
+    tabs: [
+      { id: 'cockpit', label: 'Cockpit', icon: '◆' },
+      { id: 'portfolio', label: 'Portfolio', icon: '▤' },
+    ],
+  },
+  {
+    title: 'Analyse',
+    tabs: [
+      { id: 'screener', label: 'Screener', icon: '⌕' },
+      { id: 'dcf', label: 'DCF', icon: '∑' },
+      { id: 'risiko', label: 'Risiko', icon: '⛨' },
+    ],
+  },
+  {
+    title: 'Planung',
+    tabs: [
+      { id: 'dividenden', label: 'Dividenden', icon: '💶' },
+      { id: 'rebalancing', label: 'Rebalancing', icon: '⚖' },
+      { id: 'steuer', label: 'Steuer', icon: '§' },
+    ],
+  },
+  {
+    title: 'Mehr',
+    tabs: [
+      { id: 'research', label: 'Research', icon: '✦' },
+      { id: 'settings', label: 'Einstellungen', icon: '⚙' },
+    ],
+  },
 ]
+
+const ALL_TABS = SECTIONS.flatMap((s) => s.tabs)
+const MOBILE_MAIN: Tab[] = ['cockpit', 'portfolio', 'screener', 'dividenden']
 
 function Logo() {
   return (
@@ -53,36 +99,52 @@ function Shell() {
   const { toasts, quotesLoading, refreshQuotes } = useCockpit()
   const [tab, setTab] = useState<Tab>('cockpit')
   const [dcfInstrumentId, setDcfInstrumentId] = useState<string | null>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const openDcf = (id: string) => {
     setDcfInstrumentId(id)
     setTab('dcf')
   }
+  const go = (t: Tab) => {
+    setTab(t)
+    setMoreOpen(false)
+  }
+
+  const activeLabel = ALL_TABS.find((t) => t.id === tab)?.label
 
   return (
     <div className="min-h-dvh bg-abyss lg:pl-56">
       {/* Sidebar (Desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-edge bg-card p-4 lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col overflow-y-auto border-r border-edge bg-card p-4 lg:flex">
         <Logo />
-        <nav className="mt-8 flex flex-col gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
-                tab === t.id
-                  ? 'bg-aurum/12 font-semibold text-aurum'
-                  : 'text-ink-soft hover:bg-raised hover:text-ink'
-              }`}
-            >
-              <span className="w-4 text-center">{t.icon}</span>
-              {t.label}
-            </button>
+        <nav className="mt-6 flex flex-col gap-4">
+          {SECTIONS.map((section) => (
+            <div key={section.title}>
+              <div className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-ink-mute">
+                {section.title}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {section.tabs.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => go(t.id)}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                      tab === t.id
+                        ? 'bg-aurum/12 font-semibold text-aurum'
+                        : 'text-ink-soft hover:bg-raised hover:text-ink'
+                    }`}
+                  >
+                    <span className="w-4 text-center text-xs">{t.icon}</span>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
-        <div className="mt-auto space-y-2 text-[10px] leading-relaxed text-ink-mute">
+        <div className="mt-auto space-y-2 pt-4 text-[10px] leading-relaxed text-ink-mute">
           <p>Alle Daten lokal im Browser. Kennzahlen = Beispieldaten, editierbar.</p>
-          <p>Keine Anlageberatung.</p>
+          <p>Keine Anlage- oder Steuerberatung.</p>
         </div>
       </aside>
 
@@ -91,9 +153,7 @@ function Shell() {
         <div className="lg:hidden">
           <Logo />
         </div>
-        <h1 className="hidden text-sm font-semibold text-ink-soft lg:block">
-          {TABS.find((t) => t.id === tab)?.label}
-        </h1>
+        <h1 className="hidden text-sm font-semibold text-ink-soft lg:block">{activeLabel}</h1>
         <button
           onClick={() => void refreshQuotes()}
           disabled={quotesLoading}
@@ -107,30 +167,70 @@ function Shell() {
 
       {/* Inhalt */}
       <main className="fade-in mx-auto w-full max-w-6xl px-4 pb-24 pt-4 lg:px-6 lg:pb-8" key={tab}>
-        {tab === 'cockpit' && <Dashboard onNavigate={(t) => setTab(t as Tab)} />}
+        {tab === 'cockpit' && <Dashboard onNavigate={(t) => go(t as Tab)} />}
         {tab === 'portfolio' && <PortfolioScreen />}
         {tab === 'screener' && <ScreenerScreen onOpenDcf={openDcf} />}
         {tab === 'dcf' && <DcfScreen instrumentId={dcfInstrumentId} onSelect={setDcfInstrumentId} />}
         {tab === 'risiko' && <RiskScreen />}
+        {tab === 'dividenden' && <DividendsScreen />}
+        {tab === 'rebalancing' && <RebalanceScreen />}
+        {tab === 'steuer' && <TaxScreen />}
         {tab === 'research' && <PromptsScreen />}
         {tab === 'settings' && <SettingsScreen />}
       </main>
 
-      {/* Bottom-Tabs (Mobil) */}
+      {/* Bottom-Tabs (Mobil): 4 Haupt-Tabs + „Mehr“ */}
       <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-edge bg-card/95 px-1 py-1.5 backdrop-blur lg:hidden">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex min-w-0 flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] ${
-              tab === t.id ? 'font-semibold text-aurum' : 'text-ink-mute'
-            }`}
-          >
-            <span className="text-sm leading-none">{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
+        {MOBILE_MAIN.map((id) => {
+          const t = ALL_TABS.find((x) => x.id === id)!
+          return (
+            <button
+              key={t.id}
+              onClick={() => go(t.id)}
+              className={`flex min-w-0 flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] ${
+                tab === t.id && !moreOpen ? 'font-semibold text-aurum' : 'text-ink-mute'
+              }`}
+            >
+              <span className="text-sm leading-none">{t.icon}</span>
+              {t.label}
+            </button>
+          )
+        })}
+        <button
+          onClick={() => setMoreOpen((v) => !v)}
+          className={`flex min-w-0 flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] ${
+            moreOpen || !MOBILE_MAIN.includes(tab) ? 'font-semibold text-aurum' : 'text-ink-mute'
+          }`}
+        >
+          <span className="text-sm leading-none">⋯</span>
+          Mehr
+        </button>
       </nav>
+
+      {/* „Mehr“-Menü (Mobil) */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-40 bg-abyss/70 backdrop-blur-sm lg:hidden" onClick={() => setMoreOpen(false)}>
+          <div
+            className="absolute inset-x-3 bottom-16 rounded-2xl border border-edge bg-card p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="grid grid-cols-3 gap-2">
+              {ALL_TABS.filter((t) => !MOBILE_MAIN.includes(t.id)).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => go(t.id)}
+                  className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs ${
+                    tab === t.id ? 'bg-aurum/12 font-semibold text-aurum' : 'bg-inset text-ink-soft'
+                  }`}
+                >
+                  <span className="text-base leading-none">{t.icon}</span>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toasts */}
       <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6">

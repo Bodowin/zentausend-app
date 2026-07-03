@@ -62,6 +62,14 @@ export interface EtfInfo {
   index?: string
 }
 
+/** Ausschüttungsprofil für den Dividenden-Kalender */
+export interface DividendInfo {
+  /** Jahresdividende je Anteil in EUR (Summe aller Zahlungen) */
+  perShare: number
+  /** Zahlungsmonate (1–12); Jahresdividende wird gleichmäßig verteilt */
+  months: number[]
+}
+
 export interface Instrument {
   id: string
   ticker: string
@@ -80,6 +88,7 @@ export interface Instrument {
   quoteCurrency?: 'EUR' | 'USD' | 'CHF' | 'DKK' | 'GBP'
   metrics?: StockMetrics
   etf?: EtfInfo
+  dividend?: DividendInfo
 }
 
 export type TxType = 'buy' | 'sell'
@@ -120,6 +129,17 @@ export interface Settings {
   horizonYears: number
   expectedReturnPct: number // erwartete Rendite p.a. für Projektionen
   cashReserve: number // EUR Notgroschen/Cash außerhalb des Depots
+  // --- Steuern (Deutschland) ---
+  /** Sparer-Pauschbetrag gesamt (1.000 € single / 2.000 € verheiratet) */
+  taxAllowance: number
+  /** davon außerhalb dieses Depots bereits verbraucht (z. B. Tagesgeld-Zinsen) */
+  taxAllowanceUsedElsewhere: number
+  /** Kirchensteuer: 0, 8 oder 9 % */
+  churchTaxPct: 0 | 8 | 9
+  /** Basiszins für die Vorabpauschale, % (BMF, jährlich neu) */
+  basiszinsPct: number
+  /** Auslands-Broker (z. B. Interactive Brokers): keine automatische Abführung */
+  foreignBroker: boolean
 }
 
 export interface CockpitState {
@@ -132,6 +152,8 @@ export interface CockpitState {
   snapshots: Snapshot[]
   /** Favoriten im Screener */
   watchlist: string[]
+  /** Ziel-Allokation fürs Rebalancing: instrumentId → Ziel-% (0–100) */
+  targets: Record<string, number>
   settings: Settings
 }
 

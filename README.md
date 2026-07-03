@@ -85,14 +85,29 @@ Gewinn/Verlust; die Chart-Palette ist CVD-/Kontrast-validiert.
   Sensitivitätsmatrix WACC × ewiges Wachstum)
 - **Risiko** – Diversifikations-Score, Sektor-/Regionen-Konzentration,
   Warn-Flags, Stress-Szenarien
+- **Dividenden** – Ausschüttungs-Kalender (erwartete Zahlungen je Monat),
+  Yield on Cost, editierbare Dividenden-Profile je Titel
+- **Rebalancing** – Ziel-Allokation je Position, Order-Vorschläge wahlweise
+  steuerschonend mit frischem Geld (keine Verkäufe) oder als Umschichtung
+  inkl. Steuerkosten-Schätzung je Verkauf
+- **Steuer** – deutsches Privatdepot/Interactive Brokers: Sparer-Pauschbetrag-
+  Tracker, Abgeltungsteuer-Schätzung (Soli/Kirchensteuer), 30 % Teilfrei-
+  stellung für Aktien-ETFs, Verlusttöpfe (Aktien vs. Sonstige), Vorabpauschale
+  und automatisch abgeleitete Optimierungs-Tipps (Pauschbetrag ausschöpfen,
+  Verlust-Ernte, Anlage-KAP-Rücklage)
 - **Research** – 10 institutionelle Analyse-Prompts (Screening, DCF, Risiko,
   Earnings, Allokation, TA, Dividenden, Wettbewerb, Muster, Makro),
-  automatisch mit Depot + Profil befüllt, zum Kopieren in Claude
+  automatisch mit Depot + Profil befüllt, zum Kopieren in Claude – plus
+  **KI-Daten-Import**: Daten-Prompt kopieren, JSON-Antwort der KI einfügen,
+  Kennzahlen/Kurse/Dividenden-Profile aktualisieren sich (neue Ticker werden
+  angelegt)
 
 **Daten**: komplett offline-first in `localStorage` (Export/Import als JSON).
-Live-Kurse optional über die Vercel-Function `api/quote.ts` (Yahoo Finance,
-EUR-Umrechnung) – lokal ohne Deployment werden Kurse manuell gepflegt.
-Keine Anlageberatung; alle Kennzahlen sind editierbare Beispieldaten.
+Live-Kurse optional über die Vercel-Function `api/quote.ts`, historische
+Kurs-Charts (6M/1J/5J/Max, im Aktien-Detail) über `api/history.ts` (beides
+Yahoo Finance, EUR-Umrechnung bei Kursen) – lokal ohne Deployment werden Kurse
+manuell gepflegt. Keine Anlage- oder Steuerberatung; alle Kennzahlen sind
+editierbare Beispieldaten.
 
 ## Status & Roadmap
 

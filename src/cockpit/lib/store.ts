@@ -2,10 +2,22 @@
 // gleiche Philosophie wie die Spiel-App (kein Backend nötig, Export/Import
 // als Backup).
 
-import { buildSeed } from './seed'
+import { buildSeed, DEFAULT_SETTINGS, SEED_DIVIDENDS } from './seed'
 import type { CockpitState } from './types'
 
 const KEY = 'invest-cockpit-v1'
+
+/** Ältere gespeicherte Stände sanft um neue Felder ergänzen. */
+function migrate(parsed: CockpitState): CockpitState {
+  return {
+    ...parsed,
+    targets: parsed.targets ?? {},
+    settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
+    instruments: parsed.instruments.map((i) =>
+      !i.dividend && SEED_DIVIDENDS[i.id] ? { ...i, dividend: SEED_DIVIDENDS[i.id] } : i,
+    ),
+  }
+}
 
 export function loadState(): CockpitState {
   try {
@@ -15,7 +27,7 @@ export function loadState(): CockpitState {
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.instruments)) {
       return buildSeed()
     }
-    return parsed
+    return migrate(parsed)
   } catch {
     return buildSeed()
   }
@@ -43,7 +55,7 @@ export function parseImportedState(json: string): CockpitState | null {
       Array.isArray(parsed.transactions) &&
       parsed.settings
     ) {
-      return parsed
+      return migrate(parsed)
     }
     return null
   } catch {

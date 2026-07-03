@@ -45,6 +45,8 @@ interface CockpitContextValue {
   deletePlan: (id: string) => void
   toggleWatch: (id: string) => void
   updateSettings: (patch: Partial<Settings>) => void
+  setTargets: (targets: Record<string, number>) => void
+  applyInstruments: (updated: Instrument[], created: Instrument[]) => void
   refreshQuotes: () => Promise<void>
   importState: (next: CockpitState) => void
   clearDemo: () => void
@@ -136,6 +138,21 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, settings: { ...s.settings, ...patch } }))
   }, [])
 
+  const setTargets = useCallback((targets: Record<string, number>) => {
+    setState((s) => ({ ...s, targets }))
+  }, [])
+
+  /** KI-Import: bestehende Titel ersetzen, neue anhängen. */
+  const applyInstruments = useCallback((updated: Instrument[], created: Instrument[]) => {
+    setState((s) => ({
+      ...s,
+      instruments: [
+        ...s.instruments.map((i) => updated.find((u) => u.id === i.id) ?? i),
+        ...created,
+      ],
+    }))
+  }, [])
+
   const refreshQuotes = useCallback(async () => {
     setQuotesLoading(true)
     try {
@@ -213,6 +230,8 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     deletePlan,
     toggleWatch,
     updateSettings,
+    setTargets,
+    applyInstruments,
     refreshQuotes,
     importState,
     clearDemo,

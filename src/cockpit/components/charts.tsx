@@ -496,6 +496,102 @@ export function Radar({
 }
 
 // ---------------------------------------------------------------------------
+// Säulen-Chart (eine Serie, z. B. Dividenden je Monat) – schmale Säulen,
+// runde Daten-Enden, Wert im Tooltip + selektive Labels am Maximum
+// ---------------------------------------------------------------------------
+
+export function ColumnChart({
+  labels,
+  values,
+  height = 180,
+  color = 'var(--color-chart-1)',
+  format,
+  highlightIndex,
+}: {
+  labels: string[]
+  values: number[]
+  height?: number
+  color?: string
+  format: (v: number) => string
+  highlightIndex?: number
+}) {
+  const [ref, width] = useMeasure<HTMLDivElement>()
+  const [hover, setHover] = useState<number | null>(null)
+  const pad = { top: 18, bottom: 22 }
+  const max = Math.max(...values, 1)
+  const plotH = height - pad.top - pad.bottom
+  const slot = width / Math.max(labels.length, 1)
+  const barW = Math.min(24, Math.max(8, slot - 10))
+  const maxIdx = values.indexOf(Math.max(...values))
+
+  return (
+    <div className="relative" ref={ref}>
+      {width > 0 && (
+        <svg width={width} height={height} role="img" onMouseLeave={() => setHover(null)}>
+          <line
+            x1={0} x2={width} y1={height - pad.bottom} y2={height - pad.bottom}
+            stroke="var(--color-grid)" strokeWidth="1"
+          />
+          {values.map((v, i) => {
+            const h = (v / max) * plotH
+            const x = i * slot + (slot - barW) / 2
+            const y = height - pad.bottom - h
+            const active = hover === i || highlightIndex === i
+            return (
+              <g key={i}>
+                {/* großzügige Hover-Fläche */}
+                <rect
+                  x={i * slot} y={pad.top - 10} width={slot} height={plotH + 10 + pad.bottom}
+                  fill="transparent"
+                  onMouseEnter={() => setHover(i)}
+                />
+                {v > 0 && (
+                  <rect
+                    x={x} y={y} width={barW} height={Math.max(h, 2)}
+                    rx={4} ry={4}
+                    fill={color}
+                    opacity={active ? 1 : 0.82}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {/* Baseline-Ecke wieder eckig ziehen */}
+                {v > 0 && h > 6 && (
+                  <rect
+                    x={x} y={height - pad.bottom - 4} width={barW} height={4}
+                    fill={color} opacity={active ? 1 : 0.82}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {i === maxIdx && v > 0 && hover === null && (
+                  <text
+                    x={x + barW / 2} y={y - 5} textAnchor="middle"
+                    fontSize="10" className="tnum" fill="var(--color-ink-soft)"
+                  >
+                    {format(v)}
+                  </text>
+                )}
+                <text
+                  x={i * slot + slot / 2} y={height - 7} textAnchor="middle"
+                  fontSize="10" fill="var(--color-ink-mute)"
+                >
+                  {labels[i]}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      )}
+      {hover !== null && width > 0 && (
+        <TooltipBox x={hover * slot + slot / 2} y={pad.top}>
+          <div className="font-medium text-ink">{labels[hover]}</div>
+          <div className="tnum text-ink-soft">{format(values[hover])}</div>
+        </TooltipBox>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Sparkline für Stat-Kacheln
 // ---------------------------------------------------------------------------
 

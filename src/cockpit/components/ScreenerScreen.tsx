@@ -8,6 +8,7 @@ import { MOAT_LABELS, SCORE_AXES, scoreInstrument, type ScoreBreakdown } from '.
 import type { Instrument, Moat, Region, Sector, StockMetrics } from '../lib/types'
 import { useCockpit } from '../state'
 import { CHART_COLORS, Radar, ScoreMeter } from './charts'
+import { HistoryChart } from './HistoryChart'
 import { Badge, Button, Card, Field, inputClass, Modal, NumberInput, selectCompactClass } from './ui'
 
 const SECTORS: Sector[] = [
@@ -454,6 +455,13 @@ function StockDetailModal({
           {metricRow('Dividende erhöht seit', opt(m?.dividendGrowthYears, (v) => `${v} Jahren`))}
           {metricRow('Beta', opt(m?.beta, (v) => fmtNum(v, 2)))}
         </div>
+      </div>
+
+      <div className="mt-5 border-t border-edge pt-4">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-mute">
+          Kurs-Chart
+        </h3>
+        <HistoryChart instrument={instrument} />
       </div>
 
       <div className="mt-5 flex flex-wrap justify-end gap-2">
