@@ -7,6 +7,7 @@ import { fmtDate, fmtEur, fmtEurExact, fmtNum, fmtPct, fmtSignedEur, todayIso, u
 import type { Instrument, SavingsPlan, Transaction, TxType } from '../lib/types'
 import { useCockpit } from '../state'
 import { LegendRow, LineChart } from './charts'
+import { ImportModal } from './ImportModal'
 import {
   Badge,
   Button,
@@ -25,6 +26,7 @@ export function PortfolioScreen() {
   const [txModal, setTxModal] = useState<null | { type: TxType; instrumentId?: string }>(null)
   const [planModal, setPlanModal] = useState<null | SavingsPlan>(null)
   const [showTxs, setShowTxs] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   const planTotal = monthlyPlanTotal(state.plans)
   const [projReturn, setProjReturn] = useState(state.settings.expectedReturnPct)
@@ -48,6 +50,9 @@ export function PortfolioScreen() {
             </Button>
             <Button small variant="ghost" onClick={() => setTxModal({ type: 'sell' })}>
               Verkauf
+            </Button>
+            <Button small variant="ghost" onClick={() => setShowImport(true)}>
+              ⬇ IBKR-Import
             </Button>
           </div>
         }
@@ -298,6 +303,7 @@ export function PortfolioScreen() {
         )}
       </Card>
 
+      {showImport && <ImportModal onClose={() => setShowImport(false)} />}
       {txModal && (
         <TransactionModal
           type={txModal.type}

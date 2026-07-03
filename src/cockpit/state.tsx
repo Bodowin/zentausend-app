@@ -37,6 +37,8 @@ interface CockpitContextValue {
   quotesLoading: boolean
   notify: (text: string, tone?: Toast['tone']) => void
   addTransaction: (tx: Transaction) => void
+  /** Bulk-Import: neue Instrumente + Transaktionen in einem Schritt */
+  addTransactions: (txs: Transaction[], newInstruments: Instrument[]) => void
   deleteTransaction: (id: string) => void
   upsertInstrument: (instrument: Instrument) => void
   deleteInstrument: (id: string) => void
@@ -85,6 +87,14 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
 
   const addTransaction = useCallback((tx: Transaction) => {
     setState((s) => ({ ...s, transactions: [...s.transactions, tx] }))
+  }, [])
+
+  const addTransactions = useCallback((txs: Transaction[], newInstruments: Instrument[]) => {
+    setState((s) => ({
+      ...s,
+      instruments: [...s.instruments, ...newInstruments],
+      transactions: [...s.transactions, ...txs],
+    }))
   }, [])
 
   const deleteTransaction = useCallback((id: string) => {
@@ -222,6 +232,7 @@ export function CockpitProvider({ children }: { children: ReactNode }) {
     quotesLoading,
     notify,
     addTransaction,
+    addTransactions,
     deleteTransaction,
     upsertInstrument,
     deleteInstrument,

@@ -3,20 +3,37 @@
 // Score-Überblick der Watchlist.
 
 import { useMemo } from 'react'
+import { compareWithBenchmark, MSCI_WORLD } from '../lib/benchmark'
 import { monthlyPlanTotal, valueSeries } from '../lib/calc'
-import { fmtEur, fmtEurExact, fmtMonth, fmtPct, fmtSignedEur } from '../lib/format'
+import { fmtEur, fmtEurExact, fmtMonth, fmtPct, fmtSignedEur, todayIso } from '../lib/format'
 import { byAssetClass } from '../lib/risk'
 import { scoreInstrument } from '../lib/score'
 import { useCockpit } from '../state'
 import { Donut, foldSlices, HBarList, LegendRow, LineChart, ScoreMeter, Sparkline } from './charts'
-import { Badge, Card, Stat, UpDown } from './ui'
+import { Badge, Button, Card, Stat, UpDown } from './ui'
 
-export function Dashboard({ onNavigate }: { onNavigate: (tab: string) => void }) {
+export function Dashboard({
+  onNavigate,
+  onOpenReport,
+}: {
+  onNavigate: (tab: string) => void
+  onOpenReport: () => void
+}) {
   const { state, summary } = useCockpit()
 
   const series = useMemo(
     () => valueSeries(state.snapshots, { invested: summary.invested, value: summary.value }),
     [state.snapshots, summary.invested, summary.value],
+  )
+
+  const bench = useMemo(
+    () =>
+      compareWithBenchmark(state.transactions, state.snapshots, {
+        date: todayIso(),
+        invested: summary.invested,
+        value: summary.value,
+      }),
+    [state.transactions, state.snapshots, summary.invested, summary.value],
   )
 
   const sparkValues = series.map((p) => p.value)
@@ -62,9 +79,12 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string) => void })
             {state.demo && <Badge tone="warn">Demo-Daten</Badge>}
           </div>
         </div>
-        <div className="text-right">
+        <div className="flex flex-col items-end gap-2">
           <Sparkline values={sparkValues} color="var(--color-aurum)" width={140} height={44} />
-          <div className="mt-1 text-[11px] text-ink-mute">Verlauf seit {fmtMonth(series[0]?.date ?? '')}</div>
+          <div className="text-[11px] text-ink-mute">Verlauf seit {fmtMonth(series[0]?.date ?? '')}</div>
+          <Button small variant="ghost" onClick={onOpenReport}>
+            📄 Monats-Report
+          </Button>
         </div>
       </div>
 
@@ -138,6 +158,57 @@ export function Dashboard({ onNavigate }: { onNavigate: (tab: string) => void })
           </div>
         </Card>
       </div>
+
+      {/* Benchmark-Vergleich */}
+      {bench && (
+        <Card
+          title={`Depot vs. ${MSCI_WORLD.name}`}
+          subtitle="dieselben Einzahlungen und Verkäufe, in den Benchmark gespiegelt"
+          action={
+            <Badge tone={bench.alphaPct >= 0 ? 'gain' : 'loss'}>
+              {bench.alphaPct >= 0 ? 'vor dem Markt: ' : 'hinter dem Markt: '}
+              {fmtPct(bench.alphaPct, 1, true)} Pkt.
+            </Badge>
+          }
+        >
+          <LineChart
+            labels={bench.labels}
+            series={[
+              { name: 'Depot', color: 'var(--color-chart-1)', values: bench.depot, area: true },
+              { name: 'Benchmark', color: 'var(--color-chart-3)', values: bench.benchmark },
+              {
+                name: 'Einzahlungen',
+                color: 'var(--color-ink-mute)',
+                values: bench.invested,
+                dashed: true,
+              },
+            ]}
+            formatY={(v) => fmtEur(v)}
+            formatLabel={(l) => fmtMonth(l)}
+            yMinZero
+          />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <LegendRow
+              items={[
+                { label: 'Depot', color: 'var(--color-chart-1)' },
+                { label: 'Benchmark', color: 'var(--color-chart-3)' },
+                { label: 'Einzahlungen', color: 'var(--color-ink-mute)', dashed: true },
+              ]}
+            />
+            <div className="text-xs text-ink-soft">
+              Depot{' '}
+              <span className={`tnum font-semibold ${bench.depotReturnPct >= 0 ? 'text-gain' : 'text-loss'}`}>
+                {fmtPct(bench.depotReturnPct, 1, true)}
+              </span>
+              {' · '}Benchmark{' '}
+              <span className={`tnum font-semibold ${bench.benchReturnPct >= 0 ? 'text-gain' : 'text-loss'}`}>
+                {fmtPct(bench.benchReturnPct, 1, true)}
+              </span>
+              <span className="ml-2 text-ink-mute">({MSCI_WORLD.note})</span>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Top/Flop + Watchlist */}
       <div className="grid gap-4 lg:grid-cols-2">

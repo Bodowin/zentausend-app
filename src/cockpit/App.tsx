@@ -9,6 +9,7 @@ import { DividendsScreen } from './components/DividendsScreen'
 import { PortfolioScreen } from './components/PortfolioScreen'
 import { PromptsScreen } from './components/PromptsScreen'
 import { RebalanceScreen } from './components/RebalanceScreen'
+import { ReportView } from './components/ReportView'
 import { RiskScreen } from './components/RiskScreen'
 import { ScreenerScreen } from './components/ScreenerScreen'
 import { SettingsScreen } from './components/SettingsScreen'
@@ -26,6 +27,7 @@ type Tab =
   | 'steuer'
   | 'research'
   | 'settings'
+  | 'report'
 
 interface TabDef {
   id: Tab
@@ -115,7 +117,7 @@ function Shell() {
   return (
     <div className="min-h-dvh bg-abyss lg:pl-56">
       {/* Sidebar (Desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col overflow-y-auto border-r border-edge bg-card p-4 lg:flex">
+      <aside className="no-print fixed inset-y-0 left-0 z-40 hidden w-56 flex-col overflow-y-auto border-r border-edge bg-card p-4 lg:flex">
         <Logo />
         <nav className="mt-6 flex flex-col gap-4">
           {SECTIONS.map((section) => (
@@ -149,7 +151,7 @@ function Shell() {
       </aside>
 
       {/* Kopfzeile */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-edge bg-abyss/90 px-4 py-3 backdrop-blur lg:px-6">
+      <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-edge bg-abyss/90 px-4 py-3 backdrop-blur lg:px-6">
         <div className="lg:hidden">
           <Logo />
         </div>
@@ -167,7 +169,10 @@ function Shell() {
 
       {/* Inhalt */}
       <main className="fade-in mx-auto w-full max-w-6xl px-4 pb-24 pt-4 lg:px-6 lg:pb-8" key={tab}>
-        {tab === 'cockpit' && <Dashboard onNavigate={(t) => go(t as Tab)} />}
+        {tab === 'cockpit' && (
+          <Dashboard onNavigate={(t) => go(t as Tab)} onOpenReport={() => go('report')} />
+        )}
+        {tab === 'report' && <ReportView onBack={() => go('cockpit')} />}
         {tab === 'portfolio' && <PortfolioScreen />}
         {tab === 'screener' && <ScreenerScreen onOpenDcf={openDcf} />}
         {tab === 'dcf' && <DcfScreen instrumentId={dcfInstrumentId} onSelect={setDcfInstrumentId} />}
@@ -180,7 +185,7 @@ function Shell() {
       </main>
 
       {/* Bottom-Tabs (Mobil): 4 Haupt-Tabs + „Mehr“ */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-edge bg-card/95 px-1 py-1.5 backdrop-blur lg:hidden">
+      <nav className="no-print fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-edge bg-card/95 px-1 py-1.5 backdrop-blur lg:hidden">
         {MOBILE_MAIN.map((id) => {
           const t = ALL_TABS.find((x) => x.id === id)!
           return (

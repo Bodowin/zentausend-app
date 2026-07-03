@@ -75,9 +75,15 @@ Gewinn/Verlust; die Chart-Palette ist CVD-/Kontrast-validiert.
 **Module**
 
 - **Cockpit** – Depotwert, G/V, Verlaufs-Kurve (Wert vs. Einzahlungen),
-  Allokations-Donut, Top/Flop, Watchlist-Scores
+  Allokations-Donut, **Benchmark-Vergleich** (dieselben Cashflows in den
+  MSCI World gespiegelt, mit Alpha-Anzeige), Top/Flop, Watchlist-Scores,
+  **Monats-Report** (druckbar als PDF mit hellem Druck-Schema, oder als
+  Markdown-Text kopierbar)
 - **Portfolio** – Positionen (Durchschnittskosten aus Transaktionen),
-  Käufe/Verkäufe, Sparpläne, Zinseszins-Projektion mit Slidern
+  Käufe/Verkäufe, Sparpläne, Zinseszins-Projektion mit Slidern,
+  **IBKR-Import** (Activity Statement, Flex Query oder generisches CSV;
+  EUR-Umrechnung mit editierbaren Kursen, Duplikat-Erkennung, unbekannte
+  Symbole werden angelegt)
 - **Screener** – ~25 Aktien + 7 ETFs als editierbare Kennzahlen-Bibliothek
   (Beispieldaten, Stand ca. Mitte 2025), Qualitäts-Score (5 Teil-Scores,
   gewichtet nach Risikoprofil), Filter/Sortierung, Radar-Vergleich (bis 4 Titel)

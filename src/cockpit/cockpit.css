@@ -83,6 +83,40 @@ input[type='range'] {
   accent-color: var(--color-aurum);
 }
 
+/* Druck: Navigation ausblenden und aufs helle Papier-Schema umschalten,
+   damit der Monats-Report als PDF/Ausdruck lesbar ist. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  :root {
+    --color-abyss: #ffffff;
+    --color-card: #ffffff;
+    --color-raised: #f2f3f6;
+    --color-inset: #f2f3f6;
+    --color-grid: #d8dbe2;
+    --color-edge: #c6cad4;
+    --color-ink: #101319;
+    --color-ink-soft: #3d4454;
+    --color-ink-mute: #6a7183;
+    --color-gain: #157a52;
+    --color-loss: #b33530;
+    --color-aurum: #8a7028;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .card {
+    border-color: #c6cad4;
+    box-shadow: none;
+  }
+}
+
 @keyframes cockpit-fade-in {
   from {
     opacity: 0;
