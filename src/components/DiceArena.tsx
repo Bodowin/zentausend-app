@@ -53,7 +53,8 @@ const SLOT_TF = [
   'rotateY(180deg) translateZ(var(--h))',
 ]
 
-const PIPS: Record<number, [number, number][]> = {
+// Augen-Positionen (Spalte, Zeile) im 3×3-Raster – auch für Mini-Würfel in der Ablage.
+export const PIPS: Record<number, [number, number][]> = {
   1: [[1, 1]],
   2: [[0, 0], [2, 2]],
   3: [[0, 0], [1, 1], [2, 2]],
@@ -339,14 +340,18 @@ export default function DiceArena({
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
     const h = 0.44
-    const Rb = 1.9 + n * 0.3
+    // Engere Schale relativ zur Würfelgröße → die Würfel wirken größer und
+    // sind am Handy leichter anzutippen (Platz für 6 Würfel bleibt reichlich).
+    const Rb = 1.7 + n * 0.26
     // Etwas niedrigere Abwurfhöhe: die „in der Hand" kreisenden Würfel bleiben
     // dadurch komplett in der (nach oben gerückten) Schale sichtbar.
     const y0 = Rb * 0.5 + 2.2
-    // Etwas kleinerer Maßstab → die (perspektivisch hohe) Schale passt auch auf
-    // hohen Geräten mit Notch/Home-Indikator komplett ins Bild, ohne oben/unten
-    // abzuschneiden. Würfel und Schale skalieren gemeinsam, bleiben also bündig.
-    const S = (minD * 0.32) / Rb
+    // Maßstab: so groß wie möglich, damit die Würfel am Handy gut antippbar
+    // sind — aber die (perspektivisch hohe) Schale muss auf beiden Achsen ins
+    // Bild passen. Die Höhe begrenzt am Handy, die Breite am Tablet: dort muss
+    // der komplette Filz (2·Rb+1,2 breit, vorn perspektivisch vergrößert) mit
+    // Luft hineinpassen. Würfel und Schale skalieren gemeinsam, bleiben bündig.
+    const S = Math.min((H * 0.40) / Rb, (W * 0.88) / (2 * Rb + 1.2))
     const sizePx = 2 * h * S
     const feltPx = (2 * Rb + 1.2) * S
     const camTilt = -60, perspective = minD * 1.5

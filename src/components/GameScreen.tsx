@@ -5,7 +5,7 @@ import { computeRisk, explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
 import { getPrefs } from '../lib/prefs'
 import { shareResultImage } from '../lib/shareImage'
-import DiceArena from './DiceArena'
+import DiceArena, { PIPS } from './DiceArena'
 import {
   IconCheck,
   IconPause,
@@ -95,11 +95,17 @@ export function GameScreen(p: Props) {
   const [showRiskInfo, setShowRiskInfo] = useState(false)
   // Wurfphase der Schale, um den Coach schon während des Drehens zu zeigen.
   const [bowlPhase, setBowlPhase] = useState<'ready' | 'rolling' | 'landed'>('ready')
+  // Virtueller Modus: alles außer der Schale kompakter, damit die Würfel groß
+  // und gut antippbar sind.
+  const virtual = diceMode === 'virtual'
   const lastChance = phase === 'lastChance'
   // Einstiegsregel: noch nicht "auf dem Brett" (Score 0) → erst ab ENTRY_MIN sichern.
   const onBoard = players[idx].score > 0
   const entryShort = !onBoard && totalPotential > 0 && totalPotential < entryMin
   const canBank = result.isValid && totalPotential > 0 && (onBoard || totalPotential >= entryMin)
+  // „Doch sichern" (ohne den neuen Wurf zu werten) geht nur, solange die Würfel
+  // noch in der Hand kreiseln. Sobald gewürfelt wurde, ist man festgelegt.
+  const canBankIdle = canBank && (diceMode !== 'virtual' || bowlPhase === 'ready')
   // Weiterwürfeln möglich, sobald mindestens ein gültiger Würfel gelegt ist.
   const canContinue = result.isValid && result.score > 0 && dice.length >= 1
   // Alle Würfel der Hand gelegt → heiße Würfel (6 neu), sonst Rest neu würfeln.
@@ -152,9 +158,9 @@ export function GameScreen(p: Props) {
     <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb">
       {/* Kopfzeile */}
       <header
-        className={`flex items-center justify-between border-b px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] transition-colors ${
-          lastChance ? 'border-coral-500/30 bg-coral-500/10' : 'border-ink-800 bg-ink-900/80'
-        }`}
+        className={`flex items-center justify-between border-b px-4 pt-[max(env(safe-area-inset-top),0.75rem)] transition-colors ${
+          virtual ? 'pb-2' : 'pb-3'
+        } ${lastChance ? 'border-coral-500/30 bg-coral-500/10' : 'border-ink-800 bg-ink-900/80'}`}
       >
         <div className="flex items-center gap-3">
           <button
@@ -209,14 +215,20 @@ export function GameScreen(p: Props) {
       </header>
 
       {/* Spieler-Leiste */}
-      <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-ink-800 px-3 py-3">
+      <div
+        className={`scrollbar-hide flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-ink-800 px-3 ${
+          virtual ? 'py-1.5' : 'py-3'
+        }`}
+      >
         {players.map((pl, i) => {
           const active = i === idx && phase !== 'finished'
           const reached = pl.score >= goalScore
           return (
             <div
               key={pl.id}
-              className={`relative inline-flex min-w-[104px] flex-col rounded-2xl border px-4 py-2.5 transition-all ${
+              className={`relative inline-flex min-w-[104px] flex-col rounded-2xl border transition-all ${
+                virtual ? 'px-3 py-1.5' : 'px-4 py-2.5'
+              } ${
                 active
                   ? 'z-10 scale-105 border-gold-500/60 bg-ink-800 shadow-lg shadow-black/40'
                   : reached
@@ -246,14 +258,14 @@ export function GameScreen(p: Props) {
                 {reached && <IconTrophy className="h-3.5 w-3.5 text-gold-400" />}
               </div>
               <span
-                className={`font-mono text-2xl font-black tracking-tight ${
+                className={`font-mono font-black tracking-tight ${virtual ? 'text-lg' : 'text-2xl'} ${
                   reached ? 'text-gold-300' : active ? 'text-gold-400' : 'text-fog-400'
                 }`}
               >
                 {fmt(pl.score)}
               </span>
-              <span className="mt-0.5 text-[9px] text-fog-600">{pl.busts} Nieten</span>
-              {showMiniChart && (
+              {!virtual && <span className="mt-0.5 text-[9px] text-fog-600">{pl.busts} Nieten</span>}
+              {showMiniChart && !virtual && (
                 <Sparkline turns={turns} name={pl.name} maxScore={maxScore} color={playerColor(pl.name)} />
               )}
             </div>
@@ -270,73 +282,88 @@ export function GameScreen(p: Props) {
         </div>
       )}
 
-      {/* Status-Zeile */}
-      <div className="grid grid-cols-2 gap-4 border-b border-ink-800 bg-ink-900/40 px-4 py-2.5 font-mono text-xs">
-        <div>
-          <div className="mb-0.5 text-fog-600">Bis zum Sieg</div>
-          <div className="text-base font-bold leading-none text-fog-100">
-            {neededForWin > 0 ? fmt(neededForWin) : 'Ziel erreicht'}
+      {/* Status-Zeile: virtuell einzeilig, damit die Schale mehr Platz bekommt. */}
+      {virtual ? (
+        <div className="flex items-center justify-between gap-4 border-b border-ink-800 bg-ink-900/40 px-4 py-1.5 font-mono text-xs">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-fog-600">Bis zum Sieg</span>
+            <span className="font-bold text-fog-100">
+              {neededForWin > 0 ? fmt(neededForWin) : 'Ziel erreicht'}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-fog-600">Nach Sichern</span>
+            {totalPotential > 0 ? (
+              <span className={`font-bold ${neededAfterBank <= 0 ? 'text-mint-400' : 'text-fog-300'}`}>
+                {neededAfterBank <= 0 ? 'Sieg möglich!' : `${fmt(neededAfterBank)} fehlen`}
+              </span>
+            ) : (
+              <span className="text-fog-600">–</span>
+            )}
           </div>
         </div>
-        <div className="text-right">
-          <div className="mb-0.5 text-fog-600">Nach dem Sichern</div>
-          {totalPotential > 0 ? (
-            <div
-              className={`text-base font-bold leading-none ${
-                neededAfterBank <= 0 ? 'text-mint-400' : 'text-fog-300'
-              }`}
-            >
-              {neededAfterBank <= 0 ? 'Sieg möglich!' : `${fmt(neededAfterBank)} fehlen`}
+      ) : (
+        <div className="grid grid-cols-2 gap-4 border-b border-ink-800 bg-ink-900/40 px-4 py-2.5 font-mono text-xs">
+          <div>
+            <div className="mb-0.5 text-fog-600">Bis zum Sieg</div>
+            <div className="text-base font-bold leading-none text-fog-100">
+              {neededForWin > 0 ? fmt(neededForWin) : 'Ziel erreicht'}
             </div>
-          ) : (
-            <div className="text-fog-600">–</div>
-          )}
+          </div>
+          <div className="text-right">
+            <div className="mb-0.5 text-fog-600">Nach dem Sichern</div>
+            {totalPotential > 0 ? (
+              <div
+                className={`text-base font-bold leading-none ${
+                  neededAfterBank <= 0 ? 'text-mint-400' : 'text-fog-300'
+                }`}
+              >
+                {neededAfterBank <= 0 ? 'Sieg möglich!' : `${fmt(neededAfterBank)} fehlen`}
+              </div>
+            ) : (
+              <div className="text-fog-600">–</div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Spielfeld */}
-      <div className="flex flex-1 flex-col px-4 pb-3 pt-3">
-        <div className="mb-2 flex h-5 items-center justify-center">
-          {accumulated > 0 && (
-            <span className="rounded-full border border-ink-700 bg-ink-800 px-3 py-0.5 text-[10px] font-bold text-fog-300 animate-pop">
-              Gesichert im Zug: {fmt(accumulated)}
-            </span>
-          )}
-        </div>
+      <div className={`flex flex-1 flex-col px-4 ${virtual ? 'pb-2 pt-2' : 'pb-3 pt-3'}`}>
+        {/* Virtuell: Platzhalter-Zeile nur rendern, wenn es etwas zu zeigen gibt. */}
+        {(!virtual || accumulated > 0) && (
+          <div className={`flex h-5 items-center justify-center ${virtual ? 'mb-1' : 'mb-2'}`}>
+            {accumulated > 0 && (
+              <span className="rounded-full border border-ink-700 bg-ink-800 px-3 py-0.5 text-[10px] font-bold text-fog-300 animate-pop">
+                Gesichert im Zug: {fmt(accumulated)}
+              </span>
+            )}
+          </div>
+        )}
 
         {diceMode === 'virtual' ? (
           /* Virtuell: Würfelschale auf EINEM Screen – Würfel direkt antippen. */
           <>
-            {/* Kopfzeile: Punkte dieser Auswahl (links) · Zug-Gesamt (rechts) ·
-                darunter die ausgelegten Würfel gruppiert. */}
-            <div className="mb-2 rounded-2xl border border-ink-800 bg-ink-900/40 px-3 py-2">
-              <div className="flex items-end justify-between">
-                <div className="flex flex-col leading-none">
-                  <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-fog-500">
-                    Diese Würfel
-                  </span>
-                  <span
-                    key={result.score}
-                    className={`font-mono text-3xl font-black leading-none animate-pop ${
-                      result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
-                    }`}
-                  >
-                    +{fmt(result.score)}
-                  </span>
-                </div>
-                <div className="flex flex-col items-end leading-none">
-                  <span className="mb-1 text-[9px] font-bold uppercase tracking-widest text-fog-500">
-                    Zug gesamt
-                  </span>
-                  <span className="font-mono text-2xl font-black leading-none text-gold-400">
-                    {fmt(totalPotential)}
-                  </span>
-                </div>
+            {/* Kompakte Kopfzeile: Punkte dieser Auswahl (links) · ausgelegte
+                Würfel als Mini-Würfel mit Augen (Mitte) · Zug-Gesamt (rechts).
+                Einzeilig, damit die Schale darunter maximal groß wird. */}
+            <div className="mb-1.5 flex items-center gap-2 rounded-2xl border border-ink-800 bg-ink-900/40 px-3 py-1.5">
+              <div className="flex shrink-0 flex-col leading-none">
+                <span className="mb-0.5 text-[8px] font-bold uppercase tracking-widest text-fog-500">
+                  Diese Würfel
+                </span>
+                <span
+                  key={result.score}
+                  className={`font-mono text-2xl font-black leading-none animate-pop ${
+                    result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
+                  }`}
+                >
+                  +{fmt(result.score)}
+                </span>
               </div>
-              {/* Ausgelegte Würfel, gruppiert (gold = zählt, rot = ungültig, Pasch markiert). */}
-              <div className="mt-2 flex min-h-[28px] flex-wrap items-center gap-1.5">
+              {/* Gruppiert nach Wert (gold = zählt, rot = ungültig, Pasch markiert). */}
+              <div className="flex min-h-[30px] flex-1 flex-wrap items-center justify-center gap-1">
                 {laidGroups.length === 0 ? (
-                  <span className="text-[11px] italic text-fog-600">Noch nichts ausgelegt</span>
+                  <span className="text-[10px] italic text-fog-600">Noch nichts ausgelegt</span>
                 ) : (
                   laidGroups.map((g) => {
                     const bad = result.invalidDice.includes(g.value)
@@ -344,21 +371,34 @@ export function GameScreen(p: Props) {
                     return (
                       <span
                         key={g.value}
-                        className={`flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-bold ${
+                        className={`flex items-center gap-0.5 rounded-lg p-0.5 ${
                           bad
-                            ? 'bg-coral-400 text-white'
+                            ? 'bg-coral-500/15 ring-1 ring-coral-400/70'
                             : pasch
-                              ? 'bg-gold-400 text-ink-900 ring-2 ring-gold-300/80'
-                              : 'bg-gold-300/90 text-ink-900'
+                              ? 'bg-gold-500/15 ring-2 ring-gold-400/70'
+                              : ''
                         }`}
                       >
-                        {g.count > 1 && <span className="text-xs opacity-70">{g.count}×</span>}
-                        {g.value}
-                        {pasch && <span className="ml-0.5 text-[8px] font-black uppercase tracking-wide">Pasch</span>}
+                        {Array.from({ length: g.count }, (_, i) => (
+                          <MiniDie key={i} value={g.value} bad={bad} />
+                        ))}
+                        {pasch && (
+                          <span className="px-0.5 text-[8px] font-black uppercase tracking-wide text-gold-300">
+                            Pasch
+                          </span>
+                        )}
                       </span>
                     )
                   })
                 )}
+              </div>
+              <div className="flex shrink-0 flex-col items-end leading-none">
+                <span className="mb-0.5 text-[8px] font-bold uppercase tracking-widest text-fog-500">
+                  Zug gesamt
+                </span>
+                <span className="font-mono text-xl font-black leading-none text-gold-400">
+                  {fmt(totalPotential)}
+                </span>
               </div>
             </div>
 
@@ -466,9 +506,13 @@ export function GameScreen(p: Props) {
 
         {/* Risiko-Meter + Coach – zwei Zeilen, damit die Empfehlung immer voll
             sichtbar ist und nichts abgeschnitten wird. */}
-        <div className="mb-3">
+        <div className={virtual ? 'mb-2' : 'mb-3'}>
           {meterRisk && (
-            <div className="rounded-xl border border-ink-800 bg-ink-900/60 px-3 py-2 animate-pop">
+            <div
+              className={`rounded-xl border border-ink-800 bg-ink-900/60 px-3 animate-pop ${
+                virtual ? 'py-1.5' : 'py-2'
+              }`}
+            >
               {/* Zeile 1: Label + Info (links) · Empfehlung des Coaches (rechts) */}
               <div className="mb-1.5 flex items-center justify-between gap-3">
                 <button
@@ -499,7 +543,7 @@ export function GameScreen(p: Props) {
         </div>
 
         {/* Eingabe: Zahlen-Pad (echt). Virtuell wird direkt in der Schale getippt. */}
-        <div className="mt-auto space-y-3">
+        <div className={`mt-auto ${virtual ? 'space-y-2' : 'space-y-3'}`}>
           {diceMode === 'real' && (
             <div className="grid grid-cols-6 gap-2">
               {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -528,7 +572,7 @@ export function GameScreen(p: Props) {
                     <span className="mt-0.5 text-[9px] font-normal opacity-80">verliert {fmt(accumulated)}</span>
                   )}
                 </button>
-                {canBank ? (
+                {canBankIdle ? (
                   /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
                   <button
                     onClick={p.onBank}
@@ -700,6 +744,25 @@ export function GameScreen(p: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+/** Kleiner Würfel mit echten Augen für die Ablage der ausgelegten Würfel. */
+function MiniDie({ value, bad }: { value: number; bad?: boolean }) {
+  return (
+    <span
+      className={`grid h-7 w-7 shrink-0 grid-cols-3 grid-rows-3 rounded-md border-b-2 p-[3px] shadow-sm animate-pop ${
+        bad ? 'border-coral-600 bg-coral-400' : 'border-gold-600/70 bg-gold-300/90'
+      }`}
+    >
+      {PIPS[value].map(([c, r], i) => (
+        <span
+          key={i}
+          className={`h-[5px] w-[5px] place-self-center rounded-full ${bad ? 'bg-white' : 'bg-ink-900'}`}
+          style={{ gridColumn: c + 1, gridRow: r + 1 }}
+        />
+      ))}
+    </span>
   )
 }
 

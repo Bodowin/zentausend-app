@@ -92,7 +92,7 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
               <span className="text-[11px] text-fog-500">Würfel-Klicks im virtuellen Modus</span>
             </span>
             <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.sound ? 'bg-mint-500' : 'bg-ink-600'}`}>
-              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${prefs.sound ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${prefs.sound ? 'left-[26px]' : 'left-1'}`} />
             </span>
           </button>
 
@@ -109,7 +109,7 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
               <span className="text-[11px] text-fog-500">Kurze Einblendung beim Spielerwechsel</span>
             </span>
             <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.handoff ? 'bg-mint-500' : 'bg-ink-600'}`}>
-              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${prefs.handoff ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${prefs.handoff ? 'left-[26px]' : 'left-1'}`} />
             </span>
           </button>
 
@@ -126,7 +126,7 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
               <span className="text-[11px] text-fog-500">Kleiner Verlauf in den Spieler-Kacheln</span>
             </span>
             <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.miniChart ? 'bg-mint-500' : 'bg-ink-600'}`}>
-              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${prefs.miniChart ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${prefs.miniChart ? 'left-[26px]' : 'left-1'}`} />
             </span>
           </button>
 
