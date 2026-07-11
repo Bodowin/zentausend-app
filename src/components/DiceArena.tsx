@@ -346,9 +346,10 @@ export default function DiceArena({
     const y0 = Rb * 0.5 + 2.2
     // Maßstab: so groß wie möglich, damit die Würfel am Handy gut antippbar
     // sind — aber die (perspektivisch hohe) Schale muss auf beiden Achsen ins
-    // Bild passen, ohne oben/unten abzuschneiden. Deshalb wird die knappere
-    // Achse begrenzt. Würfel und Schale skalieren gemeinsam, bleiben also bündig.
-    const S = Math.min(H * 0.40, W * 0.44) / Rb
+    // Bild passen. Die Höhe begrenzt am Handy, die Breite am Tablet: dort muss
+    // der komplette Filz (2·Rb+1,2 breit, vorn perspektivisch vergrößert) mit
+    // Luft hineinpassen. Würfel und Schale skalieren gemeinsam, bleiben bündig.
+    const S = Math.min((H * 0.40) / Rb, (W * 0.88) / (2 * Rb + 1.2))
     const sizePx = 2 * h * S
     const feltPx = (2 * Rb + 1.2) * S
     const camTilt = -60, perspective = minD * 1.5
