@@ -340,7 +340,9 @@ export default function DiceArena({
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
     const h = 0.44
-    const Rb = 1.9 + n * 0.3
+    // Engere Schale relativ zur Würfelgröße → die Würfel wirken größer und
+    // sind am Handy leichter anzutippen (Platz für 6 Würfel bleibt reichlich).
+    const Rb = 1.7 + n * 0.26
     // Etwas niedrigere Abwurfhöhe: die „in der Hand" kreisenden Würfel bleiben
     // dadurch komplett in der (nach oben gerückten) Schale sichtbar.
     const y0 = Rb * 0.5 + 2.2
