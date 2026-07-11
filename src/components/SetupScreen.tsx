@@ -462,7 +462,7 @@ export function SetupScreen({
                 <span className="text-[11px] text-fog-500">Zählt nicht für die Statistik</span>
               </span>
               <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${testMode ? 'bg-gold-500' : 'bg-ink-600'}`}>
-                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${testMode ? 'translate-x-[26px]' : 'translate-x-1'}`} />
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${testMode ? 'left-[26px]' : 'left-1'}`} />
               </span>
             </button>
           </div>
