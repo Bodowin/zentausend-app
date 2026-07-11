@@ -5,7 +5,7 @@ import { computeRisk, explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
 import { getPrefs } from '../lib/prefs'
 import { shareResultImage } from '../lib/shareImage'
-import DiceArena from './DiceArena'
+import DiceArena, { PIPS } from './DiceArena'
 import {
   IconCheck,
   IconPause,
@@ -100,6 +100,9 @@ export function GameScreen(p: Props) {
   const onBoard = players[idx].score > 0
   const entryShort = !onBoard && totalPotential > 0 && totalPotential < entryMin
   const canBank = result.isValid && totalPotential > 0 && (onBoard || totalPotential >= entryMin)
+  // „Doch sichern" (ohne den neuen Wurf zu werten) geht nur, solange die Würfel
+  // noch in der Hand kreiseln. Sobald gewürfelt wurde, ist man festgelegt.
+  const canBankIdle = canBank && (diceMode !== 'virtual' || bowlPhase === 'ready')
   // Weiterwürfeln möglich, sobald mindestens ein gültiger Würfel gelegt ist.
   const canContinue = result.isValid && result.score > 0 && dice.length >= 1
   // Alle Würfel der Hand gelegt → heiße Würfel (6 neu), sonst Rest neu würfeln.
@@ -333,8 +336,9 @@ export function GameScreen(p: Props) {
                   </span>
                 </div>
               </div>
-              {/* Ausgelegte Würfel, gruppiert (gold = zählt, rot = ungültig, Pasch markiert). */}
-              <div className="mt-2 flex min-h-[28px] flex-wrap items-center gap-1.5">
+              {/* Ausgelegte Würfel als Mini-Würfel mit Augen, nach Wert gruppiert
+                  (gold = zählt, rot = ungültig, Pasch markiert). */}
+              <div className="mt-2 flex min-h-[36px] flex-wrap items-center gap-1.5">
                 {laidGroups.length === 0 ? (
                   <span className="text-[11px] italic text-fog-600">Noch nichts ausgelegt</span>
                 ) : (
@@ -344,17 +348,22 @@ export function GameScreen(p: Props) {
                     return (
                       <span
                         key={g.value}
-                        className={`flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-bold ${
+                        className={`flex items-center gap-1 rounded-lg p-0.5 ${
                           bad
-                            ? 'bg-coral-400 text-white'
+                            ? 'bg-coral-500/15 ring-1 ring-coral-400/70'
                             : pasch
-                              ? 'bg-gold-400 text-ink-900 ring-2 ring-gold-300/80'
-                              : 'bg-gold-300/90 text-ink-900'
+                              ? 'bg-gold-500/15 ring-2 ring-gold-400/70'
+                              : ''
                         }`}
                       >
-                        {g.count > 1 && <span className="text-xs opacity-70">{g.count}×</span>}
-                        {g.value}
-                        {pasch && <span className="ml-0.5 text-[8px] font-black uppercase tracking-wide">Pasch</span>}
+                        {Array.from({ length: g.count }, (_, i) => (
+                          <MiniDie key={i} value={g.value} bad={bad} />
+                        ))}
+                        {pasch && (
+                          <span className="px-0.5 text-[8px] font-black uppercase tracking-wide text-gold-300">
+                            Pasch
+                          </span>
+                        )}
                       </span>
                     )
                   })
@@ -528,7 +537,7 @@ export function GameScreen(p: Props) {
                     <span className="mt-0.5 text-[9px] font-normal opacity-80">verliert {fmt(accumulated)}</span>
                   )}
                 </button>
-                {canBank ? (
+                {canBankIdle ? (
                   /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
                   <button
                     onClick={p.onBank}
@@ -700,6 +709,25 @@ export function GameScreen(p: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+/** Kleiner Würfel mit echten Augen für die Ablage der ausgelegten Würfel. */
+function MiniDie({ value, bad }: { value: number; bad?: boolean }) {
+  return (
+    <span
+      className={`grid h-7 w-7 shrink-0 grid-cols-3 grid-rows-3 rounded-md border-b-2 p-[3px] shadow-sm animate-pop ${
+        bad ? 'border-coral-600 bg-coral-400' : 'border-gold-600/70 bg-gold-300/90'
+      }`}
+    >
+      {PIPS[value].map(([c, r], i) => (
+        <span
+          key={i}
+          className={`h-[5px] w-[5px] place-self-center rounded-full ${bad ? 'bg-white' : 'bg-ink-900'}`}
+          style={{ gridColumn: c + 1, gridRow: r + 1 }}
+        />
+      ))}
+    </span>
   )
 }
 
