@@ -397,13 +397,17 @@ export function GameScreen(p: Props) {
           <button
             onClick={p.onContinue}
             disabled={!canContinue}
-            className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none ${
+            // Bewusst Bernstein statt der früheren neutralen Iris-Farbe: dieser
+            // Knopf ist die riskante Entscheidung (weiterwürfeln kann alles aus
+            // diesem Zug kosten) und soll sich klar von „Sichern" (Mint = sicher)
+            // unterscheiden, damit man ihn nicht aus Versehen verwechselt.
+            className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 font-bold text-ink-950 shadow-[0_4px_0_var(--color-amber-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none ${
               usedAll ? 'animate-pulse' : ''
             } ${big ? 'text-lg' : ''}`}
           >
             <IconRefresh className={big ? 'h-7 w-7' : 'h-5 w-5'} />
             <div className="flex flex-col items-start leading-none">
-              <span>{usedAll ? 'Heiße Würfel' : 'Weiter'}</span>
+              <span>{usedAll ? 'Heiße Würfel' : 'Zocken'}</span>
               <span className="mt-0.5 text-[10px] font-normal opacity-80">
                 {usedAll ? '6 neu' : `noch ${remainingAfter}`}
                 {risk ? ` · ${risk.pct.toFixed(0)} %` : ''}

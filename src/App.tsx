@@ -87,6 +87,11 @@ export function App() {
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
   // Kurze „X ist dran"-Einblendung beim Spielerwechsel (Übergabe am Tisch).
   const [handoff, setHandoff] = useState<string | null>(null)
+  // Niete: großes Banner statt sofortigem Weiterschalten – `commit` führt die
+  // eigentliche Zug-Auflösung erst aus, wenn "Nächster Spieler" bestätigt wird.
+  const [bustAnnounce, setBustAnnounce] = useState<{ name: string; lost: number; commit: () => void } | null>(
+    null,
+  )
   // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const UNDO_LIMIT = 30
@@ -312,9 +317,14 @@ export function App() {
     showToast('Rückgängig')
   }
 
+  // Feiert die Schale gerade etwas (Pasch, Straße, heiße Würfel …)? Dann erst
+  // die Feier zu Ende laufen lassen, bevor „X ist dran" erscheint – beide sind
+  // Vollbild-Einblendungen und überlagerten sich sonst.
+  const CELEBRATION_HANDOFF_DELAY_MS = 2000
+
   // --- Zug-Auflösung (rein, ohne Seiteneffekte) ---
   const resolveTurn = useCallback(
-    (nextPlayers: Player[], justScored: number, nextTurns: Turn[]) => {
+    (nextPlayers: Player[], justScored: number, nextTurns: Turn[], celebrating: boolean) => {
       const n = nextPlayers.length
       const last = n - 1
 
@@ -344,7 +354,11 @@ export function App() {
         setDice([])
         setRolled([])
         setThrown([])
-        if (getPrefs().handoff) setHandoff(nextPlayers[nextIdx].name) // „X ist dran" (optional)
+        if (getPrefs().handoff) {
+          const name = nextPlayers[nextIdx].name
+          if (celebrating) window.setTimeout(() => setHandoff(name), CELEBRATION_HANDOFF_DELAY_MS)
+          else setHandoff(name) // „X ist dran" (optional)
+        }
       }
 
       if (phase === 'lastChance') {
@@ -385,7 +399,7 @@ export function App() {
       if (!cel) showToast('Heiße Würfel!')
     } else {
       setKept(newKept)
-      if (!cel) showToast('Weiter!')
+      if (!cel) showToast('Zocken!')
     }
     setDice([])
     setRolled([])
@@ -452,17 +466,29 @@ export function App() {
     )
     const nextTurns = [...turns, { round, player: players[idx].name, points: pot, bust: false }]
     setTurns(nextTurns)
-    resolveTurn(newPlayers, newPlayers[idx].score, nextTurns)
+    resolveTurn(newPlayers, newPlayers[idx].score, nextTurns, !!cel)
   }
 
+  // Niete: den Zug NICHT sofort auflösen, sondern erst ein großes „ausgezockt"-
+  // Banner zeigen und auf explizite Bestätigung warten (bustAnnounce.commit).
+  // So bleibt der Verlust kurz sichtbar, statt dass sofort zum nächsten
+  // Spieler gesprungen wird – gerade bei einem großen Zug frustrierend schnell.
   const handleBust = () => {
     takeSnapshot('bust')
     buzz([18, 30, 18])
-    showToast('Niete!')
+    const lost = totalPotential
+    const bustedName = players[idx].name
     const newPlayers = players.map((p, i) => (i === idx ? { ...p, busts: p.busts + 1 } : p))
     const nextTurns = [...turns, { round, player: players[idx].name, points: 0, bust: true }]
-    setTurns(nextTurns)
-    resolveTurn(newPlayers, newPlayers[idx].score, nextTurns)
+    setBustAnnounce({
+      name: bustedName,
+      lost,
+      commit: () => {
+        setTurns(nextTurns)
+        setBustAnnounce(null)
+        resolveTurn(newPlayers, newPlayers[idx].score, nextTurns, false)
+      },
+    })
   }
 
   // --- Abgeleitete Werte ---
@@ -570,6 +596,29 @@ export function App() {
               {handoff}
             </span>
             <span className="text-lg font-bold uppercase tracking-[0.2em] text-fog-300">ist dran</span>
+          </div>
+        </div>
+      )}
+      {bustAnnounce && (
+        // Anders als die Übergabe-Einblendung BLOCKIEREND (pointer-events-auto)
+        // und ohne Auto-Ausblenden: der Verlust soll bewusst wahrgenommen
+        // werden, bevor es weitergeht – kein Wegtippen aus Versehen.
+        <div className="glass fixed inset-0 z-[56] flex items-center justify-center px-6 animate-pop">
+          <div className="flex flex-col items-center gap-4 rounded-3xl border-2 border-coral-500/60 bg-coral-500/10 px-10 py-9 text-center shadow-2xl shadow-black/50">
+            <span className="font-display text-4xl font-black tracking-tight text-coral-400">
+              {bustAnnounce.name} hat sich ausgezockt!
+            </span>
+            {bustAnnounce.lost > 0 && (
+              <span className="text-sm font-bold text-fog-300">
+                − {bustAnnounce.lost.toLocaleString('de-DE')} Punkte futsch
+              </span>
+            )}
+            <button
+              onClick={bustAnnounce.commit}
+              className="mt-2 rounded-2xl bg-gradient-to-b from-coral-400 to-coral-500 px-8 py-3.5 font-bold text-white shadow-lg transition-all active:scale-[0.98]"
+            >
+              Nächster Spieler →
+            </button>
           </div>
         </div>
       )}
