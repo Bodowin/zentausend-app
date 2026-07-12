@@ -162,10 +162,12 @@ export function App() {
     window.setTimeout(() => setToast((t) => (t === msg ? '' : t)), 1800)
   }, [])
 
-  // „X ist dran"-Banner nach kurzer Zeit selbst ausblenden.
+  // „X ist dran"-Banner nach kurzer Zeit selbst ausblenden. Etwas länger als
+  // die frühere kleine Einblendung, damit das jetzt große Banner in Ruhe
+  // gelesen werden kann.
   useEffect(() => {
     if (!handoff) return
-    const t = window.setTimeout(() => setHandoff(null), 1500)
+    const t = window.setTimeout(() => setHandoff(null), 2000)
     return () => window.clearTimeout(t)
   }, [handoff])
 
@@ -553,15 +555,21 @@ export function App() {
       />
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
       {handoff && (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-[55] flex justify-center px-4 pt-[max(env(safe-area-inset-top),0.5rem)]">
+        // Großes, mittiges Banner über der ganzen Spielfläche – am oberen
+        // Bildschirmrand (v.a. auf großen/quer gehaltenen Geräten wie einem
+        // aufrecht am Tisch stehenden iPad) geht ein kleiner Hinweis leicht
+        // unter. Bleibt nicht-blockierend (pointer-events-none), damit man bei
+        // Bedarf sofort weiterspielen kann, statt zu warten.
+        <div className="glass pointer-events-none fixed inset-0 z-[55] flex items-center justify-center px-6 animate-pop">
           <div
-            className="flex items-center gap-2.5 rounded-b-2xl border border-t-0 bg-ink-900/95 px-5 py-2.5 shadow-xl shadow-black/40 animate-rise"
-            style={{ borderColor: `${playerColor(handoff)}66` }}
+            className="flex flex-col items-center gap-3 rounded-3xl border-2 px-12 py-9 text-center shadow-2xl shadow-black/50"
+            style={{ borderColor: `${playerColor(handoff)}80`, backgroundColor: `${playerColor(handoff)}14` }}
           >
-            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: playerColor(handoff) }} />
-            <span className="text-sm font-semibold text-fog-200">
-              <span className="font-black" style={{ color: playerColor(handoff) }}>{handoff}</span> ist dran
+            <span className="h-4 w-4 rounded-full" style={{ backgroundColor: playerColor(handoff) }} />
+            <span className="font-display text-5xl font-black tracking-tight" style={{ color: playerColor(handoff) }}>
+              {handoff}
             </span>
+            <span className="text-lg font-bold uppercase tracking-[0.2em] text-fog-300">ist dran</span>
           </div>
         </div>
       )}
