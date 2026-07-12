@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeNemesis, getEvents } from '../lib/storage'
+import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeNemesis, getEvents, getHistory } from '../lib/storage'
 import { deleteGame, syncAndMerge } from '../lib/cloud'
 import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
@@ -12,7 +12,10 @@ import { AnalysisScreen } from './AnalysisScreen'
 const fmt = (n: number) => n.toLocaleString('de-DE')
 
 export function StatsScreen({ onBack }: { onBack: () => void }) {
-  const [games, setGames] = useState<GameRecord[]>([])
+  // Lokale Spiele sofort zeigen (offline-first): Die Cloud-Synchronisation läuft
+  // im Hintergrund und ersetzt die Liste nur, wenn sie erfolgreich war. So sieht
+  // man auf See (kein/schwaches Netz) seine Tabelle ohne Wartezeit.
+  const [games, setGames] = useState<GameRecord[]>(() => getHistory())
   const [loading, setLoading] = useState(true)
   const [online, setOnline] = useState(false)
   const [filter, setFilter] = useState<string>('')
@@ -179,7 +182,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
-      {loading ? (
+      {loading && games.length === 0 ? (
         <div className="grid flex-1 place-items-center text-fog-600">Lade…</div>
       ) : games.length === 0 ? (
         <div className="grid flex-1 place-items-center text-center text-fog-600">
