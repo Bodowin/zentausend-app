@@ -32,10 +32,18 @@ function fromRow(row: Row): GameRecord {
   }
 }
 
+/** Meldet der Browser sicher „offline"? (true nur bei eindeutig getrennt.) */
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false
+
+// Wie lange auf die Cloud gewartet wird, bevor wir aufgeben. Wichtig auf See mit
+// schwachem Signal: ein hängender fetch läuft sonst in den ~8s-Browser-Timeout,
+// und die Statistik bliebe so lange auf „Synchronisiere…" stehen.
+const CLOUD_TIMEOUT_MS = 3500
+
 /** Schiebt ein einzelnes Spiel in die Cloud (idempotent über client_id). */
 export async function pushGame(game: GameRecord): Promise<boolean> {
   const supabase = getSupabase()
-  if (!supabase) return false
+  if (!supabase || isOffline()) return false
   const { error } = await supabase
     .from('games')
     .upsert(toRow(game), { onConflict: 'client_id', ignoreDuplicates: true })
@@ -55,16 +63,31 @@ export async function pushGame(game: GameRecord): Promise<boolean> {
 export async function fetchCloudGames(): Promise<{ games: GameRecord[]; ok: boolean }> {
   const supabase = getSupabase()
   if (!supabase) return { games: [], ok: false }
-  const { data, error } = await supabase
-    .from('games')
-    .select('*')
-    .order('played_at', { ascending: false })
-    .limit(500)
-  if (error) {
-    console.warn('Cloud-Fetch fehlgeschlagen:', error.message)
+  // Eindeutig offline → gar nicht erst versuchen (spart den langen Timeout).
+  if (isOffline()) return { games: [], ok: false }
+
+  // Schwaches Netz: nach CLOUD_TIMEOUT_MS abbrechen, damit die Oberfläche
+  // schnell auf die lokalen Daten zurückfällt statt sekundenlang zu warten.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { data, error } = await supabase
+      .from('games')
+      .select('*')
+      .order('played_at', { ascending: false })
+      .limit(500)
+      .abortSignal(controller.signal)
+    if (error) {
+      console.warn('Cloud-Fetch fehlgeschlagen:', error.message)
+      return { games: [], ok: false }
+    }
+    return { games: (data ?? []).map(fromRow), ok: true }
+  } catch (e) {
+    console.warn('Cloud-Fetch abgebrochen (Timeout/offline):', e)
     return { games: [], ok: false }
+  } finally {
+    clearTimeout(timer)
   }
-  return { games: (data ?? []).map(fromRow), ok: true }
 }
 
 export type DeleteResult = 'ok' | 'denied' | 'offline'
@@ -126,7 +149,8 @@ export interface SyncResult {
  */
 export async function syncAndMerge(): Promise<SyncResult> {
   const local = getHistory()
-  if (!getSupabase()) return { games: local, online: false }
+  // Kein Cloud-Client oder sicher offline → sofort lokal, kein Warten.
+  if (!getSupabase() || isOffline()) return { games: local, online: false }
 
   const { games: cloud, ok } = await fetchCloudGames()
   // Fetch fehlgeschlagen → ehrlich offline melden, nichts hochladen, lokal bleiben.
