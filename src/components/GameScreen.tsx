@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { DiceMode, Player, ScoreResult, GameState, Turn } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
 import { computeRisk, explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
 import { getPrefs } from '../lib/prefs'
 import { shareResultImage } from '../lib/shareImage'
+import { computeGameAnalysis } from '../lib/storage'
 import DiceArena, { PIPS } from './DiceArena'
+import { GameChart } from './GameChart'
 import {
   IconCheck,
   IconPause,
@@ -153,6 +155,86 @@ export function GameScreen(p: Props) {
   const laidGroups = [1, 2, 3, 4, 5, 6]
     .map((value) => ({ value, count: laidOut.filter((x) => x === value).length }))
     .filter((g) => g.count > 0)
+
+  // Live-Spielverlauf (Kurve + Rundentabelle) für die iPad-Seitenleiste: nutzt
+  // dieselbe Analyse-Funktion wie der Rückblick nach dem Spiel, gefüttert mit
+  // dem aktuellen (noch laufenden) Stand statt einem abgeschlossenen Spiel.
+  const liveAnalysis = useMemo(
+    () =>
+      computeGameAnalysis({
+        id: 0,
+        date: '',
+        event: '',
+        winner: '',
+        winnerScore: 0,
+        players: players.map((pl) => ({ name: pl.name, score: pl.score, busts: pl.busts })),
+        turns,
+      }),
+    [players, turns],
+  )
+  // Niete ja/nein je Runde+Spieler, für die kompakte Rundentabelle (roundPoints
+  // allein unterscheidet „Niete" nicht von „noch kein Zug in dieser Runde").
+  const bustByRoundPlayer = useMemo(() => {
+    const m = new Map<string, boolean>()
+    for (const t of turns) m.set(`${t.round}|${t.player}`, t.bust)
+    return m
+  }, [turns])
+
+  // Kompakte Rundentabelle für die iPad-Seitenleiste: wie „Punkte pro Runde"
+  // im Rückblick nach dem Spiel, aber enger und mit eigener Nieten-Markierung
+  // (roundPoints allein zeigt für Nieten und „noch kein Zug" beides als 0).
+  const renderRoundTable = () => (
+    <div className="overflow-hidden rounded-2xl border border-ink-800 bg-ink-900/40">
+      <div className="scrollbar-hide overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-ink-800 text-[9px] uppercase tracking-wide text-fog-600">
+              <th className="px-2.5 py-1.5 text-left font-bold">Rd.</th>
+              {liveAnalysis.players.map((pl) => (
+                <th key={pl.name} className="px-2 py-1.5 text-right font-bold">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: playerColor(pl.name) }} />
+                    <span className="max-w-[52px] truncate">{pl.name}</span>
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {liveAnalysis.roundNumbers.map((r) => (
+              <tr key={r} className="border-b border-ink-800/50 last:border-0">
+                <td className="px-2.5 py-1.5 font-mono text-fog-500">{r}</td>
+                {liveAnalysis.players.map((pl) => {
+                  const bust = bustByRoundPlayer.get(`${r}|${pl.name}`)
+                  const v = liveAnalysis.roundPoints[r]?.[pl.name] ?? 0
+                  return (
+                    <td
+                      key={pl.name}
+                      className={`px-2 py-1.5 text-right font-mono ${
+                        bust ? 'font-bold text-coral-400' : v > 0 ? 'text-fog-200' : 'text-fog-700'
+                      }`}
+                    >
+                      {bust ? '✕' : v > 0 ? fmt(v) : '·'}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-ink-700 bg-ink-900/60 font-bold">
+              <td className="px-2.5 py-1.5 text-[9px] uppercase text-fog-500">Σ</td>
+              {liveAnalysis.players.map((pl) => (
+                <td key={pl.name} className="px-2 py-1.5 text-right font-mono text-gold-400">
+                  {fmt(pl.total)}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
 
   // --- iPad-Querformat: Risiko-Meter, Aktions-Buttons und Zahlen-Pad wandern
   // in eine breite Seitenleiste rechts, damit Würfelschale bzw. Zahlen-Pad
@@ -313,7 +395,7 @@ export function GameScreen(p: Props) {
   )
 
   return (
-    <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb lg:landscape:max-w-6xl">
+    <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb lg:landscape:h-screen lg:landscape:max-w-6xl">
       {/* Kopfzeile */}
       <header
         className={`flex items-center justify-between border-b px-4 pt-[max(env(safe-area-inset-top),0.75rem)] transition-colors ${
@@ -490,7 +572,7 @@ export function GameScreen(p: Props) {
           und Aktionen als große Seitenleiste. Hochformat/Handy bleibt einspaltig,
           exakt wie zuvor. */}
       <div
-        className={`flex flex-1 flex-col px-4 lg:landscape:flex-row lg:landscape:gap-5 lg:landscape:px-6 ${
+        className={`flex flex-1 flex-col px-4 lg:landscape:min-h-0 lg:landscape:flex-row lg:landscape:gap-5 lg:landscape:px-6 ${
           virtual ? 'pb-2 pt-2' : 'pb-3 pt-3'
         } lg:landscape:pb-4 lg:landscape:pt-3`}
       >
@@ -689,13 +771,21 @@ export function GameScreen(p: Props) {
         </div>
 
         {/* Rechte Seitenleiste: nur im iPad-Querformat (breit + landscape).
-            Risiko und Aktionen deutlich größer und leichter erreichbar, während
-            links die Würfelschale bzw. das Zahlen-Pad die volle Breite nutzt. */}
-        <div className="hidden lg:landscape:flex lg:landscape:w-[380px] lg:landscape:shrink-0 lg:landscape:flex-col lg:landscape:gap-4">
+            Oben der laufende Spielverlauf (Kurve + Rundentabelle mit Nieten),
+            unten Risiko und Aktionen deutlich größer und leichter erreichbar –
+            während links die Würfelschale bzw. das Zahlen-Pad die volle Breite
+            nutzt. */}
+        <div className="hidden lg:landscape:flex lg:landscape:w-[420px] lg:landscape:min-h-0 lg:landscape:shrink-0 lg:landscape:flex-col lg:landscape:gap-3">
+          {liveAnalysis.hasTurns && (
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              {liveAnalysis.roundsCount >= 2 && <GameChart analysis={liveAnalysis} />}
+              {renderRoundTable()}
+            </div>
+          )}
           {renderRiskMeter(true)}
           {/* Aktionsleiste bleibt unten angedockt, auch wenn (noch) kein
               Risiko-Meter angezeigt wird – wie im Hochformat via mt-auto. */}
-          <div className="lg:landscape:mt-auto">{renderActionBar(true)}</div>
+          <div className="mt-auto shrink-0">{renderActionBar(true)}</div>
         </div>
       </div>
 
