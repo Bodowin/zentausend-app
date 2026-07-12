@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { DiceMode, Player, ScoreResult, GameState, Turn } from '../lib/types'
+import type { DiceMode, GameRecord, Player, ScoreResult, GameState, Turn } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
 import { computeRisk, explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
@@ -8,8 +8,10 @@ import { shareResultImage } from '../lib/shareImage'
 import { computeGameAnalysis } from '../lib/storage'
 import DiceArena, { PIPS } from './DiceArena'
 import { GameChart } from './GameChart'
+import { AnalysisScreen } from './AnalysisScreen'
 import {
   IconCheck,
+  IconChart,
   IconPause,
   IconRefresh,
   IconShare,
@@ -95,6 +97,9 @@ export function GameScreen(p: Props) {
   } = p
 
   const [showRiskInfo, setShowRiskInfo] = useState(false)
+  // Rundenanalyse direkt vom Sieg-Overlay aus öffnen, ohne über die Statistik
+  // gehen zu müssen.
+  const [showAnalysis, setShowAnalysis] = useState(false)
   // Wurfphase der Schale, um den Coach schon während des Drehens zu zeigen.
   const [bowlPhase, setBowlPhase] = useState<'ready' | 'rolling' | 'landed'>('ready')
   // Virtueller Modus: alles außer der Schale kompakter, damit die Würfel groß
@@ -179,6 +184,22 @@ export function GameScreen(p: Props) {
     for (const t of turns) m.set(`${t.round}|${t.player}`, t.bust)
     return m
   }, [turns])
+
+  // Für die „Runden-Analyse" direkt vom Sieg-Overlay: dasselbe Format wie ein
+  // gespeichertes Spiel, aus dem aktuellen Endstand gebaut – funktioniert auch
+  // für Testspiele, die gar nicht in der Statistik landen.
+  const finishedGameRecord: GameRecord | null = useMemo(() => {
+    if (!winner) return null
+    return {
+      id: 0,
+      date: new Date().toISOString(),
+      event,
+      winner: winner.name,
+      winnerScore: winner.score,
+      players: players.map((pl) => ({ name: pl.name, score: pl.score, busts: pl.busts })),
+      turns,
+    }
+  }, [winner, players, turns, event])
 
   // Kompakte Rundentabelle für die iPad-Seitenleiste: wie „Punkte pro Runde"
   // im Rückblick nach dem Spiel, aber enger und mit eigener Nieten-Markierung
@@ -826,61 +847,73 @@ export function GameScreen(p: Props) {
         </div>
       )}
 
-      {/* Sieg-Overlay */}
-      {winner && (
-        <div className="glass absolute inset-0 z-50 flex flex-col items-center justify-center p-6 animate-pop">
-          <div className="w-full max-w-sm rounded-3xl border border-gold-500/30 bg-ink-850 p-8 text-center shadow-2xl">
-            <IconTrophy className="mx-auto mb-3 h-12 w-12 text-gold-400" />
-            <h2 className="mb-1 font-display text-4xl font-black text-fog-100">Sieg!</h2>
-            <p className="mb-6 text-xl font-bold uppercase tracking-widest text-gold-400">{winner.name}</p>
-            <div className="mb-7 max-h-60 space-y-2 overflow-y-auto rounded-2xl border border-ink-800 bg-ink-950/50 p-5">
-              {[...players]
-                .sort((a, b) => b.score - a.score)
-                .map((pl, i) => (
-                  <div
-                    key={pl.id}
-                    className={`flex justify-between text-sm ${
-                      i === 0 ? 'font-bold text-gold-400' : 'text-fog-400'
-                    }`}
+      {/* Sieg-Overlay – oder, umgeschaltet, die Runden-Analyse desselben Spiels. */}
+      {winner && showAnalysis && finishedGameRecord ? (
+        <div className="absolute inset-0 z-50 overflow-y-auto bg-ink-950 animate-pop">
+          <AnalysisScreen game={finishedGameRecord} onBack={() => setShowAnalysis(false)} />
+        </div>
+      ) : (
+        winner && (
+          <div className="glass absolute inset-0 z-50 flex flex-col items-center justify-center p-6 animate-pop">
+            <div className="w-full max-w-sm rounded-3xl border border-gold-500/30 bg-ink-850 p-8 text-center shadow-2xl">
+              <IconTrophy className="mx-auto mb-3 h-12 w-12 text-gold-400" />
+              <h2 className="mb-1 font-display text-4xl font-black text-fog-100">Sieg!</h2>
+              <p className="mb-6 text-xl font-bold uppercase tracking-widest text-gold-400">{winner.name}</p>
+              <div className="mb-7 max-h-60 space-y-2 overflow-y-auto rounded-2xl border border-ink-800 bg-ink-950/50 p-5">
+                {[...players]
+                  .sort((a, b) => b.score - a.score)
+                  .map((pl, i) => (
+                    <div
+                      key={pl.id}
+                      className={`flex justify-between text-sm ${
+                        i === 0 ? 'font-bold text-gold-400' : 'text-fog-400'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 text-right text-fog-600">{i + 1}.</span>
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: playerColor(pl.name) }} />
+                        {pl.name}
+                        <span className="text-[10px] text-fog-600">{pl.busts} N</span>
+                      </span>
+                      <span className="font-mono">{fmt(pl.score)}</span>
+                    </div>
+                  ))}
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={p.onRematch}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
+                >
+                  <IconRefresh className="h-5 w-5" /> Revanche
+                </button>
+                <p className="-mt-1 text-[11px] text-fog-500">
+                  Gleiche Runde, {winner.name} beginnt – Reihenfolge vorm Start frei änderbar.
+                </p>
+                <button
+                  onClick={() => setShowAnalysis(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
+                >
+                  <IconChart className="h-4 w-4" /> Runden-Analyse
+                </button>
+                <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <button
+                    onClick={p.onNewGame}
+                    className="rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
                   >
-                    <span className="flex items-center gap-2">
-                      <span className="w-3 text-right text-fog-600">{i + 1}.</span>
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: playerColor(pl.name) }} />
-                      {pl.name}
-                      <span className="text-[10px] text-fog-600">{pl.busts} N</span>
-                    </span>
-                    <span className="font-mono">{fmt(pl.score)}</span>
-                  </div>
-                ))}
-            </div>
-            <div className="space-y-3">
-              <button
-                onClick={p.onRematch}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
-              >
-                <IconRefresh className="h-5 w-5" /> Revanche
-              </button>
-              <p className="-mt-1 text-[11px] text-fog-500">
-                Gleiche Runde, {winner.name} beginnt – Reihenfolge vorm Start frei änderbar.
-              </p>
-              <div className="grid grid-cols-[1fr_auto] gap-3">
-                <button
-                  onClick={p.onNewGame}
-                  className="rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                >
-                  Neues Spiel
-                </button>
-                <button
-                  onClick={() => shareResultImage(winner, players, event)}
-                  className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                  aria-label="Ergebnis als Bild teilen"
-                >
-                  <IconShare className="h-5 w-5" />
-                </button>
+                    Zum Start
+                  </button>
+                  <button
+                    onClick={() => shareResultImage(winner, players, event)}
+                    className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
+                    aria-label="Ergebnis als Bild teilen"
+                  >
+                    <IconShare className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )
       )}
     </div>
   )
