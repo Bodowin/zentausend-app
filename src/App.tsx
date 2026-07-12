@@ -458,7 +458,12 @@ export function App() {
     // Einstiegsregel: wer noch bei 0 steht, braucht mindestens entryMin.
     if (players[idx].score === 0 && pot < entryMin) return
     const cel = celebrationFor(combined, combined.length === 6)
-    if (cel) setCelebration(cel)
+    // Beim Sichern zeigt die Feier bewusst die GESAMT im Zug gesicherten Punkte
+    // (inkl. evtl. schon gebankter heißer Würfel) statt nur des Werts dieses
+    // einen Wurfs – das ist die Zahl, die gerade wirklich aufs Konto geht. Beim
+    // Weiterwürfeln (Zocken) bleibt die Feier unverändert (Wurf-Wert/„Heiße
+    // Würfel!"), da dort noch nichts final gesichert ist.
+    if (cel) setCelebration({ ...cel, sub: `${pot.toLocaleString('de-DE')} Punkte` })
     takeSnapshot('bank')
     buzz(14)
     const newPlayers = players.map((p, i) =>
