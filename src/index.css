@@ -47,6 +47,13 @@
   --color-iris-500: #5d6af0;
   --color-iris-600: #4651cc;
 
+  /* Bernstein · Risiko-Aktion (Zocken/Weiterwürfeln) – bewusst warm/orange,
+     nicht mit Mint (sicher) oder Koralle (Niete) verwechselbar. */
+  --color-amber-300: #ffc088;
+  --color-amber-400: #ff9d5c;
+  --color-amber-500: #ff8a3d;
+  --color-amber-600: #d9691f;
+
   /* Risiko-Skala */
   --color-risk-1: #fb5e73;
   --color-risk-2: #ff8a4c;
