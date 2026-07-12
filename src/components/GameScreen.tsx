@@ -154,8 +154,166 @@ export function GameScreen(p: Props) {
     .map((value) => ({ value, count: laidOut.filter((x) => x === value).length }))
     .filter((g) => g.count > 0)
 
+  // --- iPad-Querformat: Risiko-Meter, Aktions-Buttons und Zahlen-Pad wandern
+  // in eine breite Seitenleiste rechts, damit Würfelschale bzw. Zahlen-Pad
+  // links die volle Breite/Höhe nutzen können. Als Funktionen gehalten, damit
+  // Hochformat (unverändert) und Querformat dieselbe Logik/Markup teilen, statt
+  // sie zweimal pflegen zu müssen. `big` schaltet nur auf größere Touch-Ziele.
+  const renderRiskMeter = (big: boolean) =>
+    meterRisk && (
+      <div
+        className={`rounded-xl border border-ink-800 bg-ink-900/60 px-3 animate-pop ${
+          big ? 'py-3' : virtual ? 'py-1.5' : 'py-2'
+        }`}
+      >
+        {/* Zeile 1: Label + Info (links) · Empfehlung des Coaches (rechts) */}
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setShowRiskInfo(true)}
+            className={`flex shrink-0 items-center gap-1 font-semibold uppercase tracking-wide text-fog-500 transition-colors hover:text-fog-300 ${
+              big ? 'text-xs' : 'text-[10px]'
+            }`}
+            aria-label="Wahrscheinlichkeit erklären"
+          >
+            {preThrow ? 'Nächster Wurf' : meterRisk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
+            <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-fog-600 text-[8px] font-black not-italic text-fog-500">
+              i
+            </span>
+          </button>
+          {coach && (
+            <span className={`text-right font-bold leading-tight ${coach.tone} ${big ? 'text-sm' : 'text-xs'}`}>
+              {coach.text}
+            </span>
+          )}
+        </div>
+        {/* Zeile 2: Balken · Bewertung · Prozent */}
+        <div className="flex items-center gap-2.5">
+          <div className={`flex-1 overflow-hidden rounded-full bg-ink-800 ${big ? 'h-3' : 'h-2'}`}>
+            <div className={`h-full rounded-full ${meterRisk.bar}`} style={{ width: `${meterRisk.pct}%` }} />
+          </div>
+          <span className={`shrink-0 font-bold ${meterRisk.color} ${big ? 'text-sm' : 'text-xs'}`}>
+            {meterRisk.label}
+          </span>
+          <span className={`shrink-0 font-bold tabular-nums text-fog-400 ${big ? 'text-sm' : 'text-xs'}`}>
+            {meterRisk.pct.toFixed(0)}%
+          </span>
+        </div>
+      </div>
+    )
+
+  const renderNumpad = (big: boolean) => (
+    <div className={big ? 'grid grid-cols-3 gap-3' : 'grid grid-cols-6 gap-2'}>
+      {[1, 2, 3, 4, 5, 6].map((n) => (
+        <button
+          key={n}
+          onClick={() => p.onAddDie(n)}
+          disabled={dice.length >= inHand || phase === 'finished'}
+          className={`rounded-xl border-b-4 border-ink-950 bg-ink-800 font-bold text-fog-100 transition-all hover:bg-ink-700 active:translate-y-1 active:border-b-0 disabled:translate-y-0 disabled:opacity-30 ${
+            big ? 'h-24 text-3xl' : 'h-14 text-xl'
+          }`}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  )
+
+  const renderActionBar = (big: boolean) => (
+    <div className={big ? 'h-24' : 'h-14'}>
+      {idle ? (
+        <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
+          <button
+            onClick={p.onBust}
+            className={`flex flex-col items-center justify-center rounded-xl border border-coral-500/30 bg-ink-900 font-bold leading-none text-coral-400 transition-colors hover:bg-coral-500/10 ${
+              big ? 'text-lg' : ''
+            }`}
+          >
+            Niete
+            {accumulated > 0 && (
+              <span className="mt-0.5 text-[9px] font-normal opacity-80">verliert {fmt(accumulated)}</span>
+            )}
+          </button>
+          {canBankIdle ? (
+            /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
+            <button
+              onClick={p.onBank}
+              className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-mint-400 to-mint-500 font-bold text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] transition-all active:translate-y-1 active:shadow-none ${
+                big ? 'text-lg' : ''
+              }`}
+            >
+              <IconCheck className={big ? 'h-7 w-7' : 'h-5 w-5'} />
+              <div className="flex flex-col items-start leading-none">
+                <span>Doch sichern</span>
+                <span className="mt-0.5 text-[10px] font-normal opacity-80">{fmt(totalPotential)}</span>
+              </div>
+            </button>
+          ) : (
+            <div className="grid place-items-center rounded-xl border border-dashed border-ink-800 text-sm italic text-fog-600">
+              {diceMode === 'virtual' && rolled.length > 0
+                ? 'Würfel auslegen…'
+                : inHand < 6
+                  ? `${inHand} Würfel werfen…`
+                  : 'Auf Wurf warten…'}
+            </div>
+          )}
+        </div>
+      ) : !result.isValid ? (
+        <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
+          <button
+            onClick={p.onBust}
+            className={`rounded-xl border border-ink-800 bg-ink-900 font-bold text-fog-500 transition-colors hover:border-coral-500/40 hover:text-coral-400 ${
+              big ? 'text-lg' : ''
+            }`}
+          >
+            Niete
+          </button>
+          <button disabled className={`cursor-not-allowed rounded-xl bg-ink-800 font-bold text-fog-600 ${big ? 'text-lg' : ''}`}>
+            Ungültig
+          </button>
+        </div>
+      ) : (
+        <div className="grid h-full grid-cols-2 gap-3">
+          <button
+            onClick={p.onBank}
+            disabled={!canBank}
+            className={`flex items-center justify-center gap-2 rounded-xl font-bold transition-all ${
+              canBank
+                ? 'bg-gradient-to-b from-mint-400 to-mint-500 text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] active:translate-y-1 active:shadow-none'
+                : 'cursor-not-allowed bg-ink-800 text-fog-600'
+            } ${big ? 'text-lg' : ''}`}
+          >
+            <IconCheck className={big ? 'h-8 w-8' : 'h-6 w-6'} />
+            <div className="flex flex-col items-start leading-none">
+              <span>{fmt(totalPotential)}</span>
+              {entryShort && (
+                <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {entryMin}</span>
+              )}
+            </div>
+          </button>
+          <button
+            onClick={p.onContinue}
+            disabled={!canContinue}
+            className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none ${
+              usedAll ? 'animate-pulse' : ''
+            } ${big ? 'text-lg' : ''}`}
+          >
+            <IconRefresh className={big ? 'h-7 w-7' : 'h-5 w-5'} />
+            <div className="flex flex-col items-start leading-none">
+              <span>{usedAll ? 'Heiße Würfel' : 'Weiter'}</span>
+              <span className="mt-0.5 text-[10px] font-normal opacity-80">
+                {usedAll ? '6 neu' : `noch ${remainingAfter}`}
+                {risk ? ` · ${risk.pct.toFixed(0)} %` : ''}
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
   return (
-    <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb">
+    <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb lg:landscape:max-w-6xl">
       {/* Kopfzeile */}
       <header
         className={`flex items-center justify-between border-b px-4 pt-[max(env(safe-area-inset-top),0.75rem)] transition-colors ${
@@ -327,8 +485,18 @@ export function GameScreen(p: Props) {
         </div>
       )}
 
-      {/* Spielfeld */}
-      <div className={`flex flex-1 flex-col px-4 ${virtual ? 'pb-2 pt-2' : 'pb-3 pt-3'}`}>
+      {/* Spielfeld: Auf dem iPad im Querformat (breit + landscape) zweispaltig –
+          links die Würfelschale/das Zahlen-Pad in voller Größe, rechts Risiko
+          und Aktionen als große Seitenleiste. Hochformat/Handy bleibt einspaltig,
+          exakt wie zuvor. */}
+      <div
+        className={`flex flex-1 flex-col px-4 lg:landscape:flex-row lg:landscape:gap-5 lg:landscape:px-6 ${
+          virtual ? 'pb-2 pt-2' : 'pb-3 pt-3'
+        } lg:landscape:pb-4 lg:landscape:pt-3`}
+      >
+        {/* Linke Spalte: immer sichtbar, wird im Querformat automatisch breiter
+            (die Würfelschale/das Zahlen-Pad skalieren mit dem Container mit). */}
+        <div className="flex min-w-0 flex-1 flex-col lg:landscape:min-h-0">
         {/* Virtuell: Platzhalter-Zeile nur rendern, wenn es etwas zu zeigen gibt. */}
         {(!virtual || accumulated > 0) && (
           <div className={`flex h-5 items-center justify-center ${virtual ? 'mb-1' : 'mb-2'}`}>
@@ -439,7 +607,7 @@ export function GameScreen(p: Props) {
                   {kept.map((val, i) => (
                     <span
                       key={`k${i}`}
-                      className="grid h-12 w-12 place-items-center rounded-xl border-b-4 border-gold-600/70 bg-gold-300/90 text-xl font-bold text-ink-900 shadow-sm"
+                      className="grid h-12 w-12 place-items-center rounded-xl border-b-4 border-gold-600/70 bg-gold-300/90 text-xl font-bold text-ink-900 shadow-sm lg:landscape:h-16 lg:landscape:w-16 lg:landscape:text-2xl"
                     >
                       {val}
                     </span>
@@ -451,7 +619,7 @@ export function GameScreen(p: Props) {
                       <button
                         key={`d${i}`}
                         onClick={() => p.onRemoveDie(i)}
-                        className={`grid h-12 w-12 place-items-center rounded-xl border-b-4 text-xl font-bold shadow-sm transition-colors animate-pop ${
+                        className={`grid h-12 w-12 place-items-center rounded-xl border-b-4 text-xl font-bold shadow-sm transition-colors animate-pop lg:landscape:h-16 lg:landscape:w-16 lg:landscape:text-2xl ${
                           bad
                             ? 'border-coral-600 bg-coral-400 text-white'
                             : 'border-fog-500 bg-fog-100 text-ink-900'
@@ -489,7 +657,7 @@ export function GameScreen(p: Props) {
             <div className="flex flex-1 flex-col items-center justify-center py-1">
               <div
                 key={result.score}
-                className={`font-mono text-6xl font-black tracking-tighter transition-colors animate-pop ${
+                className={`font-mono text-6xl font-black tracking-tighter transition-colors animate-pop lg:landscape:text-8xl ${
                   result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-ink-600') : 'text-ink-700'
                 }`}
               >
@@ -501,152 +669,33 @@ export function GameScreen(p: Props) {
                 </div>
               )}
             </div>
+
+            {/* iPad quer: großes Zahlen-Pad direkt in der breiten linken Spalte
+                (mehr Platz → deutlich größere Tasten als im Hochformat). */}
+            <div className="hidden lg:landscape:mt-3 lg:landscape:block">{renderNumpad(true)}</div>
           </>
         )}
 
-        {/* Risiko-Meter + Coach – zwei Zeilen, damit die Empfehlung immer voll
-            sichtbar ist und nichts abgeschnitten wird. */}
-        <div className={virtual ? 'mb-2' : 'mb-3'}>
-          {meterRisk && (
-            <div
-              className={`rounded-xl border border-ink-800 bg-ink-900/60 px-3 animate-pop ${
-                virtual ? 'py-1.5' : 'py-2'
-              }`}
-            >
-              {/* Zeile 1: Label + Info (links) · Empfehlung des Coaches (rechts) */}
-              <div className="mb-1.5 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowRiskInfo(true)}
-                  className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-fog-500 transition-colors hover:text-fog-300"
-                  aria-label="Wahrscheinlichkeit erklären"
-                >
-                  {preThrow ? 'Nächster Wurf' : meterRisk.scenarioB ? 'Mit Pasch weiter' : 'Weiterwürfeln'}
-                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-fog-600 text-[8px] font-black not-italic text-fog-500">
-                    i
-                  </span>
-                </button>
-                {coach && (
-                  <span className={`text-right text-xs font-bold leading-tight ${coach.tone}`}>{coach.text}</span>
-                )}
-              </div>
-              {/* Zeile 2: Balken · Bewertung · Prozent */}
-              <div className="flex items-center gap-2.5">
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-800">
-                  <div className={`h-full rounded-full ${meterRisk.bar}`} style={{ width: `${meterRisk.pct}%` }} />
-                </div>
-                <span className={`shrink-0 text-xs font-bold ${meterRisk.color}`}>{meterRisk.label}</span>
-                <span className="shrink-0 text-xs font-bold tabular-nums text-fog-400">{meterRisk.pct.toFixed(0)}%</span>
-              </div>
-            </div>
-          )}
+        {/* Hochformat/Handy: Risiko-Meter + Aktionsleiste bleiben unten in
+            dieser einen Spalte, exakt wie zuvor. Im iPad-Querformat wandern sie
+            stattdessen in die rechte Seitenleiste (siehe unten). */}
+        <div className="lg:landscape:hidden">
+          <div className={virtual ? 'mb-2' : 'mb-3'}>{renderRiskMeter(false)}</div>
+          <div className={`mt-auto ${virtual ? 'space-y-2' : 'space-y-3'}`}>
+            {diceMode === 'real' && renderNumpad(false)}
+            {renderActionBar(false)}
+          </div>
+        </div>
         </div>
 
-        {/* Eingabe: Zahlen-Pad (echt). Virtuell wird direkt in der Schale getippt. */}
-        <div className={`mt-auto ${virtual ? 'space-y-2' : 'space-y-3'}`}>
-          {diceMode === 'real' && (
-            <div className="grid grid-cols-6 gap-2">
-              {[1, 2, 3, 4, 5, 6].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => p.onAddDie(n)}
-                  disabled={dice.length >= inHand || phase === 'finished'}
-                  className="h-14 rounded-xl border-b-4 border-ink-950 bg-ink-800 text-xl font-bold text-fog-100 transition-all hover:bg-ink-700 active:translate-y-1 active:border-b-0 disabled:translate-y-0 disabled:opacity-30"
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Aktionsleiste */}
-          <div className="h-14">
-            {idle ? (
-              <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
-                <button
-                  onClick={p.onBust}
-                  className="flex flex-col items-center justify-center rounded-xl border border-coral-500/30 bg-ink-900 font-bold leading-none text-coral-400 transition-colors hover:bg-coral-500/10"
-                >
-                  Niete
-                  {accumulated > 0 && (
-                    <span className="mt-0.5 text-[9px] font-normal opacity-80">verliert {fmt(accumulated)}</span>
-                  )}
-                </button>
-                {canBankIdle ? (
-                  /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
-                  <button
-                    onClick={p.onBank}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-mint-400 to-mint-500 font-bold text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] transition-all active:translate-y-1 active:shadow-none"
-                  >
-                    <IconCheck className="h-5 w-5" />
-                    <div className="flex flex-col items-start leading-none">
-                      <span>Doch sichern</span>
-                      <span className="mt-0.5 text-[10px] font-normal opacity-80">{fmt(totalPotential)}</span>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="grid place-items-center rounded-xl border border-dashed border-ink-800 text-sm italic text-fog-600">
-                    {diceMode === 'virtual' && rolled.length > 0
-                      ? 'Würfel auslegen…'
-                      : inHand < 6
-                        ? `${inHand} Würfel werfen…`
-                        : 'Auf Wurf warten…'}
-                  </div>
-                )}
-              </div>
-            ) : !result.isValid ? (
-              <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
-                <button
-                  onClick={p.onBust}
-                  className="rounded-xl border border-ink-800 bg-ink-900 font-bold text-fog-500 transition-colors hover:border-coral-500/40 hover:text-coral-400"
-                >
-                  Niete
-                </button>
-                <button
-                  disabled
-                  className="cursor-not-allowed rounded-xl bg-ink-800 font-bold text-fog-600"
-                >
-                  Ungültig
-                </button>
-              </div>
-            ) : (
-              <div className="grid h-full grid-cols-2 gap-3">
-                <button
-                  onClick={p.onBank}
-                  disabled={!canBank}
-                  className={`flex items-center justify-center gap-2 rounded-xl font-bold transition-all ${
-                    canBank
-                      ? 'bg-gradient-to-b from-mint-400 to-mint-500 text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] active:translate-y-1 active:shadow-none'
-                      : 'cursor-not-allowed bg-ink-800 text-fog-600'
-                  }`}
-                >
-                  <IconCheck className="h-6 w-6" />
-                  <div className="flex flex-col items-start leading-none">
-                    <span>{fmt(totalPotential)}</span>
-                    {entryShort && (
-                      <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {entryMin}</span>
-                    )}
-                  </div>
-                </button>
-                <button
-                  onClick={p.onContinue}
-                  disabled={!canContinue}
-                  className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-iris-400 to-iris-500 font-bold text-white shadow-[0_4px_0_var(--color-iris-600)] transition-all active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:from-ink-800 disabled:to-ink-800 disabled:text-fog-600 disabled:shadow-none ${
-                    usedAll ? 'animate-pulse' : ''
-                  }`}
-                >
-                  <IconRefresh className="h-5 w-5" />
-                  <div className="flex flex-col items-start leading-none">
-                    <span>{usedAll ? 'Heiße Würfel' : 'Weiter'}</span>
-                    <span className="mt-0.5 text-[10px] font-normal opacity-80">
-                      {usedAll ? '6 neu' : `noch ${remainingAfter}`}
-                      {risk ? ` · ${risk.pct.toFixed(0)} %` : ''}
-                    </span>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+        {/* Rechte Seitenleiste: nur im iPad-Querformat (breit + landscape).
+            Risiko und Aktionen deutlich größer und leichter erreichbar, während
+            links die Würfelschale bzw. das Zahlen-Pad die volle Breite nutzt. */}
+        <div className="hidden lg:landscape:flex lg:landscape:w-[380px] lg:landscape:shrink-0 lg:landscape:flex-col lg:landscape:gap-4">
+          {renderRiskMeter(true)}
+          {/* Aktionsleiste bleibt unten angedockt, auch wenn (noch) kein
+              Risiko-Meter angezeigt wird – wie im Hochformat via mt-auto. */}
+          <div className="lg:landscape:mt-auto">{renderActionBar(true)}</div>
         </div>
       </div>
 
