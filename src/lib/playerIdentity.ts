@@ -1,4 +1,6 @@
 import type { GameRecord, Turn } from './types'
+import { markPlayerIdentityDirty } from './playerIdentitySyncMeta'
+import { sanitizePlayerIdentityState } from './playerIdentityState'
 
 const ALIAS_KEY = '10k_player_aliases_v1'
 const REDIRECT_KEY = '10k_player_redirects_v1'
@@ -59,10 +61,12 @@ function readStoredState(): PlayerIdentityState {
   }
 }
 
-function writeState(state: PlayerIdentityState): void {
-  writeRecord(ALIAS_KEY, state.aliases)
-  writeRecord(REDIRECT_KEY, state.redirects)
-  writeRecord(PREFERRED_NAME_KEY, state.preferredNames)
+function writeState(state: PlayerIdentityState, markDirty = true): void {
+  const clean = sanitizePlayerIdentityState(state)
+  writeRecord(ALIAS_KEY, clean.aliases)
+  writeRecord(REDIRECT_KEY, clean.redirects)
+  writeRecord(PREFERRED_NAME_KEY, clean.preferredNames)
+  if (markDirty) markPlayerIdentityDirty()
 }
 
 function resolveRedirect(id: string, redirects: Record<string, string>): string {
@@ -296,7 +300,12 @@ export function getPlayerIdentityRecoveryCount(): number {
 }
 
 export function exportPlayerIdentityState(): PlayerIdentityState {
-  return readStoredState()
+  return sanitizePlayerIdentityState(readStoredState())
+}
+
+/** Ersetzt den lokalen Zustand; Cloud-Anwendungen können Dirty-Tracking abschalten. */
+export function replacePlayerIdentityState(state: PlayerIdentityState, markDirty = true): void {
+  writeState(sanitizePlayerIdentityState(state), markDirty)
 }
 
 export function importPlayerIdentityState(input: unknown): PlayerIdentityImportResult {
