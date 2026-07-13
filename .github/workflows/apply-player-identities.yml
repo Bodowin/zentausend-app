@@ -60,6 +60,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/App.tsx src/components/StatsScreen.tsx src/lib/types.ts src/lib/roster.ts src/lib/gameRecordValidation.ts src/lib/storage.ts src/lib/playerIdentity.ts src/lib/playerIdentity.test.ts src/lib/storageIdentity.test.ts docs/package-d-player-identities.md
+          git add src/App.tsx src/components/StatsScreen.tsx src/lib/types.ts src/lib/roster.ts src/lib/gameRecordValidation.ts src/lib/storage.ts src/lib/playerIdentity.ts src/lib/playerIdentity.test.ts src/lib/storageIdentity.test.ts docs/package-d-player-identities.md docs/package-d-device-test-plan.md
           git commit -m "Keep player statistics stable across renames"
           git push origin HEAD:chatgpt/package-d-player-identities
