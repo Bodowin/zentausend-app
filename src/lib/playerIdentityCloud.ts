@@ -1,4 +1,4 @@
-import { getCliqueCode } from './cliqueCode'
+import { checkCliqueCode } from './cloudAccess'
 import { getSupabase } from './supabase'
 import {
   exportPlayerIdentityState,
@@ -142,24 +142,32 @@ export async function syncPlayerIdentityState(): Promise<PlayerIdentityCloudResu
 
   let cloudVersion = fetched.row?.version ?? 0
   let cloud = sanitizePlayerIdentityState(fetched.row?.payload ?? emptyPlayerIdentityState())
+  const codeStatus = await checkCliqueCode()
+  const codeDenied = codeStatus === 'invalid' || codeStatus === 'missing'
 
   if (!meta.dirty) {
     replacePlayerIdentityState(cloud, false)
     setPlayerIdentitySyncBase(cloudVersion, cloud, false)
-    return { online: true, pending: 0, conflicts: 0, version: cloudVersion, denied: false }
+    return {
+      online: codeStatus !== 'offline',
+      pending: 0,
+      conflicts: 0,
+      version: cloudVersion,
+      denied: codeDenied,
+    }
   }
 
   let merged = mergePlayerIdentityStates(meta.baseState, local, cloud)
   replacePlayerIdentityState(merged.state, false)
   setPlayerIdentitySyncBase(cloudVersion, cloud, true)
 
-  if (!getCliqueCode()) {
+  if (codeStatus !== 'valid') {
     return {
-      online: true,
+      online: codeStatus !== 'offline',
       pending: 1,
       conflicts: merged.conflicts,
       version: cloudVersion,
-      denied: true,
+      denied: codeDenied,
     }
   }
 

@@ -29,6 +29,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [games, setGames] = useState<GameRecord[]>(() => getHistory())
   const [loading, setLoading] = useState(true)
   const [online, setOnline] = useState(false)
+  const [codeDenied, setCodeDenied] = useState(false)
   const [pendingSync, setPendingSync] = useState(() => pendingEventEditCount())
   const [integrity, setIntegrity] = useState(() => getHistoryIntegrityReport())
   const [filter, setFilter] = useState<string>('')
@@ -51,6 +52,10 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       setGames(res.games)
       setOnline(res.online)
       setPendingSync(res.pending)
+      setCodeDenied(res.codeDenied)
+      if (res.identityConflicts > 0) {
+        setMsg(`${res.identityConflicts} Spieler-Zuordnungs-Konflikt${res.identityConflicts === 1 ? '' : 'e'} lokal gelöst.`)
+      }
       setIntegrity(getHistoryIntegrityReport())
       setLoading(false)
     })
@@ -64,6 +69,10 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       setGames(res.games)
       setOnline(res.online)
       setPendingSync(res.pending)
+      setCodeDenied(res.codeDenied)
+      if (res.identityConflicts > 0) {
+        setMsg(`${res.identityConflicts} Spieler-Zuordnungs-Konflikt${res.identityConflicts === 1 ? '' : 'e'} lokal gelöst.`)
+      }
       setIntegrity(getHistoryIntegrityReport())
       setLoading(false)
     })
@@ -166,6 +175,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             setGames(getHistory())
             setShowPlayers(false)
             flash(message)
+            void reload()
           }}
         />
       )}
@@ -328,7 +338,9 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         <span className="text-fog-500">
           {loading
             ? 'Synchronisiere mit der Cloud…'
-            : pendingSync > 0
+            : codeDenied
+              ? 'Clique-Code ungültig – in Einstellungen erneuern'
+              : pendingSync > 0
               ? `${pendingSync} ${pendingSync === 1 ? 'Änderung wartet' : 'Änderungen warten'} auf Cloud`
               : online
                 ? 'Mit Cloud synchronisiert · auf allen Geräten gleich'

@@ -1,6 +1,9 @@
 import { getSupabase } from './supabase'
 import { getHistory, recordHistoryValidation, removeGame, replaceHistory, setGameEvent } from './storage'
 import { validateGameRecordArray } from './gameRecordValidation'
+import { syncPlayerIdentityState } from './playerIdentityCloud'
+import { exportPlayerIdentityState } from './playerIdentity'
+import { playerIdentitySyncPendingCount } from './playerIdentitySyncMeta'
 import type { GameRecord } from './types'
 import type { Database } from './database.types'
 
@@ -74,7 +77,10 @@ function clearEventEdit(clientId: string): void {
 }
 
 export function pendingEventEditCount(): number {
-  return Object.keys(readPendingEventEdits()).length
+  return (
+    Object.keys(readPendingEventEdits()).length +
+    playerIdentitySyncPendingCount(exportPlayerIdentityState())
+  )
 }
 
 /**
@@ -275,6 +281,8 @@ export interface SyncResult {
   online: boolean
   /** Noch nicht bestätigte lokale Änderungen. */
   pending: number
+  identityConflicts: number
+  codeDenied: boolean
 }
 
 /**
@@ -284,20 +292,37 @@ export interface SyncResult {
 export async function syncAndMerge(): Promise<SyncResult> {
   const local = getHistory()
   const initialPending = readPendingEventEdits()
+  const initialIdentityPending = playerIdentitySyncPendingCount(exportPlayerIdentityState())
   if (!getSupabase() || isOffline()) {
-    return { games: local, online: false, pending: Object.keys(initialPending).length }
+    return {
+      games: local,
+      online: false,
+      pending: Object.keys(initialPending).length + initialIdentityPending,
+      identityConflicts: 0,
+      codeDenied: false,
+    }
   }
 
+  const identity = await syncPlayerIdentityState()
   const fetched = await fetchCloudGames()
   if (!fetched.ok) {
-    return { games: local, online: false, pending: Object.keys(initialPending).length }
+    return {
+      games: local,
+      online: false,
+      pending: Object.keys(initialPending).length + identity.pending,
+      identityConflicts: identity.conflicts,
+      codeDenied: identity.denied,
+    }
   }
 
   let cloud = [...fetched.games]
   const cloudIds = new Set(cloud.map(key))
 
+  let failedGameUploads = 0
+
   // Bereits vorhandene Cloud-Zeilen mit offenen lokalen Anlass-Änderungen aktualisieren.
   for (const [clientId, event] of Object.entries(initialPending)) {
+    if (identity.denied) break
     if (!cloudIds.has(clientId)) continue
     const result = await updateCloudEvent(clientId, event)
     if (result === 'ok') {
@@ -310,15 +335,27 @@ export async function syncAndMerge(): Promise<SyncResult> {
   // einen gegebenenfalls offline bearbeiteten Anlass.
   const missing = local.filter((game) => !cloudIds.has(key(game)))
   for (const game of missing) {
+    if (identity.denied) {
+      failedGameUploads += 1
+      continue
+    }
     if (await pushGame(game)) {
       cloud.push(game)
       cloudIds.add(key(game))
       clearEventEdit(key(game))
+    } else {
+      failedGameUploads += 1
     }
   }
 
   const pending = readPendingEventEdits()
   const games = mergeHistories(local, cloud, pending)
   replaceHistory(games)
-  return { games, online: true, pending: Object.keys(pending).length }
+  return {
+    games,
+    online: true,
+    pending: Object.keys(pending).length + identity.pending + failedGameUploads,
+    identityConflicts: identity.conflicts,
+    codeDenied: identity.denied,
+  }
 }
