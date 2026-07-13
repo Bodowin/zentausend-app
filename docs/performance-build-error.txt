@@ -1,5 +1,0 @@
-
-> zentausend-app@0.1.0 build
-> tsc -b && vite build
-
-src/performanceBoundaries.test.ts(1,30): error TS2307: Cannot find module 'node:fs' or its corresponding type declarations.
