@@ -54,7 +54,9 @@ jobs:
         run: npm run build
 
       - name: Remove one-time patch machinery
-        run: git rm scripts/apply-history-validation.mjs scripts/prepare-history-patch.mjs .github/workflows/apply-history-validation.yml
+        run: |
+          rm -f history-patch-error.txt
+          git rm -f scripts/apply-history-validation.mjs scripts/prepare-history-patch.mjs .github/workflows/apply-history-validation.yml
 
       - name: Commit validated source
         run: |
