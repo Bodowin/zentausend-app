@@ -18,6 +18,7 @@ import { playerColor } from '../lib/colors'
 import { IconBack, IconChart, IconPencil, IconTrash, IconTrophy } from './Icons'
 import { SettingsModal } from './SettingsModal'
 import { AnalysisScreen } from './AnalysisScreen'
+import { PlayerManager } from './PlayerManager'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
 
@@ -33,6 +34,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [filter, setFilter] = useState<string>('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showPlayers, setShowPlayers] = useState(false)
   const [focusAdmin, setFocusAdmin] = useState(false)
   const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null)
   // Nachträglich den Anlass eines Spiels bearbeiten (z. B. vergessen zu setzen
@@ -82,6 +84,8 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       const notes = [`${res.added} neu importiert`, `${res.total} gesamt`]
       if (res.repaired > 0) notes.push(`${res.repaired} repariert`)
       if (res.quarantined > 0) notes.push(`${res.quarantined} in Quarantäne`)
+      if (res.identitiesImported > 0) notes.push(`${res.identitiesImported} Spieler-Zuordnungen übernommen`)
+      if (res.identityConflicts > 0) notes.push(`${res.identityConflicts} Zuordnungs-Konflikte ausgelassen`)
       setIntegrity(getHistoryIntegrityReport())
       flash(notes.join(' · '))
     } catch (e) {
@@ -149,6 +153,19 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
           onClose={() => {
             setShowSettings(false)
             setFocusAdmin(false)
+          }}
+        />
+      )}
+
+      {showPlayers && (
+        <PlayerManager
+          games={games}
+          players={stats}
+          onClose={() => setShowPlayers(false)}
+          onChanged={(message) => {
+            setGames(getHistory())
+            setShowPlayers(false)
+            flash(message)
           }}
         />
       )}
@@ -230,8 +247,8 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         </button>
       </header>
 
-      {/* Backup-Werkzeuge: Export sichert die ewige Tabelle, Import spielt sie zurück. */}
-      <div className="mb-4 flex items-center gap-2">
+      {/* Daten-Werkzeuge: Backup und ausdrücklich kontrollierte Spieler-Zuordnung. */}
+      <div className="mb-4 grid grid-cols-2 gap-2">
         <button
           onClick={() => exportBackup(games)}
           disabled={games.length === 0}
@@ -241,9 +258,17 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         </button>
         <button
           onClick={() => fileInput.current?.click()}
-          className="flex-1 rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:text-fog-100"
+          className="rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:text-fog-100"
         >
           ⬆︎ Backup laden
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowPlayers(true)}
+          disabled={stats.length === 0}
+          className="col-span-2 rounded-xl border border-gold-500/30 bg-gold-500/10 px-3 py-2.5 text-xs font-bold text-gold-300 transition-colors disabled:opacity-40"
+        >
+          👥 Spielerprofile verwalten
         </button>
       </div>
 

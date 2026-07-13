@@ -1,25 +1,33 @@
 import type { GameRecord } from './types'
 import { getHistory, getHistoryIntegrityBundle, recordHistoryValidation, replaceHistory } from './storage'
 import { validateGameRecordArray } from './gameRecordValidation'
+import {
+  exportPlayerIdentityState,
+  importPlayerIdentityState,
+  type PlayerIdentityState,
+} from './playerIdentity'
 import { pushGame } from './cloud'
 
 const FORMAT = '10000-clique-backup'
-const VERSION = 1
+const VERSION = 2
 
 interface BackupFile {
   format: string
   version: number
   exportedAt: string
   games: GameRecord[]
+  /** Ab v2: portable, konfliktbewusst importierte Namens- und ID-Zuordnungen. */
+  playerIdentity?: PlayerIdentityState
 }
 
-/** Lädt die ewige Tabelle als JSON-Datei herunter (Sicherheits-Backup). */
+/** Lädt die ewige Tabelle samt Spieler-Zuordnungen als JSON-Datei herunter. */
 export function exportBackup(games: GameRecord[] = getHistory()): void {
   const payload: BackupFile = {
     format: FORMAT,
     version: VERSION,
     exportedAt: new Date().toISOString(),
     games,
+    playerIdentity: exportPlayerIdentityState(),
   }
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -54,11 +62,15 @@ export interface ImportResult {
   pushed: number
   repaired: number
   quarantined: number
+  identitiesImported: number
+  identityConflicts: number
 }
 
 /**
  * Liest eine Backup-Datei, führt sie mit dem lokalen Verlauf zusammen (dedupe
  * über die Spiel-ID) und schiebt neue Spiele – falls online – in die Cloud.
+ * Identitätsdaten werden additiv übernommen; widersprüchliche lokale Zuordnungen
+ * werden niemals still überschrieben.
  */
 export async function importBackup(file: File): Promise<ImportResult> {
   const text = await file.text()
@@ -98,6 +110,7 @@ export async function importBackup(file: File): Promise<ImportResult> {
   }
   const merged = [...byId.values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
   replaceHistory(merged)
+  const identity = importPlayerIdentityState(root.playerIdentity)
 
   // Nur validierte neue Spiele best-effort in die Cloud heben.
   let pushed = 0
@@ -111,5 +124,7 @@ export async function importBackup(file: File): Promise<ImportResult> {
     pushed,
     repaired: validation.repaired,
     quarantined: validation.quarantined.length,
+    identitiesImported: identity.imported,
+    identityConflicts: identity.conflicts,
   }
 }
