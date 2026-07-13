@@ -53,7 +53,8 @@ function normalizeTurn(value: unknown, players: string[], index: number): { turn
   const points = integerValue(value.points, 0)
   const playerInput = textValue(value.player)
   const matchedPlayer = playerInput
-    ? players.find((name) => name === playerInput) ?? players.find((name) => name.toLocaleLowerCase() === playerInput.toLocaleLowerCase())
+    ? players.find((name) => name === playerInput) ??
+      players.find((name) => name.toLocaleLowerCase() === playerInput.toLocaleLowerCase())
     : undefined
 
   let bust: boolean | null = typeof value.bust === 'boolean' ? value.bust : null
@@ -80,9 +81,8 @@ export function validateGameRecord(value: unknown): SingleValidation {
   const errors: string[] = []
   if (!isObject(value)) return { game: null, repairs, errors: ['Datensatz ist kein Objekt'] }
 
-  const id = integerValue(value.id, 1)
-  if (id.value === null) errors.push('id fehlt oder ist ungültig')
-  else if (id.repaired) repairs.push('id wurde von Text in eine Zahl umgewandelt')
+  let id = integerValue(value.id, 1)
+  if (id.value !== null && id.repaired) repairs.push('id wurde von Text in eine Zahl umgewandelt')
 
   const playersRaw = value.players
   const players: GameRecord['players'] = []
@@ -123,21 +123,40 @@ export function validateGameRecord(value: unknown): SingleValidation {
     errors.push('date fehlt oder ist nicht rekonstruierbar')
   }
 
+  // Frühere Cloud-Versionen leiteten bei nichtnumerischen client_ids die lokale
+  // Spiel-ID aus played_at ab. Diese Datensätze bleiben dadurch kompatibel.
+  if (id.value === null && date) {
+    const derivedId = Date.parse(date)
+    if (Number.isSafeInteger(derivedId) && derivedId > 0) {
+      id = { value: derivedId, repaired: true }
+      repairs.push('id wurde aus dem Spieldatum rekonstruiert')
+    }
+  }
+  if (id.value === null) errors.push('id fehlt oder ist ungültig')
+
   let winner = textValue(value.winner)
   let winnerPlayer = winner
     ? players.find((player) => player.name === winner) ??
       players.find((player) => player.name.toLocaleLowerCase() === winner?.toLocaleLowerCase())
     : undefined
+  const bestScore = players.length > 0 ? Math.max(...players.map((player) => player.score)) : null
+  const leaders = bestScore === null ? [] : players.filter((player) => player.score === bestScore)
 
   if (!winnerPlayer && players.length > 0) {
-    const best = Math.max(...players.map((player) => player.score))
-    const leaders = players.filter((player) => player.score === best)
     if (leaders.length === 1) {
       winnerPlayer = leaders[0]
       winner = winnerPlayer.name
       repairs.push('winner wurde aus dem eindeutigen Höchststand rekonstruiert')
     } else {
       errors.push('winner ist nicht eindeutig rekonstruierbar')
+    }
+  } else if (winnerPlayer && bestScore !== null && winnerPlayer.score !== bestScore) {
+    if (leaders.length === 1) {
+      winnerPlayer = leaders[0]
+      winner = winnerPlayer.name
+      repairs.push('winner widersprach dem Endstand und wurde aus dem Höchststand rekonstruiert')
+    } else {
+      errors.push('winner widerspricht dem Endstand und ist nicht eindeutig rekonstruierbar')
     }
   } else if (winnerPlayer && winnerPlayer.name !== winner) {
     winner = winnerPlayer.name
