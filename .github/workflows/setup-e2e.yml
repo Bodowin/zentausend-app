@@ -50,7 +50,38 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Browser journeys
-        run: npm run test:e2e
+        id: browser
+        continue-on-error: true
+        run: |
+          set +e
+          npm run test:e2e 2>&1 | tee e2e-error.txt
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Upload browser diagnostics
+        if: steps.browser.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-playwright-diagnostics
+          path: |
+            e2e-error.txt
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Capture browser failure
+        if: steps.browser.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add e2e-error.txt
+          git commit -m "Capture browser journey failure"
+          git push origin HEAD:chatgpt/package-e-browser-e2e
+
+      - name: Stop after browser failure
+        if: steps.browser.outcome == 'failure'
+        run: exit 1
 
       - name: Remove one-time setup machinery
         run: git rm -f scripts/apply-e2e-accessibility.mjs .github/workflows/setup-e2e.yml
