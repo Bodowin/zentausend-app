@@ -1,14 +1,171 @@
 import type { GameRecord, Player, PlayerStats, Turn } from './types'
+import {
+  validateGameRecordArray,
+  type GameRecordSource,
+  type GameRecordValidationBatch,
+  type QuarantinedGameRecord,
+} from './gameRecordValidation'
 
 const HISTORY_KEY = '10k_history_v3'
+const QUARANTINE_KEY = '10k_history_quarantine_v1'
+const RECOVERY_KEY = '10k_history_recovery_v1'
+const INTEGRITY_REPORT_KEY = '10k_history_integrity_report_v1'
 const MAX_RECORDS = 200
+const MAX_QUARANTINE_RECORDS = 100
+const MAX_RECOVERY_SNAPSHOTS = 3
 
-export function getHistory(): GameRecord[] {
+interface StoredQuarantineRecord extends QuarantinedGameRecord {
+  capturedAt: string
+}
+
+interface HistoryRecoverySnapshot {
+  capturedAt: string
+  source: GameRecordSource
+  raw: string
+}
+
+export interface HistoryIntegrityReport {
+  checkedAt: string
+  source: GameRecordSource
+  repaired: number
+  quarantined: number
+  quarantineTotal: number
+  recoverySaved: boolean
+  quarantineStored: boolean
+}
+
+export interface HistoryIntegrityBundle {
+  report: HistoryIntegrityReport | null
+  quarantine: StoredQuarantineRecord[]
+  recovery: HistoryRecoverySnapshot[]
+}
+
+function readArray<T>(key: string): T[] {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as GameRecord[]
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]') as unknown
+    return Array.isArray(parsed) ? (parsed as T[]) : []
   } catch {
     return []
   }
+}
+
+function serialise(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function quarantineSignature(entry: QuarantinedGameRecord): string {
+  return [entry.source, entry.id ?? '', entry.reasons.join('|'), serialise(entry.raw)].join('::')
+}
+
+export function recordHistoryValidation(
+  source: GameRecordSource,
+  validation: GameRecordValidationBatch,
+  recoveryRaw?: string,
+): HistoryIntegrityReport | null {
+  if (validation.repaired === 0 && validation.quarantined.length === 0) return null
+
+  const checkedAt = new Date().toISOString()
+  let recoverySaved = false
+  if (recoveryRaw !== undefined) {
+    try {
+      const recovery = readArray<HistoryRecoverySnapshot>(RECOVERY_KEY)
+      if (recovery[0]?.raw !== recoveryRaw) {
+        recovery.unshift({ capturedAt: checkedAt, source, raw: recoveryRaw })
+      }
+      localStorage.setItem(RECOVERY_KEY, JSON.stringify(recovery.slice(0, MAX_RECOVERY_SNAPSHOTS)))
+      recoverySaved = true
+    } catch {
+      recoverySaved = false
+    }
+  }
+
+  const existing = readArray<StoredQuarantineRecord>(QUARANTINE_KEY)
+  const known = new Set(existing.map(quarantineSignature))
+  const additions = validation.quarantined
+    .filter((entry) => !known.has(quarantineSignature(entry)))
+    .map((entry) => ({ ...entry, capturedAt: checkedAt }))
+  const quarantine = [...additions, ...existing].slice(0, MAX_QUARANTINE_RECORDS)
+  let quarantineStored = true
+  try {
+    localStorage.setItem(QUARANTINE_KEY, JSON.stringify(quarantine))
+  } catch {
+    quarantineStored = false
+  }
+
+  const report: HistoryIntegrityReport = {
+    checkedAt,
+    source,
+    repaired: validation.repaired,
+    quarantined: validation.quarantined.length,
+    quarantineTotal: quarantine.length,
+    recoverySaved,
+    quarantineStored,
+  }
+  try {
+    localStorage.setItem(INTEGRITY_REPORT_KEY, JSON.stringify(report))
+  } catch {
+    /* Bericht bleibt über den Rückgabewert verfügbar. */
+  }
+  return report
+}
+
+export function getHistoryIntegrityReport(): HistoryIntegrityReport | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INTEGRITY_REPORT_KEY) || 'null') as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    return parsed as HistoryIntegrityReport
+  } catch {
+    return null
+  }
+}
+
+export function clearHistoryIntegrityReport(): void {
+  try {
+    localStorage.removeItem(INTEGRITY_REPORT_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getHistoryIntegrityBundle(): HistoryIntegrityBundle {
+  return {
+    report: getHistoryIntegrityReport(),
+    quarantine: readArray<StoredQuarantineRecord>(QUARANTINE_KEY),
+    recovery: readArray<HistoryRecoverySnapshot>(RECOVERY_KEY),
+  }
+}
+
+export function getHistory(): GameRecord[] {
+  let raw = '[]'
+  try {
+    raw = localStorage.getItem(HISTORY_KEY) || '[]'
+  } catch {
+    return []
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    const invalidRoot = validateGameRecordArray(raw, 'local')
+    recordHistoryValidation('local', invalidRoot, raw)
+    return []
+  }
+
+  const validation = validateGameRecordArray(parsed, 'local')
+  if (validation.repaired > 0 || validation.quarantined.length > 0) {
+    recordHistoryValidation('local', validation, raw)
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(validation.games.slice(0, MAX_RECORDS)))
+    } catch {
+      /* Recovery und Quarantäne bleiben erhalten. */
+    }
+  }
+  return validation.games.slice(0, MAX_RECORDS)
 }
 
 export function saveGame(
@@ -37,8 +194,18 @@ export function saveGame(
 
 /** Ersetzt den lokalen Verlauf vollständig (z. B. nach einem Cloud-Merge). */
 export function replaceHistory(games: GameRecord[]): void {
+  const validation = validateGameRecordArray(games, 'local')
+  if (validation.repaired > 0 || validation.quarantined.length > 0) {
+    let previous: string | undefined
+    try {
+      previous = localStorage.getItem(HISTORY_KEY) ?? undefined
+    } catch {
+      previous = undefined
+    }
+    recordHistoryValidation('local', validation, previous)
+  }
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(games.slice(0, MAX_RECORDS)))
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(validation.games.slice(0, MAX_RECORDS)))
   } catch {
     /* ignore */
   }

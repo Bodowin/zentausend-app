@@ -1,5 +1,6 @@
 import type { GameRecord } from './types'
-import { getHistory, replaceHistory } from './storage'
+import { getHistory, getHistoryIntegrityBundle, recordHistoryValidation, replaceHistory } from './storage'
+import { validateGameRecordArray } from './gameRecordValidation'
 import { pushGame } from './cloud'
 
 const FORMAT = '10000-clique-backup'
@@ -32,20 +33,27 @@ export function exportBackup(games: GameRecord[] = getHistory()): void {
   URL.revokeObjectURL(url)
 }
 
-function isGameRecord(g: unknown): g is GameRecord {
-  if (!g || typeof g !== 'object') return false
-  const r = g as Record<string, unknown>
-  return (
-    (typeof r.id === 'number' || typeof r.id === 'string') &&
-    typeof r.winner === 'string' &&
-    Array.isArray(r.players)
-  )
+/** Exportiert Bericht, Quarantäne und Recovery-Snapshots als lesbare JSON-Datei. */
+export function exportIntegrityReport(): void {
+  const bundle = getHistoryIntegrityBundle()
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const stamp = new Date().toISOString().slice(0, 10)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `zentausend-datenpruefung-${stamp}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 export interface ImportResult {
   added: number
   total: number
   pushed: number
+  repaired: number
+  quarantined: number
 }
 
 /**
@@ -54,10 +62,29 @@ export interface ImportResult {
  */
 export async function importBackup(file: File): Promise<ImportResult> {
   const text = await file.text()
-  const parsed = JSON.parse(text) as Partial<BackupFile>
-  const incoming = Array.isArray(parsed.games) ? parsed.games.filter(isGameRecord) : []
-  if (parsed.format !== FORMAT || !incoming.length) {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('Backup ist kein gültiges JSON.')
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('Keine gültige Backup-Datei.')
+  }
+  const root = parsed as Partial<BackupFile>
+  const version = typeof root.version === 'number' ? root.version : 1
+  if (root.format !== FORMAT || version > VERSION) {
+    throw new Error('Keine unterstützte Backup-Datei.')
+  }
+
+  const validation = validateGameRecordArray(root.games, 'backup')
+  recordHistoryValidation('backup', validation)
+  const incoming = validation.games
+  if (incoming.length === 0) {
+    const suffix = validation.quarantined.length
+      ? ` · ${validation.quarantined.length} fehlerhafte Datensätze wurden protokolliert`
+      : ''
+    throw new Error(`Keine gültigen Spiele im Backup${suffix}.`)
   }
 
   const existing = getHistory()
@@ -72,11 +99,17 @@ export async function importBackup(file: File): Promise<ImportResult> {
   const merged = [...byId.values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
   replaceHistory(merged)
 
-  // Neue Spiele best-effort in die Cloud heben (offline bleibt es lokal).
+  // Nur validierte neue Spiele best-effort in die Cloud heben.
   let pushed = 0
   const onlyNew = incoming.filter((g) => !existing.some((e) => String(e.id) === String(g.id)))
   const results = await Promise.allSettled(onlyNew.map((g) => pushGame(g)))
-  for (const r of results) if (r.status === 'fulfilled' && r.value) pushed++
+  for (const result of results) if (result.status === 'fulfilled' && result.value) pushed++
 
-  return { added, total: merged.length, pushed }
+  return {
+    added,
+    total: merged.length,
+    pushed,
+    repaired: validation.repaired,
+    quarantined: validation.quarantined.length,
+  }
 }

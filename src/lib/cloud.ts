@@ -1,5 +1,6 @@
 import { getSupabase } from './supabase'
-import { getHistory, removeGame, replaceHistory, setGameEvent } from './storage'
+import { getHistory, recordHistoryValidation, removeGame, replaceHistory, setGameEvent } from './storage'
+import { validateGameRecordArray } from './gameRecordValidation'
 import type { GameRecord } from './types'
 import type { Database } from './database.types'
 
@@ -24,15 +25,15 @@ function toRow(game: GameRecord): Insert {
   }
 }
 
-function fromRow(row: Row): GameRecord {
+function rowCandidate(row: Row): unknown {
   return {
-    id: Number(row.client_id) || Date.parse(row.played_at),
+    id: row.client_id,
     date: row.played_at,
     event: row.event ?? '',
     winner: row.winner,
     winnerScore: row.winner_score,
-    players: (Array.isArray(row.players) ? row.players : []) as GameRecord['players'],
-    turns: (Array.isArray(row.turns) ? row.turns : undefined) as GameRecord['turns'],
+    players: row.players,
+    turns: row.turns,
   }
 }
 
@@ -139,7 +140,9 @@ export async function fetchCloudGames(): Promise<{ games: GameRecord[]; ok: bool
       console.warn('Cloud-Fetch fehlgeschlagen:', error.message)
       return { games: [], ok: false }
     }
-    return { games: (data ?? []).map(fromRow), ok: true }
+    const validation = validateGameRecordArray((data ?? []).map(rowCandidate), 'cloud')
+    recordHistoryValidation('cloud', validation)
+    return { games: validation.games, ok: true }
   } catch (error) {
     console.warn('Cloud-Fetch abgebrochen (Timeout/offline):', error)
     return { games: [], ok: false }
