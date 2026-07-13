@@ -7,6 +7,9 @@ export interface CelebrationData {
   title: string
   sub: string
   tier: CelebrationTier
+  /** Sub-Text als große Punktzahl statt kleiner Bildunterschrift betonen –
+   * z. B. beim Sichern, wo die Gesamtsumme wichtiger ist als der Wurfname. */
+  bigSub?: boolean
 }
 
 const GOLD = '#f5b83d'
@@ -79,11 +82,33 @@ export function Celebration({ data, onDone }: { data: CelebrationData; onDone: (
       ))}
       <div
         className="celebr-title"
-        style={{ fontSize: `calc(clamp(2.2rem, 12vw, 4.3rem) * ${t.scale})`, textShadow: `0 4px 28px ${t.shadow}, 0 2px 6px rgba(0,0,0,0.5)` }}
+        style={{
+          // Beim Sichern (bigSub) tritt der Titel zugunsten der Punktzahl
+          // zurück – die Zahl, die gerade aufs Konto geht, soll dominieren.
+          fontSize: data.bigSub
+            ? `calc(clamp(1.5rem, 7vw, 2.6rem) * ${t.scale})`
+            : `calc(clamp(2.2rem, 12vw, 4.3rem) * ${t.scale})`,
+          textShadow: `0 4px 28px ${t.shadow}, 0 2px 6px rgba(0,0,0,0.5)`,
+        }}
       >
         {data.title}
       </div>
-      <div className="celebr-sub" style={{ color: t.accent }}>
+      <div
+        className="celebr-sub"
+        style={
+          data.bigSub
+            ? {
+                color: t.accent,
+                fontSize: `calc(clamp(2.8rem, 15vw, 5.5rem) * ${t.scale})`,
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 900,
+                letterSpacing: 'normal',
+                textTransform: 'none',
+                textShadow: `0 4px 24px ${t.shadow}`,
+              }
+            : { color: t.accent }
+        }
+      >
         {data.sub}
       </div>
     </div>
