@@ -267,8 +267,9 @@ export function App() {
     setBustAnnounce(null)
     setUndoStack([])
     setResumable(null)
-    setToast(mode === 'virtual' && reconstructedThrow.length ? 'Wurf wiederhergestellt' : '')
+    setToast('')
     setView('game')
+    if (mode === 'virtual' && reconstructedThrow.length) showToast('Wurf wiederhergestellt')
   }
 
   const addDie = (value: number) => {

@@ -384,10 +384,19 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
               Verlauf ({filtered.length})
             </h2>
             {filtered.map((g) => (
-              <button
+              <div
                 key={g.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setAnalysisGame(g)}
-                className="block w-full rounded-2xl border border-ink-700/70 bg-ink-850/70 p-4 text-left transition-colors hover:border-ink-600"
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setAnalysisGame(g)
+                  }
+                }}
+                className="block w-full cursor-pointer rounded-2xl border border-ink-700/70 bg-ink-850/70 p-4 text-left transition-colors hover:border-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/60"
               >
                 <div className="mb-1.5 flex items-center justify-between">
                   <div className="text-[11px] text-fog-500">
@@ -398,33 +407,32 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                     <div className="flex items-center gap-1.5 text-sm font-bold text-gold-400">
                       <IconTrophy className="h-3.5 w-3.5" /> {g.winner}
                     </div>
-                    <span
-                      role="button"
-                      tabIndex={0}
+                    <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation()
                         setEditValue(g.event ?? '')
                         setEditingGame(g)
                       }}
-                      className="p-1.5 text-fog-600 transition-colors hover:text-gold-400"
+                      className="p-1.5 text-fog-600 transition-colors hover:text-gold-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/60"
                       aria-label="Anlass bearbeiten"
                     >
                       <IconPencil className="h-4 w-4" />
-                    </span>
-                    <span
-                      role="button"
-                      tabIndex={0}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === g.id}
                       onClick={(e) => {
                         e.stopPropagation()
                         void handleDelete(g)
                       }}
-                      className={`p-1.5 text-fog-600 transition-colors hover:text-coral-400 ${
+                      className={`p-1.5 text-fog-600 transition-colors hover:text-coral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-500/60 ${
                         busyId === g.id ? 'opacity-40' : ''
                       }`}
                       aria-label="Spiel löschen"
                     >
                       <IconTrash className="h-4 w-4" />
-                    </span>
+                    </button>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-fog-400">
@@ -437,7 +445,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                     ))}
                   <span className="ml-auto text-[10px] text-fog-600">Analyse ›</span>
                 </div>
-              </button>
+              </div>
             ))}
           </section>
         </>
