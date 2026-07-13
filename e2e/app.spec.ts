@@ -126,7 +126,7 @@ test.describe('10.000 browser journeys', () => {
     await expect(winDialog.getByText('5.000', { exact: true })).toBeVisible()
     await winDialog.getByRole('button', { name: /Revanche/ }).click()
 
-    await expect(page.getByRole('button', { name: 'Testspiel starten · 2 Spieler' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Spiel starten · 2 Spieler' })).toBeVisible()
     await expect(page.getByText('Gabi', { exact: true }).first()).toBeVisible()
   })
 
@@ -169,8 +169,7 @@ test.describe('10.000 browser journeys', () => {
     await openCleanApp(page)
     await page.getByRole('button', { name: 'Kader', exact: true }).click()
 
-    const gabiInput = page.locator('input').filter({ has: page.locator('[value="Gabi"]') })
-    const rosterInput = page.locator('input[value="Gabi"]')
+    const rosterInput = page.getByDisplayValue('Gabi')
     await expect(rosterInput).toBeVisible()
     await rosterInput.fill('Gabriela')
     await rosterInput.press('Enter')
@@ -180,17 +179,15 @@ test.describe('10.000 browser journeys', () => {
     await page.getByRole('button', { name: 'Mabi', exact: true }).click()
     await page.getByRole('button', { name: 'Spiel starten · 2 Spieler' }).click()
 
-    await expect.poll(async () =>
-      page.evaluate(() => {
-        const active = JSON.parse(localStorage.getItem('10k_active_game') || '{}') as {
-          players?: { id: string; name: string }[]
-        }
-        return active.players?.find((player) => player.name === 'Gabriela')?.id
-      }),
-    ).toBe('player:name:gabi')
-
-    // Keep this locator assignment intentional: it guards that the renamed input
-    // remained a real form control rather than a test-only hook.
-    expect(gabiInput).toBeDefined()
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const active = JSON.parse(localStorage.getItem('10k_active_game') || '{}') as {
+            players?: { id: string; name: string }[]
+          }
+          return active.players?.find((player) => player.name === 'Gabriela')?.id
+        }),
+      )
+      .toBe('player:name:gabi')
   })
 })
