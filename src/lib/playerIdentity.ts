@@ -134,19 +134,22 @@ function readRecovery(): PlayerIdentityRecoverySnapshot[] {
   }
 }
 
-function writeRecovery(recovery: PlayerIdentityRecoverySnapshot[]): void {
-  if (typeof localStorage === 'undefined') return
+function writeRecovery(recovery: PlayerIdentityRecoverySnapshot[]): boolean {
+  if (typeof localStorage === 'undefined') return false
   try {
     localStorage.setItem(RECOVERY_KEY, JSON.stringify(recovery.slice(0, MAX_RECOVERY_SNAPSHOTS)))
+    return true
   } catch {
-    /* Eine fehlgeschlagene Recovery-Speicherung verändert den aktuellen Zustand nicht. */
+    return false
   }
 }
 
 function snapshotState(state = readStoredState()): void {
   const recovery = readRecovery()
   recovery.unshift({ capturedAt: new Date().toISOString(), ...state })
-  writeRecovery(recovery)
+  if (!writeRecovery(recovery)) {
+    throw new Error('Sicherung konnte nicht gespeichert werden. Bitte Gerätespeicher freigeben.')
+  }
 }
 
 /**

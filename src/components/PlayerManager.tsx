@@ -116,12 +116,16 @@ export function PlayerManager({ games, players, onClose, onChanged }: Props) {
             <select
               id="merge-source"
               value={sourceId}
-              onChange={(event) => setSourceId(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                if (next === targetId) setTargetId(sourceId)
+                setSourceId(next)
+              }}
               className="mt-1 w-full rounded-xl border border-ink-700 bg-ink-950 px-3 py-2.5 text-sm font-semibold text-fog-100"
             >
               {players.map((player) => (
-                <option key={player.id} value={player.id} disabled={player.id === targetId}>
-                  {player.name} · {player.games} Spiele
+                <option key={player.id} value={player.id}>
+                  {player.name} · {player.games} {player.games === 1 ? 'Spiel' : 'Spiele'}
                 </option>
               ))}
             </select>
@@ -132,12 +136,16 @@ export function PlayerManager({ games, players, onClose, onChanged }: Props) {
             <select
               id="merge-target"
               value={targetId}
-              onChange={(event) => setTargetId(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                if (next === sourceId) setSourceId(targetId)
+                setTargetId(next)
+              }}
               className="mt-1 w-full rounded-xl border border-ink-700 bg-ink-950 px-3 py-2.5 text-sm font-semibold text-fog-100"
             >
               {players.map((player) => (
-                <option key={player.id} value={player.id} disabled={player.id === sourceId}>
-                  {player.name} · {player.games} Spiele
+                <option key={player.id} value={player.id}>
+                  {player.name} · {player.games} {player.games === 1 ? 'Spiel' : 'Spiele'}
                 </option>
               ))}
             </select>
