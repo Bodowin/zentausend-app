@@ -14,7 +14,8 @@ Das bestehende Supabase-Projekt war pausiert. Nach der Wiederherstellung wurden 
 - `PUBLIC`-Ausführungsrechte entzogen.
 - Überbreite Grants wie `TRUNCATE`, `TRIGGER` und `REFERENCES` für Client-Rollen entfernt.
 - Fehlende UPDATE-RLS-Policy für Spiel-Events ergänzt.
-- Security Advisors nach Migration ohne Befunde.
+- Security Advisors nach allen Migrationen ohne Befunde.
+- Performance Advisors melden nur den erwartbaren Info-Hinweis, dass der bestehende Event-Index bei aktuell einer Spielzeile noch nicht verwendet wurde. Er bleibt bestehen, weil Event-Filter ein produktives App-Feature sind.
 
 ## Gemeinsamer Spielerzustand
 
@@ -41,6 +42,8 @@ Unabhängige Änderungen werden kombiniert. Bei derselben abweichend geänderten
 
 Der read-only RPC `check_clique_code()` gibt ausschließlich `true/false` zurück. Dadurch erkennt die App einen rotierten oder falschen gespeicherten Code und zeigt nicht fälschlich „synchronisiert“ an. Weder Code noch Hash werden offengelegt.
 
+Lokale Spiel- und Identitätsänderungen bleiben bei einem ungültigen Code erhalten. Sie werden nicht vergeblich geschrieben, sondern als ausstehend gezählt, bis ein gültiger Code in den Einstellungen gespeichert wurde.
+
 ## Abnahme
 
 Direkte RLS-Tests unter der Datenbankrolle `anon` wurden vollständig in einer Rollback-Transaktion ausgeführt:
@@ -50,5 +53,14 @@ Direkte RLS-Tests unter der Datenbankrolle `anon` wurden vollständig in einer R
 - Delete ohne Admin-Code verweigert.
 - Delete mit Admin-Code erlaubt.
 - Versioniertes CAS-Update des gemeinsamen Zustands erlaubt.
+
+Der kontrollierte Paketlauf hat außerdem erfolgreich abgeschlossen:
+
+- sämtliche Unit-Tests,
+- TypeScript- und Vite-Production-Build,
+- alle bestehenden Browser-Journeys,
+- versionierten Spieler-Zuordnungs-PATCH,
+- Dirty-Clear nach bestätigtem CAS,
+- sichtbare Warnung für einen ungültigen Code.
 
 Die Browser-Suite verwendet ausschließlich fiktive Testcodes und interceptet Supabase-Aufrufe; sie greift nicht auf Produktivdaten zu.
