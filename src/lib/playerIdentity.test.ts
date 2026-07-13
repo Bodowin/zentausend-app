@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   identityNameMap,
   legacyPlayerId,
   normalizePlayerName,
+  playerIdForName,
   playerIdentityKey,
   resolveIdentitySelector,
   winnerIdentityKey,
@@ -33,6 +34,8 @@ const renamedGame: GameRecord = {
   ],
 }
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('player identity helpers', () => {
   it('normalizes harmless name differences deterministically', () => {
     expect(normalizePlayerName('  GABI   B. ')).toBe('gabi b.')
@@ -56,5 +59,32 @@ describe('player identity helpers', () => {
 
   it('derives the winner identity from the matching game player', () => {
     expect(winnerIdentityKey(renamedGame)).toBe(legacyPlayerId('Gabi'))
+  })
+
+  it('learns an unambiguous explicit id from synced local history', () => {
+    const history = JSON.stringify([renamedGame])
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => (key === '10k_history_v3' ? history : null),
+      setItem: () => undefined,
+    })
+
+    expect(playerIdForName('Gabriela')).toBe(legacyPlayerId('Gabi'))
+  })
+
+  it('does not infer an alias when the same name has conflicting ids', () => {
+    const history = JSON.stringify([
+      renamedGame,
+      {
+        ...renamedGame,
+        id: 3,
+        players: [{ playerId: 'different-id', name: 'Gabriela', score: 9_000, busts: 0 }],
+      },
+    ])
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => (key === '10k_history_v3' ? history : null),
+      setItem: () => undefined,
+    })
+
+    expect(playerIdForName('Gabriela')).toBe(legacyPlayerId('Gabriela'))
   })
 })
