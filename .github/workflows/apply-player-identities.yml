@@ -1,0 +1,65 @@
+name: Apply player identities
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.actor != 'github-actions[bot]' && github.head_ref == 'chatgpt/package-d-player-identities'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/package-d-player-identities
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate patch script
+        run: node --check scripts/apply-player-identities.mjs
+
+      - name: Apply guarded identity patch
+        run: |
+          set +e
+          node scripts/apply-player-identities.mjs 2>&1 | tee player-identity-patch-error.txt
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Capture patch mismatch
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add player-identity-patch-error.txt
+          git commit -m "Capture player identity patch failure"
+          git push origin HEAD:chatgpt/package-d-player-identities
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Remove one-time patch machinery
+        run: git rm -f scripts/apply-player-identities.mjs .github/workflows/apply-player-identities.yml
+
+      - name: Commit validated source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx src/components/StatsScreen.tsx src/lib/types.ts src/lib/roster.ts src/lib/gameRecordValidation.ts src/lib/storage.ts src/lib/playerIdentity.ts src/lib/playerIdentity.test.ts src/lib/storageIdentity.test.ts docs/package-d-player-identities.md
+          git commit -m "Keep player statistics stable across renames"
+          git push origin HEAD:chatgpt/package-d-player-identities
