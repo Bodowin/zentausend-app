@@ -4,13 +4,17 @@ on:
   push:
     branches:
       - chatgpt/package-b-performance
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   patch-test-build:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.head_ref == 'chatgpt/package-b-performance'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
