@@ -1,0 +1,118 @@
+
+> zentausend-app@0.1.0 test:e2e
+> playwright test
+
+
+Running 6 tests using 1 worker
+
+[1/6] e2e/app.spec.ts:55:3 › 10.000 browser journeys › configures and starts a mobile test game
+[2/6] e2e/app.spec.ts:64:3 › 10.000 browser journeys › banks, records a bust, undoes it and restores selected dice after reload
+[3/6] e2e/app.spec.ts:92:3 › 10.000 browser journeys › finishes a restored last round and prepares a rematch
+[4/6] e2e/app.spec.ts:137:3 › 10.000 browser journeys › imports a backup through the real statistics file input
+[5/6] e2e/app.spec.ts:172:3 › 10.000 browser journeys › keeps the stable player id when a roster member is renamed
+[6/6] e2e/player-management.spec.ts:30:1 › merges two player profiles and restores them with undo
+[7/6] (retries) e2e/player-management.spec.ts:30:1 › merges two player profiles and restores them with undo (retry #1)
+  1) e2e/player-management.spec.ts:30:1 › merges two player profiles and restores them with undo ───
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('dialog', { name: 'Spieler verwalten' }).getByLabel('Dieses Profil auflösen')
+        - locator resolved to <select id="merge-source" class="mt-1 w-full rounded-xl border border-ink-700 bg-ink-950 px-3 py-2.5 text-sm font-semibold text-fog-100">…</select>
+      - attempting select option action
+        2 × waiting for element to be visible and enabled
+          - option being selected is not enabled
+        - retrying select option action
+        - waiting 20ms
+        2 × waiting for element to be visible and enabled
+          - option being selected is not enabled
+        - retrying select option action
+          - waiting 100ms
+        61 × waiting for element to be visible and enabled
+           - option being selected is not enabled
+         - retrying select option action
+           - waiting 500ms
+
+
+      44 |   await page.getByRole('button', { name: '👥 Spielerprofile verwalten' }).click()
+      45 |   const manager = page.getByRole('dialog', { name: 'Spieler verwalten' })
+    > 46 |   await manager.getByLabel('Dieses Profil auflösen').selectOption('player-bodowin')
+         |                                                      ^
+      47 |   await manager.getByLabel('In dieses Zielprofil').selectOption('player-bodo')
+      48 |   page.once('dialog', (dialog) => dialog.accept())
+      49 |   await manager.getByRole('button', { name: 'Profile sicher zusammenführen' }).click()
+        at /home/runner/work/zentausend-app/zentausend-app/e2e/player-management.spec.ts:46:54
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/player-management-merges-t-39ff8-and-restores-them-with-undo/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/player-management-merges-t-39ff8-and-restores-them-with-undo/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/player-management-merges-t-39ff8-and-restores-them-with-undo/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/player-management-merges-t-39ff8-and-restores-them-with-undo/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/player-management-merges-t-39ff8-and-restores-them-with-undo/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('dialog', { name: 'Spieler verwalten' }).getByLabel('Dieses Profil auflösen')
+        - locator resolved to <select id="merge-source" class="mt-1 w-full rounded-xl border border-ink-700 bg-ink-950 px-3 py-2.5 text-sm font-semibold text-fog-100">…</select>
+      - attempting select option action
+        2 × waiting for element to be visible and enabled
+          - option being selected is not enabled
+        - retrying select option action
+        - waiting 20ms
+        2 × waiting for element to be visible and enabled
+          - option being selected is not enabled
+        - retrying select option action
+          - waiting 100ms
+        61 × waiting for element to be visible and enabled
+           - option being selected is not enabled
+         - retrying select option action
+           - waiting 500ms
+
+
+      44 |   await page.getByRole('button', { name: '👥 Spielerprofile verwalten' }).click()
+      45 |   const manager = page.getByRole('dialog', { name: 'Spieler verwalten' })
+    > 46 |   await manager.getByLabel('Dieses Profil auflösen').selectOption('player-bodowin')
+         |                                                      ^
+      47 |   await manager.getByLabel('In dieses Zielprofil').selectOption('player-bodo')
+      48 |   page.once('dialog', (dialog) => dialog.accept())
+      49 |   await manager.getByRole('button', { name: 'Profile sicher zusammenführen' }).click()
+        at /home/runner/work/zentausend-app/zentausend-app/e2e/player-management.spec.ts:46:54
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/player-management-merges-t-39ff8-and-restores-them-with-undo-retry1/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/player-management-merges-t-39ff8-and-restores-them-with-undo-retry1/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/player-management-merges-t-39ff8-and-restores-them-with-undo-retry1/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/player-management-merges-t-39ff8-and-restores-them-with-undo-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/player-management-merges-t-39ff8-and-restores-them-with-undo-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  1 failed
+    e2e/player-management.spec.ts:30:1 › merges two player profiles and restores them with undo ────
+  5 passed (1.4m)
