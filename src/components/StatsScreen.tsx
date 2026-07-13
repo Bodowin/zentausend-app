@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeNemesis, getEvents, getHistory } from '../lib/storage'
-import { deleteGame, editGameEvent, syncAndMerge } from '../lib/cloud'
+import { deleteGame, editGameEvent, pendingEventEditCount, syncAndMerge } from '../lib/cloud'
 import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
 import type { GameRecord, PlayerStats } from '../lib/types'
@@ -18,6 +18,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [games, setGames] = useState<GameRecord[]>(() => getHistory())
   const [loading, setLoading] = useState(true)
   const [online, setOnline] = useState(false)
+  const [pendingSync, setPendingSync] = useState(() => pendingEventEditCount())
   const [filter, setFilter] = useState<string>('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -36,6 +37,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     return syncAndMerge().then((res) => {
       setGames(res.games)
       setOnline(res.online)
+      setPendingSync(res.pending)
       setLoading(false)
     })
   }
@@ -47,6 +49,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       if (!alive) return
       setGames(res.games)
       setOnline(res.online)
+      setPendingSync(res.pending)
       setLoading(false)
     })
     return () => {
@@ -84,6 +87,10 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     setBusyId(g.id)
     const res = await deleteGame(g)
     setBusyId(null)
+    if (res === 'offline') {
+      flash('Offline – Spiel wurde nicht gelöscht.')
+      return
+    }
     if (res === 'denied') {
       flash('Löschen nur mit Admin-Code.')
       setFocusAdmin(true)
@@ -102,8 +109,15 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     const g = editingGame
     setGames((prev) => prev.map((x) => (x.id === g.id ? { ...x, event: trimmed } : x)))
     setEditingGame(null)
-    flash('Anlass gespeichert.')
-    void editGameEvent(g, trimmed)
+    const sync = editGameEvent(g, trimmed)
+    setPendingSync(pendingEventEditCount())
+    flash('Anlass lokal gespeichert · Sync läuft…')
+    void sync.then((result) => {
+      setPendingSync(pendingEventEditCount())
+      if (result === 'ok') flash('Anlass synchronisiert.')
+      else if (result === 'denied') flash('Lokal gespeichert · Clique-Code prüfen.')
+      else flash('Lokal gespeichert · wird später synchronisiert.')
+    })
   }
 
   if (analysisGame) {
@@ -226,17 +240,25 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       <div className="mb-4 flex items-center gap-2 text-[11px]">
         <span
           className={`inline-block h-2 w-2 rounded-full ${
-            loading ? 'animate-pulse bg-gold-500' : online ? 'bg-mint-400' : 'bg-fog-600'
+            loading
+              ? 'animate-pulse bg-gold-500'
+              : pendingSync > 0
+                ? 'bg-gold-500'
+                : online
+                  ? 'bg-mint-400'
+                  : 'bg-fog-600'
           }`}
         />
         <span className="text-fog-500">
           {loading
             ? 'Synchronisiere mit der Cloud…'
-            : online
-              ? 'Mit Cloud synchronisiert · auf allen Geräten gleich'
-              : cloudEnabled
-                ? 'Offline – nur dieses Gerät'
-                : 'Lokal – nur dieses Gerät'}
+            : pendingSync > 0
+              ? `${pendingSync} ${pendingSync === 1 ? 'Änderung wartet' : 'Änderungen warten'} auf Cloud`
+              : online
+                ? 'Mit Cloud synchronisiert · auf allen Geräten gleich'
+                : cloudEnabled
+                  ? 'Offline – nur dieses Gerät'
+                  : 'Lokal – nur dieses Gerät'}
         </span>
       </div>
 
