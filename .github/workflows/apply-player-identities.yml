@@ -40,7 +40,7 @@ jobs:
           exit $status
 
       - name: Capture patch mismatch
-        if: steps.patch.outcome == 'failure'
+        if: failure() && steps.patch.outcome == 'failure'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -53,6 +53,7 @@ jobs:
 
       - name: Production build
         id: build
+        continue-on-error: true
         run: |
           set +e
           npm run build 2>&1 | tee player-identity-build-error.txt
@@ -67,6 +68,10 @@ jobs:
           git add player-identity-build-error.txt
           git commit -m "Capture player identity build failure"
           git push origin HEAD:chatgpt/package-d-player-identities
+
+      - name: Stop after failed build
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Remove one-time patch machinery
         run: git rm -f scripts/apply-player-identities.mjs .github/workflows/apply-player-identities.yml
