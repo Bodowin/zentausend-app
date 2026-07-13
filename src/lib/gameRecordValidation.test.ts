@@ -49,6 +49,23 @@ describe('game record validation', () => {
     expect(result.repairs.length).toBeGreaterThan(0)
   })
 
+  it('preserves legacy cloud rows with a nonnumeric client id', () => {
+    const result = validateGameRecord({ ...validGame, id: 'legacy-cloud-row' })
+
+    expect(result.errors).toEqual([])
+    expect(result.game?.id).toBe(Date.parse(validGame.date))
+    expect(result.repairs).toContain('id wurde aus dem Spieldatum rekonstruiert')
+  })
+
+  it('corrects a stored winner that contradicts the unique highest score', () => {
+    const result = validateGameRecord({ ...validGame, winner: 'Anna', winnerScore: 8_600 })
+
+    expect(result.errors).toEqual([])
+    expect(result.game?.winner).toBe('Bodo')
+    expect(result.game?.winnerScore).toBe(10_250)
+    expect(result.repairs.some((repair) => repair.includes('widersprach dem Endstand'))).toBe(true)
+  })
+
   it('keeps the game but omits malformed analysis turns', () => {
     const result = validateGameRecord({
       ...validGame,
