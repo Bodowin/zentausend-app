@@ -45,7 +45,38 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Browser journeys
-        run: npm run test:e2e
+        id: browser
+        continue-on-error: true
+        run: |
+          set +e
+          npm run test:e2e 2>&1 | tee player-management-e2e-error.txt
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Upload browser diagnostics
+        if: steps.browser.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-management-playwright-diagnostics
+          path: |
+            player-management-e2e-error.txt
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Capture browser failure
+        if: steps.browser.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add player-management-e2e-error.txt
+          git commit -m "Capture player management browser failure"
+          git push origin HEAD:chatgpt/package-f-player-management
+
+      - name: Stop after browser failure
+        if: steps.browser.outcome == 'failure'
+        run: exit 1
 
       - name: Remove one-time machinery
         run: git rm -f scripts/apply-player-management-ui.mjs .github/workflows/apply-player-management.yml
