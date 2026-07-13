@@ -9,6 +9,7 @@ export type CliqueCodeStatus = 'valid' | 'invalid' | 'missing' | 'offline'
 /**
  * Fragt ausschließlich einen booleschen Gültigkeitsstatus ab. Der gespeicherte
  * Code und sein serverseitiger Hash werden zu keinem Zeitpunkt zurückgegeben.
+ * Dieser Pfad gehört zur gehärteten, versionierten Cloud-Sync-Freigabe.
  */
 export async function checkCliqueCode(): Promise<CliqueCodeStatus> {
   const code = getCliqueCode()
