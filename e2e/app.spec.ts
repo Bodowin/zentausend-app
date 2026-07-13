@@ -12,11 +12,15 @@ const PREFS = {
 async function openCleanApp(page: Page, extra?: Record<string, string>) {
   await page.addInitScript(
     ({ prefs, seeded }) => {
+      // addInitScript runs again on reload. sessionStorage survives that reload,
+      // so destructive seeding must happen only for the first document in a test.
+      if (sessionStorage.getItem('10k_e2e_seeded') === '1') return
       localStorage.clear()
       localStorage.setItem('10k_seen_intro', '1')
       localStorage.setItem('10k_code_dismissed', '1')
       localStorage.setItem('10k_prefs_v1', JSON.stringify(prefs))
       for (const [key, value] of Object.entries(seeded)) localStorage.setItem(key, value)
+      sessionStorage.setItem('10k_e2e_seeded', '1')
     },
     { prefs: PREFS, seeded: extra ?? {} },
   )
@@ -169,7 +173,7 @@ test.describe('10.000 browser journeys', () => {
     await openCleanApp(page)
     await page.getByRole('button', { name: 'Kader', exact: true }).click()
 
-    const rosterInput = page.getByDisplayValue('Gabi')
+    const rosterInput = page.getByRole('textbox', { name: 'Gabi umbenennen' })
     await expect(rosterInput).toBeVisible()
     await rosterInput.fill('Gabriela')
     await rosterInput.press('Enter')
