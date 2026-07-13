@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeNemesis, getEvents, getHistory } from '../lib/storage'
+import {
+  aggregateStats,
+  clearHistoryIntegrityReport,
+  computeAwards,
+  computeForm,
+  computeHeadToHead,
+  computeNemesis,
+  getEvents,
+  getHistory,
+  getHistoryIntegrityReport,
+} from '../lib/storage'
 import { deleteGame, editGameEvent, pendingEventEditCount, syncAndMerge } from '../lib/cloud'
-import { exportBackup, importBackup } from '../lib/backup'
+import { exportBackup, exportIntegrityReport, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
 import type { GameRecord, PlayerStats } from '../lib/types'
 import { playerColor } from '../lib/colors'
@@ -19,6 +29,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true)
   const [online, setOnline] = useState(false)
   const [pendingSync, setPendingSync] = useState(() => pendingEventEditCount())
+  const [integrity, setIntegrity] = useState(() => getHistoryIntegrityReport())
   const [filter, setFilter] = useState<string>('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -38,6 +49,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       setGames(res.games)
       setOnline(res.online)
       setPendingSync(res.pending)
+      setIntegrity(getHistoryIntegrityReport())
       setLoading(false)
     })
   }
@@ -50,6 +62,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       setGames(res.games)
       setOnline(res.online)
       setPendingSync(res.pending)
+      setIntegrity(getHistoryIntegrityReport())
       setLoading(false)
     })
     return () => {
@@ -66,7 +79,11 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     try {
       const res = await importBackup(file)
       await reload()
-      flash(`${res.added} neu importiert · ${res.total} gesamt`)
+      const notes = [`${res.added} neu importiert`, `${res.total} gesamt`]
+      if (res.repaired > 0) notes.push(`${res.repaired} repariert`)
+      if (res.quarantined > 0) notes.push(`${res.quarantined} in Quarantäne`)
+      setIntegrity(getHistoryIntegrityReport())
+      flash(notes.join(' · '))
     } catch (e) {
       flash(e instanceof Error ? e.message : 'Import fehlgeschlagen.')
     }
@@ -233,6 +250,40 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       {msg && (
         <div className="mb-4 rounded-xl border border-gold-500/40 bg-gold-500/10 px-3 py-2 text-center text-xs font-semibold text-gold-300 animate-pop">
           {msg}
+        </div>
+      )}
+
+      {integrity && (integrity.repaired > 0 || integrity.quarantined > 0) && (
+        <div className="mb-4 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-3 text-xs text-fog-300">
+          <div className="font-bold text-gold-300">Datenprüfung abgeschlossen</div>
+          <div className="mt-1 leading-relaxed">
+            {integrity.repaired > 0 && <span>{integrity.repaired} repariert</span>}
+            {integrity.repaired > 0 && integrity.quarantined > 0 && <span> · </span>}
+            {integrity.quarantined > 0 && <span>{integrity.quarantined} sicher isoliert</span>}
+            {integrity.recoverySaved && <span> · Originalstand gesichert</span>}
+          </div>
+          {!integrity.quarantineStored && (
+            <div className="mt-1 font-semibold text-coral-400">Quarantäne konnte wegen Gerätespeicher nicht vollständig geschrieben werden.</div>
+          )}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={exportIntegrityReport}
+              className="rounded-xl border border-gold-500/30 bg-ink-900/60 px-2 py-2 font-semibold text-gold-300"
+            >
+              Prüfbericht sichern
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearHistoryIntegrityReport()
+                setIntegrity(null)
+              }}
+              className="rounded-xl border border-ink-700 bg-ink-900/60 px-2 py-2 font-semibold text-fog-400"
+            >
+              Hinweis ausblenden
+            </button>
+          </div>
         </div>
       )}
 
