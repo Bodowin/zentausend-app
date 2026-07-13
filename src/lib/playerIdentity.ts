@@ -1,13 +1,14 @@
 import type { GameRecord, Turn } from './types'
 
 const ALIAS_KEY = '10k_player_aliases_v1'
+const HISTORY_KEY = '10k_history_v3'
 
 /** Namen nur für Identitätsabgleich normalisieren, niemals für die Anzeige. */
 export function normalizePlayerName(name: string): string {
   return name.trim().normalize('NFKC').replace(/\s+/g, ' ').toLocaleLowerCase('de-DE')
 }
 
-function readAliases(): Record<string, string> {
+function readStoredAliases(): Record<string, string> {
   if (typeof localStorage === 'undefined') return {}
   try {
     const parsed = JSON.parse(localStorage.getItem(ALIAS_KEY) || '{}') as unknown
@@ -20,6 +21,47 @@ function readAliases(): Record<string, string> {
   } catch {
     return {}
   }
+}
+
+/**
+ * Cloud- und Backup-Spiele tragen ihre stabile ID bereits im Spieler-JSON. Ein
+ * neues Gerät darf diese Zuordnung lernen, aber nur wenn ein Name im gesamten
+ * lokalen Verlauf eindeutig genau einer ID zugeordnet ist.
+ */
+function inferAliasesFromHistory(): Record<string, string> {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as unknown
+    if (!Array.isArray(parsed)) return {}
+    const candidates = new Map<string, Set<string>>()
+    for (const game of parsed) {
+      if (!game || typeof game !== 'object' || Array.isArray(game)) continue
+      const players = (game as { players?: unknown }).players
+      if (!Array.isArray(players)) continue
+      for (const player of players) {
+        if (!player || typeof player !== 'object' || Array.isArray(player)) continue
+        const name = (player as { name?: unknown }).name
+        const playerId = (player as { playerId?: unknown }).playerId
+        if (typeof name !== 'string' || typeof playerId !== 'string' || !playerId.trim()) continue
+        const normalized = normalizePlayerName(name)
+        if (!normalized) continue
+        const ids = candidates.get(normalized) ?? new Set<string>()
+        ids.add(playerId.trim())
+        candidates.set(normalized, ids)
+      }
+    }
+    return Object.fromEntries(
+      [...candidates.entries()]
+        .filter(([, ids]) => ids.size === 1)
+        .map(([name, ids]) => [name, [...ids][0]]),
+    )
+  } catch {
+    return {}
+  }
+}
+
+function readAliases(): Record<string, string> {
+  return { ...inferAliasesFromHistory(), ...readStoredAliases() }
 }
 
 function writeAliases(aliases: Record<string, string>): void {
