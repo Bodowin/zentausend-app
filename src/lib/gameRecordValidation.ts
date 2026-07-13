@@ -57,6 +57,9 @@ function normalizeTurn(value: unknown, players: string[], index: number): { turn
       players.find((name) => name.toLocaleLowerCase() === playerInput.toLocaleLowerCase())
     : undefined
 
+  const playerId = textValue(value.playerId)
+  if (value.playerId !== undefined && !playerId) repairs.push(`turns[${index}].playerId war ungültig und wurde ausgelassen`)
+
   let bust: boolean | null = typeof value.bust === 'boolean' ? value.bust : null
   if (bust === null && (value.bust === 0 || value.bust === 1)) {
     bust = value.bust === 1
@@ -71,7 +74,7 @@ function normalizeTurn(value: unknown, players: string[], index: number): { turn
   if (matchedPlayer !== playerInput) repairs.push(`turns[${index}].player wurde vereinheitlicht`)
 
   return {
-    turn: { round: round.value, player: matchedPlayer, points: points.value, bust },
+    turn: { round: round.value, player: matchedPlayer, ...(playerId ? { playerId } : {}), points: points.value, bust },
     repairs,
   }
 }
@@ -95,15 +98,17 @@ export function validateGameRecord(value: unknown): SingleValidation {
         return
       }
       const name = textValue(candidate.name)
+      const playerId = textValue(candidate.playerId)
       const score = integerValue(candidate.score, 0)
       const busts = candidate.busts === undefined ? { value: 0, repaired: true } : integerValue(candidate.busts, 0)
       if (!name) errors.push(`players[${index}].name fehlt`)
+      if (candidate.playerId !== undefined && !playerId) repairs.push(`players[${index}].playerId war ungültig und wurde ausgelassen`)
       if (score.value === null) errors.push(`players[${index}].score ist ungültig`)
       if (busts.value === null) errors.push(`players[${index}].busts ist ungültig`)
       if (!name || score.value === null || busts.value === null) return
       if (score.repaired) repairs.push(`players[${index}].score wurde normalisiert`)
       if (busts.repaired) repairs.push(`players[${index}].busts wurde ergänzt oder normalisiert`)
-      players.push({ name, score: score.value, busts: busts.value })
+      players.push({ ...(playerId ? { playerId } : {}), name, score: score.value, busts: busts.value })
     })
   }
 
@@ -111,6 +116,12 @@ export function validateGameRecord(value: unknown): SingleValidation {
     .map((player) => player.name.toLocaleLowerCase())
     .filter((name, index, all) => all.indexOf(name) !== index)
   if (duplicateNames.length > 0) errors.push('Spieler-Namen sind innerhalb des Spiels nicht eindeutig')
+
+  const duplicatePlayerIds = players
+    .map((player) => player.playerId)
+    .filter((id): id is string => Boolean(id))
+    .filter((id, index, all) => all.indexOf(id) !== index)
+  if (duplicatePlayerIds.length > 0) errors.push('Spieler-IDs sind innerhalb des Spiels nicht eindeutig')
 
   let date: string | null = null
   if (typeof value.date === 'string' && Number.isFinite(Date.parse(value.date))) {

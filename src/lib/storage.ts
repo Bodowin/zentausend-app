@@ -5,6 +5,13 @@ import {
   type GameRecordValidationBatch,
   type QuarantinedGameRecord,
 } from './gameRecordValidation'
+import {
+  identityNameMap,
+  playerIdentityKey,
+  resolveIdentitySelector,
+  turnIdentityKey,
+  winnerIdentityKey,
+} from './playerIdentity'
 
 const HISTORY_KEY = '10k_history_v3'
 const QUARANTINE_KEY = '10k_history_quarantine_v1'
@@ -180,7 +187,7 @@ export function saveGame(
     event: event.trim(),
     winner: winner.name,
     winnerScore: winner.score,
-    players: allPlayers.map((p) => ({ name: p.name, score: p.score, busts: p.busts })),
+    players: allPlayers.map((p) => ({ playerId: p.id, name: p.name, score: p.score, busts: p.busts })),
     turns,
   }
   try {
@@ -254,14 +261,18 @@ export function getEvents(history = getHistory()): string[] {
  */
 export function aggregateStats(history = getHistory(), event?: string): PlayerStats[] {
   const games = event ? history.filter((g) => g.event === event) : history
+  const names = identityNameMap(games)
   const map = new Map<string, PlayerStats>()
 
   for (const game of games) {
+    const winnerId = winnerIdentityKey(game)
     for (const p of game.players) {
+      const id = playerIdentityKey(p)
       const s =
-        map.get(p.name) ??
+        map.get(id) ??
         {
-          name: p.name,
+          id,
+          name: names.get(id) ?? p.name,
           games: 0,
           wins: 0,
           totalScore: 0,
@@ -270,12 +281,13 @@ export function aggregateStats(history = getHistory(), event?: string): PlayerSt
           bustRate: 0,
           winRate: 0,
         }
+      s.name = names.get(id) ?? s.name
       s.games += 1
       s.totalScore += p.score
       s.busts += p.busts ?? 0
       s.bestScore = Math.max(s.bestScore, p.score)
-      if (game.winner === p.name) s.wins += 1
-      map.set(p.name, s)
+      if (winnerId === id) s.wins += 1
+      map.set(id, s)
     }
   }
 
@@ -285,7 +297,6 @@ export function aggregateStats(history = getHistory(), event?: string): PlayerSt
     winRate: s.games ? s.wins / s.games : 0,
   }))
 
-  // Sortierung: meiste Siege, dann beste Siegquote, dann höchster Bestwert.
   list.sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.bestScore - a.bestScore)
   return list
 }
@@ -357,6 +368,7 @@ export function computeGameAnalysis(game: GameRecord): GameAnalysis {
 }
 
 export interface PlayerForm {
+  id: string
   name: string
   /** Letzte Spiele (neuestes zuerst): true = gewonnen, false = mitgespielt, verloren. */
   results: boolean[]
@@ -372,19 +384,22 @@ export function computeForm(history = getHistory(), event?: string, limit = 5): 
   const games = (event ? history.filter((g) => g.event === event) : history)
     .slice()
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
-
+  const names = identityNameMap(games)
   const map = new Map<string, boolean[]>()
-  for (const g of games) {
-    for (const p of g.players) {
-      const arr = map.get(p.name) ?? []
-      if (arr.length < limit) arr.push(g.winner === p.name)
-      map.set(p.name, arr)
+
+  for (const game of games) {
+    const winnerId = winnerIdentityKey(game)
+    for (const player of game.players) {
+      const id = playerIdentityKey(player)
+      const results = map.get(id) ?? []
+      if (results.length < limit) results.push(winnerId === id)
+      map.set(id, results)
     }
   }
 
   return [...map.entries()]
-    .map(([name, results]) => ({ name, results, games: results.length }))
-    .filter((f) => f.games >= 2)
+    .map(([id, results]) => ({ id, name: names.get(id) ?? id, results, games: results.length }))
+    .filter((form) => form.games >= 2)
     .sort(
       (a, b) =>
         b.results.filter(Boolean).length - a.results.filter(Boolean).length || b.games - a.games,
@@ -419,14 +434,29 @@ export function computeHeadToHead(
   event?: string,
 ): HeadToHead {
   const games = event ? history.filter((g) => g.event === event) : history
-  const h: HeadToHead = { a, b, games: 0, aAhead: 0, bAhead: 0, aWins: 0, bWins: 0, aBest: 0, bBest: 0, aAvg: 0, bAvg: 0 }
-  if (a === b) return h
+  const names = identityNameMap(games)
+  const aId = resolveIdentitySelector(a, games)
+  const bId = resolveIdentitySelector(b, games)
+  const h: HeadToHead = {
+    a: names.get(aId) ?? a,
+    b: names.get(bId) ?? b,
+    games: 0,
+    aAhead: 0,
+    bAhead: 0,
+    aWins: 0,
+    bWins: 0,
+    aBest: 0,
+    bBest: 0,
+    aAvg: 0,
+    bAvg: 0,
+  }
+  if (aId === bId) return h
 
   let aSum = 0
   let bSum = 0
-  for (const g of games) {
-    const pa = g.players.find((p) => p.name === a)
-    const pb = g.players.find((p) => p.name === b)
+  for (const game of games) {
+    const pa = game.players.find((player) => playerIdentityKey(player) === aId)
+    const pb = game.players.find((player) => playerIdentityKey(player) === bId)
     if (!pa || !pb) continue
     h.games += 1
     aSum += pa.score
@@ -435,8 +465,9 @@ export function computeHeadToHead(
     h.bBest = Math.max(h.bBest, pb.score)
     if (pa.score > pb.score) h.aAhead += 1
     else if (pb.score > pa.score) h.bAhead += 1
-    if (g.winner === a) h.aWins += 1
-    if (g.winner === b) h.bWins += 1
+    const winnerId = winnerIdentityKey(game)
+    if (winnerId === aId) h.aWins += 1
+    if (winnerId === bId) h.bWins += 1
   }
   h.aAvg = h.games ? Math.round(aSum / h.games) : 0
   h.bAvg = h.games ? Math.round(bSum / h.games) : 0
@@ -449,30 +480,38 @@ export function computeHeadToHead(
  * solchen Gegner gibt.
  */
 export function computeNemesis(
-  name: string,
+  selector: string,
   history = getHistory(),
   event?: string,
-): { name: string; ahead: number; of: number } | null {
-  const games = (event ? history.filter((g) => g.event === event) : history).filter((g) =>
-    g.players.some((p) => p.name === name),
-  )
+): { id: string; name: string; ahead: number; of: number } | null {
+  const allGames = event ? history.filter((g) => g.event === event) : history
+  const targetId = resolveIdentitySelector(selector, allGames)
+  const names = identityNameMap(allGames)
+  const games = allGames.filter((game) => game.players.some((player) => playerIdentityKey(player) === targetId))
   const tally = new Map<string, { ahead: number; of: number }>()
-  for (const g of games) {
-    const me = g.players.find((p) => p.name === name)
+
+  for (const game of games) {
+    const me = game.players.find((player) => playerIdentityKey(player) === targetId)
     if (!me) continue
-    for (const p of g.players) {
-      if (p.name === name) continue
-      const t = tally.get(p.name) ?? { ahead: 0, of: 0 }
-      t.of += 1
-      if (p.score > me.score) t.ahead += 1
-      tally.set(p.name, t)
+    for (const player of game.players) {
+      const id = playerIdentityKey(player)
+      if (id === targetId) continue
+      const result = tally.get(id) ?? { ahead: 0, of: 0 }
+      result.of += 1
+      if (player.score > me.score) result.ahead += 1
+      tally.set(id, result)
     }
   }
-  let best: { name: string; ahead: number; of: number } | null = null
-  for (const [opp, t] of tally) {
-    if (t.of < 2 || t.ahead === 0) continue
-    if (!best || t.ahead / t.of > best.ahead / best.of || (t.ahead / t.of === best.ahead / best.of && t.ahead > best.ahead)) {
-      best = { name: opp, ahead: t.ahead, of: t.of }
+
+  let best: { id: string; name: string; ahead: number; of: number } | null = null
+  for (const [id, result] of tally) {
+    if (result.of < 2 || result.ahead === 0) continue
+    if (
+      !best ||
+      result.ahead / result.of > best.ahead / best.of ||
+      (result.ahead / result.of === best.ahead / best.of && result.ahead > best.ahead)
+    ) {
+      best = { id, name: names.get(id) ?? id, ahead: result.ahead, of: result.of }
     }
   }
   return best
@@ -491,6 +530,7 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
   const games = event ? history.filter((g) => g.event === event) : history
   if (games.length === 0) return []
 
+  const names = identityNameMap(games)
   const stats = aggregateStats(games)
   const awards: Award[] = []
 
@@ -499,7 +539,6 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
     awards.push({
       key: 'wins',
       emoji: '👑',
-      // Bei Event-Filter wird der Champion dieses Anlasses gekrönt.
       title: event ? `${event}-Champion` : 'Meiste Siege',
       name: champ.name,
       detail: `${champ.wins} ${champ.wins === 1 ? 'Sieg' : 'Siege'}`,
@@ -508,48 +547,36 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
 
   const pech = [...stats].sort((a, b) => b.busts - a.busts)[0]
   if (pech && pech.busts > 0) {
-    awards.push({
-      key: 'busts',
-      emoji: '💀',
-      title: 'Pechvogel',
-      name: pech.name,
-      detail: `${pech.busts} Nieten`,
-    })
+    awards.push({ key: 'busts', emoji: '💀', title: 'Pechvogel', name: pech.name, detail: `${pech.busts} Nieten` })
   }
 
-  // Rekord-Endstand = höchster Gewinner-Score über alle Spiele.
   const record = [...games].sort((a, b) => b.winnerScore - a.winnerScore)[0]
   if (record) {
+    const winnerId = winnerIdentityKey(record)
     awards.push({
       key: 'record',
       emoji: '🎯',
       title: 'Rekord-Endstand',
-      name: record.winner,
+      name: winnerId ? names.get(winnerId) ?? record.winner : record.winner,
       detail: record.winnerScore.toLocaleString('de-DE'),
     })
   }
 
-  // Bester Schnitt (ab 2 Spielen aussagekräftig, sonst ab 1).
   const minGames = stats.some((s) => s.games >= 2) ? 2 : 1
   const avg = stats
     .filter((s) => s.games >= minGames)
     .map((s) => ({ name: s.name, value: Math.round(s.totalScore / s.games) }))
     .sort((a, b) => b.value - a.value)[0]
   if (avg) {
-    awards.push({
-      key: 'avg',
-      emoji: '📈',
-      title: 'Bester Schnitt',
-      name: avg.name,
-      detail: `Ø ${avg.value.toLocaleString('de-DE')}`,
-    })
+    awards.push({ key: 'avg', emoji: '📈', title: 'Bester Schnitt', name: avg.name, detail: `Ø ${avg.value.toLocaleString('de-DE')}` })
   }
 
-  // Bester Einzelzug (höchste in einem Zug gesicherte Punktzahl).
-  let bestTurn = { name: '', points: 0 }
-  for (const g of games) {
-    for (const t of g.turns ?? []) {
-      if (t.points > bestTurn.points) bestTurn = { name: t.player, points: t.points }
+  let bestTurn = { id: '', name: '', points: 0 }
+  for (const game of games) {
+    for (const turn of game.turns ?? []) {
+      if (turn.points <= bestTurn.points) continue
+      const id = turnIdentityKey(turn, game)
+      bestTurn = { id, name: names.get(id) ?? turn.player, points: turn.points }
     }
   }
   if (bestTurn.points > 0) {
@@ -562,13 +589,14 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
     })
   }
 
-  // Schnellster Sieg (Spiel mit den wenigsten Runden).
-  let fastest = { name: '', rounds: Infinity }
-  for (const g of games) {
-    const ts = g.turns ?? []
-    if (!ts.length) continue
-    const rounds = Math.max(...ts.map((t) => t.round))
-    if (rounds < fastest.rounds) fastest = { name: g.winner, rounds }
+  let fastest = { id: '', name: '', rounds: Infinity }
+  for (const game of games) {
+    const turns = game.turns ?? []
+    if (!turns.length) continue
+    const rounds = Math.max(...turns.map((turn) => turn.round))
+    if (rounds >= fastest.rounds) continue
+    const id = winnerIdentityKey(game) ?? ''
+    fastest = { id, name: (id && names.get(id)) ?? game.winner, rounds }
   }
   if (fastest.rounds !== Infinity && fastest.rounds > 0) {
     awards.push({
@@ -580,13 +608,14 @@ export function computeAwards(history = getHistory(), event?: string): Award[] {
     })
   }
 
-  // Längste Siegesserie (chronologisch aufeinanderfolgende Siege).
   const byDate = [...games].sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
-  let best = { name: '', len: 0 }
-  let cur = { name: '', len: 0 }
-  for (const g of byDate) {
-    cur = g.winner === cur.name ? { name: cur.name, len: cur.len + 1 } : { name: g.winner, len: 1 }
-    if (cur.len > best.len) best = { ...cur }
+  let best = { id: '', name: '', len: 0 }
+  let current = { id: '', name: '', len: 0 }
+  for (const game of byDate) {
+    const id = winnerIdentityKey(game) ?? `winner:${game.winner}`
+    const name = names.get(id) ?? game.winner
+    current = id === current.id ? { id, name, len: current.len + 1 } : { id, name, len: 1 }
+    if (current.len > best.len) best = { ...current }
   }
   if (best.len >= 2) {
     awards.push({

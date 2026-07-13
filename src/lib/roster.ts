@@ -1,3 +1,5 @@
+import { linkPlayerNames } from './playerIdentity'
+
 const KEY = '10k_roster'
 
 /** Stamm-Kader: die schnell auswählbaren Spielernamen. Pro Gerät anpassbar. */
@@ -49,6 +51,7 @@ export function renameInRoster(oldName: string, newName: string): string[] {
   if (!n) return roster
   // Kollision mit anderem Eintrag verhindern.
   if (roster.some((r) => norm(r) === norm(n) && norm(r) !== norm(oldName))) return roster
+  linkPlayerNames(oldName, n)
   const next = roster.map((r) => (norm(r) === norm(oldName) ? n : r))
   setRoster(next)
   return next
