@@ -12,6 +12,7 @@ import { saveGame } from './lib/storage'
 import { buzz } from './lib/haptics'
 import { playerColor } from './lib/colors'
 import { getPrefs } from './lib/prefs'
+import { playerIdForName } from './lib/playerIdentity'
 import { SetupScreen } from './components/SetupScreen'
 import { IntroScreen } from './components/IntroScreen'
 import { Celebration, type CelebrationData } from './components/Celebration'
@@ -52,7 +53,6 @@ interface BustAnnounce {
   nextName: string | null
 }
 
-const uid = () => `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`
 const sortDice = (values: number[]) => [...values].sort((a, b) => a - b)
 
 function ScreenFallback({ label }: { label: string }) {
@@ -497,7 +497,10 @@ export function App() {
     const nextPlayers = players.map((player, index) =>
       index === idx ? { ...player, score: player.score + pot } : player,
     )
-    const nextTurns = [...turns, { round, player: players[idx].name, points: pot, bust: false }]
+    const nextTurns = [
+      ...turns,
+      { round, player: players[idx].name, playerId: players[idx].id, points: pot, bust: false },
+    ]
     setTurns(nextTurns)
     resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, Boolean(special))
   }
@@ -512,7 +515,10 @@ export function App() {
     const nextPlayers = players.map((player, index) =>
       index === idx ? { ...player, busts: player.busts + 1 } : player,
     )
-    const nextTurns = [...turns, { round, player: bustedName, points: 0, bust: true }]
+    const nextTurns = [
+      ...turns,
+      { round, player: bustedName, playerId: players[idx].id, points: 0, bust: true },
+    ]
     const finishes = phase === 'lastChance' && idx === players.length - 1
     const nextIndex = phase === 'lastChance' ? idx + 1 : (idx + 1) % players.length
     const nextName = finishes ? null : nextPlayers[nextIndex]?.name ?? null
@@ -553,7 +559,7 @@ export function App() {
     return (
       <>
         <SetupScreen
-          makePlayer={(name) => ({ id: uid(), name, score: 0, busts: 0 })}
+          makePlayer={(name) => ({ id: playerIdForName(name), name, score: 0, busts: 0 })}
           onStart={startGame}
           onShowStats={() => setView('stats')}
           onShowHelp={() => setShowIntro(true)}

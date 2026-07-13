@@ -35,6 +35,8 @@ export interface Turn {
   /** Spielrunde, in der der Zug stattfand. */
   round: number
   player: string
+  /** Stabile Identität; bei Altspielen ohne ID optional. */
+  playerId?: string
   /** Gesicherte Punkte dieses Zugs (0 bei Niete). */
   points: number
   bust: boolean
@@ -48,13 +50,15 @@ export interface GameRecord {
   event: string
   winner: string
   winnerScore: number
-  players: { name: string; score: number; busts: number }[]
+  players: { playerId?: string; name: string; score: number; busts: number }[]
   /** Zug-für-Zug-Verlauf (ab v3.1; bei älteren Spielen nicht vorhanden). */
   turns?: Turn[]
 }
 
 /** Aggregierter Eintrag der ewigen Bestenliste. */
 export interface PlayerStats {
+  /** Stabile Identität für Duelle, Filter und React-Keys. */
+  id: string
   name: string
   games: number
   wins: number
