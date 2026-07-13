@@ -1,4 +1,4 @@
-// Automatisch generiert aus dem Supabase-Schema (Tabelle public.games).
+// Automatisch generiert aus dem Supabase-Schema.
 // Neu erzeugen mit dem Supabase MCP-Tool `generate_typescript_types`.
 export type Json =
   | string
@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      clique_state: {
+        Row: {
+          payload: Json
+          state_key: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          payload?: Json
+          state_key: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          payload?: Json
+          state_key?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       games: {
         Row: {
           client_id: string
