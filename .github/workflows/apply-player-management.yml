@@ -29,11 +29,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate guarded patch
-        run: node --check scripts/apply-player-management-ui.mjs
+      - name: Validate guarded patches
+        run: |
+          node --check scripts/apply-player-management-ui.mjs
+          node --check scripts/fix-player-manager-swap.mjs
 
       - name: Apply player management UI
-        run: node scripts/apply-player-management-ui.mjs
+        run: |
+          node scripts/apply-player-management-ui.mjs
+          node scripts/fix-player-manager-swap.mjs
 
       - name: Unit tests
         run: npm test
@@ -79,7 +83,7 @@ jobs:
         run: exit 1
 
       - name: Remove one-time machinery
-        run: git rm -f scripts/apply-player-management-ui.mjs .github/workflows/apply-player-management.yml
+        run: git rm -f scripts/apply-player-management-ui.mjs scripts/fix-player-manager-swap.mjs .github/workflows/apply-player-management.yml
 
       - name: Commit validated player management
         run: |
