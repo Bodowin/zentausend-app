@@ -90,6 +90,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json playwright.config.ts vitest.config.ts e2e/app.spec.ts .github/workflows/e2e.yml src/components/GameScreen.tsx docs/package-e-browser-e2e.md
+          git add package.json package-lock.json playwright.config.ts vitest.config.ts e2e/app.spec.ts .github/workflows/e2e.yml src/components/GameScreen.tsx src/components/SetupScreen.tsx docs/package-e-browser-e2e.md
           git commit -m "Run critical journeys in Chromium"
           git push origin HEAD:chatgpt/package-e-browser-e2e
