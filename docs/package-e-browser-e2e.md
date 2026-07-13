@@ -19,10 +19,19 @@ Kritische Nutzerabläufe sollen nicht nur als isolierte Funktionen, sondern im g
 - deutsche Locale
 - Service Worker im Test blockiert, damit kein alter PWA-Cache Ergebnisse verfälscht
 - ein Worker für deterministische localStorage-Flows
+- Initialdaten werden pro Browser-Tab genau einmal gesetzt, sodass echte Reload-Persistenz geprüft wird
+
+## Robuste Selektoren
+
+Die Tests verwenden sichtbare Rollen und zugängliche Namen statt CSS-Implementierungsdetails. Dafür wurden vorhandene Bedienelemente unter anderem als „Würfel 1 hinzufügen“, „300 Punkte sichern“, „Niete verbuchen“ und „Gabi umbenennen“ beschriftet. Der aktive Spieler und der Sieg-Dialog sind ebenfalls semantisch ausgezeichnet.
 
 ## Fehlerdiagnose
 
 Bei einem CI-Fehler werden Playwright-HTML-Bericht, Trace, Screenshot und Video als GitHub-Actions-Artefakt für sieben Tage gespeichert.
+
+## Validierungsstand
+
+Der kontrollierte Setup-Lauf hat alle bestehenden Unit-Tests, den TypeScript-/Vite-Production-Build und sämtliche fünf Chromium-Journeys erfolgreich ausgeführt. Der dauerhafte Workflow wiederholt diese Browserprüfung bei jedem Pull Request und jedem Push auf `main`.
 
 ## Scope-Grenze
 
