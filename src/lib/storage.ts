@@ -62,6 +62,16 @@ export function removeGame(id: number): void {
   }
 }
 
+/** Setzt nachträglich den Anlass eines einzelnen gespeicherten Spiels. */
+export function setGameEvent(id: number, event: string): void {
+  try {
+    const next = getHistory().map((g) => (g.id === id ? { ...g, event: event.trim() } : g))
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Liste aller bisher gespielten Event-Tags (für Schnellauswahl). */
 export function getEvents(history = getHistory()): string[] {
   const seen = new Set<string>()
