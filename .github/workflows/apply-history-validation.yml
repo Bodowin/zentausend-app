@@ -32,7 +32,20 @@ jobs:
         run: node scripts/prepare-history-patch.mjs
 
       - name: Apply guarded history patch
-        run: node scripts/apply-history-validation.mjs
+        run: |
+          set +e
+          node scripts/apply-history-validation.mjs 2>&1 | tee history-patch-error.txt
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Capture patch mismatch
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history-patch-error.txt
+          git commit -m "Capture history patch mismatch"
+          git push origin HEAD:chatgpt/package-c-history-validation
 
       - name: Unit tests
         run: npm test
@@ -47,6 +60,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/storage.ts src/lib/backup.ts src/lib/cloud.ts src/components/StatsScreen.tsx src/lib/gameRecordValidation.ts src/lib/gameRecordValidation.test.ts src/historyIntegrityWiring.test.ts docs/package-c-history-validation.md
+          git add src/lib/storage.ts src/lib/backup.ts src/lib/cloud.ts src/components/StatsScreen.tsx src/lib/gameRecordValidation.ts src/lib/gameRecordValidation.test.ts src/historyIntegrityWiring.test.ts docs/package-c-history-validation.md docs/package-c-device-test-plan.md docs/package-c-implementation.md docs/package-c-pr-notes.md
           git commit -m "Validate and quarantine historical game data"
           git push origin HEAD:chatgpt/package-c-history-validation
