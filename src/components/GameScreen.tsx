@@ -1,14 +1,12 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import type { DiceMode, GameRecord, Player, ScoreResult, GameState, Turn } from '../lib/types'
 import type { CoachTone, RiskInfo } from '../lib/risk'
 import { computeRisk, explainRisk, recommendAction } from '../lib/risk'
 import { playerColor } from '../lib/colors'
 import { getPrefs } from '../lib/prefs'
-import { shareResultImage } from '../lib/shareImage'
 import { computeGameAnalysis } from '../lib/storage'
-import DiceArena, { PIPS } from './DiceArena'
+import { PIPS } from '../lib/dicePips'
 import { GameChart } from './GameChart'
-import { AnalysisScreen } from './AnalysisScreen'
 import {
   IconCheck,
   IconChart,
@@ -19,6 +17,11 @@ import {
   IconTrophy,
   IconUndo,
 } from './Icons'
+
+const DiceArena = lazy(() => import('./DiceArena'))
+const AnalysisScreen = lazy(() =>
+  import('./AnalysisScreen').then((module) => ({ default: module.AnalysisScreen })),
+)
 
 interface Props {
   players: Player[]
@@ -679,14 +682,16 @@ export function GameScreen(p: Props) {
 
             <div className="relative min-h-[200px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
               {thrown.length > 0 && (
-                <DiceArena
-                  key={throwSeq}
-                  values={thrown}
-                  selectable
-                  invalidValues={result.invalidDice}
-                  onSelectionChange={p.onBowlSelect}
-                  onPhaseChange={setBowlPhase}
-                />
+                <Suspense fallback={<DiceArenaFallback />}>
+                  <DiceArena
+                    key={throwSeq}
+                    values={thrown}
+                    selectable
+                    invalidValues={result.invalidDice}
+                    onSelectionChange={p.onBowlSelect}
+                    onPhaseChange={setBowlPhase}
+                  />
+                </Suspense>
               )}
               {/* kurzer Hinweis-Toast (z. B. „Weiter!") oben mittig */}
               {toast && (
@@ -854,7 +859,9 @@ export function GameScreen(p: Props) {
       {/* Sieg-Overlay – oder, umgeschaltet, die Runden-Analyse desselben Spiels. */}
       {winner && showAnalysis && finishedGameRecord ? (
         <div className="absolute inset-0 z-50 overflow-y-auto bg-ink-950 animate-pop">
-          <AnalysisScreen game={finishedGameRecord} onBack={() => setShowAnalysis(false)} />
+          <Suspense fallback={<AnalysisFallback />}>
+            <AnalysisScreen game={finishedGameRecord} onBack={() => setShowAnalysis(false)} />
+          </Suspense>
         </div>
       ) : (
         winner && (
@@ -907,7 +914,11 @@ export function GameScreen(p: Props) {
                     Zum Start
                   </button>
                   <button
-                    onClick={() => shareResultImage(winner, players, event)}
+                    onClick={() => {
+                      void import('../lib/shareImage')
+                        .then(({ shareResultImage }) => shareResultImage(winner, players, event))
+                        .catch((error) => console.warn('Teilen-Modul konnte nicht geladen werden:', error))
+                    }}
                     className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
                     aria-label="Ergebnis als Bild teilen"
                   >
@@ -919,6 +930,24 @@ export function GameScreen(p: Props) {
           </div>
         )
       )}
+    </div>
+  )
+}
+
+function DiceArenaFallback() {
+  return (
+    <div className="grid h-full min-h-[200px] place-items-center bg-ink-950/40">
+      <span className="rounded-full border border-ink-700 bg-ink-900/80 px-4 py-2 text-xs font-bold uppercase tracking-widest text-gold-400 animate-pulse">
+        Würfelschale wird geladen…
+      </span>
+    </div>
+  )
+}
+
+function AnalysisFallback() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-ink-950 px-6">
+      <span className="text-sm font-semibold text-fog-400 animate-pulse">Analyse wird geladen…</span>
     </div>
   )
 }

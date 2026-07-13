@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { DiceMode, GameState, Player, Turn } from './lib/types'
 import {
   clearActiveGame,
@@ -9,16 +9,20 @@ import {
 import { calculateScore, ENTRY_MIN, WINNING_SCORE } from './lib/scoring'
 import { computeRisk } from './lib/risk'
 import { saveGame } from './lib/storage'
-import { pushGame } from './lib/cloud'
 import { buzz } from './lib/haptics'
 import { playerColor } from './lib/colors'
 import { getPrefs } from './lib/prefs'
 import { SetupScreen } from './components/SetupScreen'
-import { GameScreen } from './components/GameScreen'
-import { StatsScreen } from './components/StatsScreen'
 import { IntroScreen } from './components/IntroScreen'
 import { Celebration, type CelebrationData } from './components/Celebration'
 import { celebrationFor } from './lib/celebration'
+
+const GameScreen = lazy(() =>
+  import('./components/GameScreen').then((module) => ({ default: module.GameScreen })),
+)
+const StatsScreen = lazy(() =>
+  import('./components/StatsScreen').then((module) => ({ default: module.StatsScreen })),
+)
 
 const INTRO_KEY = '10k_seen_intro'
 const UNDO_LIMIT = 30
@@ -50,6 +54,16 @@ interface BustAnnounce {
 
 const uid = () => `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`
 const sortDice = (values: number[]) => [...values].sort((a, b) => a - b)
+
+function ScreenFallback({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-ink-950 px-6 text-center">
+      <div className="rounded-2xl border border-ink-800 bg-ink-900/70 px-6 py-5 text-sm font-semibold text-fog-400 animate-pulse">
+        {label}
+      </div>
+    </div>
+  )
+}
 
 export function App() {
   const [view, setView] = useState<View>('setup')
@@ -359,7 +373,9 @@ export function App() {
         setPhase('finished')
         if (!testMode) {
           const record = saveGame(win, nextPlayers, event, nextTurns)
-          void pushGame(record)
+          void import('./lib/cloud')
+            .then(({ pushGame }) => pushGame(record))
+            .catch((error) => console.warn('Cloud-Modul konnte nicht geladen werden:', error))
         }
         clearActiveGame()
         buzz([12, 40, 12, 40, 60])
@@ -525,7 +541,13 @@ export function App() {
     return computeRisk(6 - combined.length, result.hasJokerTriple)
   }, [result, dice.length, combined.length])
 
-  if (view === 'stats') return <StatsScreen onBack={() => setView('setup')} />
+  if (view === 'stats') {
+    return (
+      <Suspense fallback={<ScreenFallback label="Statistik wird geladen…" />}>
+        <StatsScreen onBack={() => setView('setup')} />
+      </Suspense>
+    )
+  }
 
   if (view === 'setup') {
     return (
@@ -555,7 +577,8 @@ export function App() {
 
   return (
     <>
-      <GameScreen
+      <Suspense fallback={<ScreenFallback label="Spiel wird geladen…" />}>
+        <GameScreen
         players={players}
         idx={idx}
         round={round}
@@ -592,8 +615,9 @@ export function App() {
         onExit={exitToSetup}
         onNewGame={exitToSetup}
         onRematch={startRematch}
-        onToggleDiceMode={toggleDiceMode}
-      />
+          onToggleDiceMode={toggleDiceMode}
+        />
+      </Suspense>
 
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
 

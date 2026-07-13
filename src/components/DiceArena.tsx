@@ -19,6 +19,7 @@
 import * as CANNON from 'cannon-es'
 import { useEffect, useRef, useState } from 'react'
 import { getPrefs, DICE_THEMES } from '../lib/prefs'
+import { PIPS } from '../lib/dicePips'
 
 type DiceArenaProps = {
   values: number[]
@@ -52,16 +53,6 @@ const SLOT_TF = [
   'translateZ(var(--h))',
   'rotateY(180deg) translateZ(var(--h))',
 ]
-
-// Augen-Positionen (Spalte, Zeile) im 3×3-Raster – auch für Mini-Würfel in der Ablage.
-export const PIPS: Record<number, [number, number][]> = {
-  1: [[1, 1]],
-  2: [[0, 0], [2, 2]],
-  3: [[0, 0], [1, 1], [2, 2]],
-  4: [[0, 0], [2, 0], [0, 2], [2, 2]],
-  5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]],
-  6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]],
-}
 
 // --- die 24 gültigen Beschriftungen (alle = Rotationen von BASE → garantiert gültig) ---
 const composePerm = (a: number[], b: number[]) => b.map((x) => a[x])
