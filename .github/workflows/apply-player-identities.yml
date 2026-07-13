@@ -32,6 +32,7 @@ jobs:
         run: node --check scripts/apply-player-identities.mjs
 
       - name: Apply guarded identity patch
+        id: patch
         run: |
           set +e
           node scripts/apply-player-identities.mjs 2>&1 | tee player-identity-patch-error.txt
@@ -39,7 +40,7 @@ jobs:
           exit $status
 
       - name: Capture patch mismatch
-        if: failure()
+        if: steps.patch.outcome == 'failure'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -51,7 +52,21 @@ jobs:
         run: npm test
 
       - name: Production build
-        run: npm run build
+        id: build
+        run: |
+          set +e
+          npm run build 2>&1 | tee player-identity-build-error.txt
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Capture build failure
+        if: steps.build.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add player-identity-build-error.txt
+          git commit -m "Capture player identity build failure"
+          git push origin HEAD:chatgpt/package-d-player-identities
 
       - name: Remove one-time patch machinery
         run: git rm -f scripts/apply-player-identities.mjs .github/workflows/apply-player-identities.yml
