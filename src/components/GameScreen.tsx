@@ -314,6 +314,7 @@ export function GameScreen(p: Props) {
         <button
           key={n}
           onClick={() => p.onAddDie(n)}
+          aria-label={`Würfel ${n} hinzufügen`}
           disabled={dice.length >= inHand || phase === 'finished'}
           className={`rounded-xl border-b-4 border-ink-950 bg-ink-800 font-bold text-fog-100 transition-all hover:bg-ink-700 active:translate-y-1 active:border-b-0 disabled:translate-y-0 disabled:opacity-30 ${
             big ? 'h-24 text-3xl' : 'h-14 text-xl'
@@ -331,6 +332,7 @@ export function GameScreen(p: Props) {
         <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
           <button
             onClick={p.onBust}
+            aria-label="Niete verbuchen"
             className={`flex flex-col items-center justify-center rounded-xl border border-coral-500/30 bg-ink-900 font-bold leading-none text-coral-400 transition-colors hover:bg-coral-500/10 ${
               big ? 'text-lg' : ''
             }`}
@@ -344,6 +346,7 @@ export function GameScreen(p: Props) {
             /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
             <button
               onClick={p.onBank}
+              aria-label={`${fmt(totalPotential)} Punkte sichern`}
               className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-mint-400 to-mint-500 font-bold text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] transition-all active:translate-y-1 active:shadow-none ${
                 big ? 'text-lg' : ''
               }`}
@@ -368,6 +371,7 @@ export function GameScreen(p: Props) {
         <div className="grid h-full grid-cols-[1fr_2fr] gap-3">
           <button
             onClick={p.onBust}
+            aria-label="Niete verbuchen"
             className={`rounded-xl border border-ink-800 bg-ink-900 font-bold text-fog-500 transition-colors hover:border-coral-500/40 hover:text-coral-400 ${
               big ? 'text-lg' : ''
             }`}
@@ -382,6 +386,7 @@ export function GameScreen(p: Props) {
         <div className="grid h-full grid-cols-2 gap-3">
           <button
             onClick={p.onBank}
+            aria-label={`${fmt(totalPotential)} Punkte sichern`}
             disabled={!canBank}
             className={`flex items-center justify-center gap-2 rounded-xl font-bold transition-all ${
               canBank
@@ -399,6 +404,7 @@ export function GameScreen(p: Props) {
           </button>
           <button
             onClick={p.onContinue}
+            aria-label={usedAll ? 'Heiße Würfel – sechs neue Würfel' : `Weiterwürfeln mit ${remainingAfter} Würfeln`}
             disabled={!canContinue}
             // Bewusst Bernstein statt der früheren neutralen Iris-Farbe: dieser
             // Knopf ist die riskante Entscheidung (weiterwürfeln kann alles aus
@@ -494,6 +500,9 @@ export function GameScreen(p: Props) {
           return (
             <div
               key={pl.id}
+              role="group"
+              aria-current={active ? 'true' : undefined}
+              aria-label={`${pl.name}: ${fmt(pl.score)} Punkte, ${pl.busts} Nieten${active ? ', ist dran' : ''}`}
               className={`relative inline-flex min-w-[104px] flex-col rounded-2xl border transition-all ${
                 virtual ? 'px-3 py-1.5' : 'px-4 py-2.5'
               } ${
@@ -865,7 +874,12 @@ export function GameScreen(p: Props) {
         </div>
       ) : (
         winner && (
-          <div className="glass absolute inset-0 z-50 flex flex-col items-center justify-center p-6 animate-pop">
+          <div
+            className="glass absolute inset-0 z-50 flex flex-col items-center justify-center p-6 animate-pop"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Spiel beendet – ${winner.name} gewinnt`}
+          >
             <div className="w-full max-w-sm rounded-3xl border border-gold-500/30 bg-ink-850 p-8 text-center shadow-2xl">
               <IconTrophy className="mx-auto mb-3 h-12 w-12 text-gold-400" />
               <h2 className="mb-1 font-display text-4xl font-black text-fog-100">Sieg!</h2>

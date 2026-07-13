@@ -231,6 +231,7 @@ export function SetupScreen({
                 />
                 <input
                   defaultValue={name}
+                  aria-label={`${name} umbenennen`}
                   onBlur={(e) => commitRename(name, e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
                   className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-950/60 px-3 py-2 text-sm text-fog-100 focus:border-gold-500/70 focus:outline-none"
