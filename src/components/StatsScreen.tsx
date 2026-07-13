@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { aggregateStats, computeAwards, computeForm, computeHeadToHead, computeNemesis, getEvents, getHistory } from '../lib/storage'
-import { deleteGame, syncAndMerge } from '../lib/cloud'
+import { deleteGame, editGameEvent, syncAndMerge } from '../lib/cloud'
 import { exportBackup, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
 import type { GameRecord, PlayerStats } from '../lib/types'
 import { playerColor } from '../lib/colors'
-import { IconBack, IconChart, IconTrash, IconTrophy } from './Icons'
+import { IconBack, IconChart, IconPencil, IconTrash, IconTrophy } from './Icons'
 import { SettingsModal } from './SettingsModal'
 import { AnalysisScreen } from './AnalysisScreen'
 
@@ -23,6 +23,11 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [showSettings, setShowSettings] = useState(false)
   const [focusAdmin, setFocusAdmin] = useState(false)
   const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null)
+  // Nachträglich den Anlass eines Spiels bearbeiten (z. B. vergessen zu setzen
+  // oder Tippfehler korrigieren) – hält Spiel + Eingabefeld-Wert getrennt vom
+  // eigentlichen Spiel-Objekt, bis gespeichert wird.
+  const [editingGame, setEditingGame] = useState<GameRecord | null>(null)
+  const [editValue, setEditValue] = useState('')
   const [msg, setMsg] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -88,6 +93,19 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     setGames((prev) => prev.filter((x) => x.id !== g.id))
   }
 
+  // Sofort/optimistisch: lokal steht der neue Anlass schon fest, der Cloud-
+  // Abgleich läuft unabhängig im Hintergrund weiter (siehe editGameEvent) –
+  // die Bearbeitung soll nie auf ein schwaches Netz warten müssen.
+  const handleSaveEvent = () => {
+    if (!editingGame) return
+    const trimmed = editValue.trim()
+    const g = editingGame
+    setGames((prev) => prev.map((x) => (x.id === g.id ? { ...x, event: trimmed } : x)))
+    setEditingGame(null)
+    flash('Anlass gespeichert.')
+    void editGameEvent(g, trimmed)
+  }
+
   if (analysisGame) {
     return <AnalysisScreen game={analysisGame} onBack={() => setAnalysisGame(null)} />
   }
@@ -102,6 +120,59 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             setFocusAdmin(false)
           }}
         />
+      )}
+
+      {editingGame && (
+        <div
+          className="glass fixed inset-0 z-50 flex items-center justify-center p-6 animate-pop"
+          onClick={() => setEditingGame(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-ink-700 bg-ink-850 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-lg font-black text-fog-100">Anlass bearbeiten</h3>
+            <p className="mb-4 text-xs text-fog-500">
+              {new Date(editingGame.date).toLocaleDateString('de-DE')} · Sieger: {editingGame.winner}
+            </p>
+            <input
+              type="text"
+              autoFocus
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveEvent()}
+              placeholder="Anlass, z. B. Skiurlaub 2025"
+              className="w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
+            />
+            {events.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {events.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => setEditValue(e)}
+                    className="rounded-full border border-ink-700 bg-ink-800 px-3 py-1 text-xs text-fog-400 transition-colors hover:border-gold-500/50 hover:text-gold-400"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setEditingGame(null)}
+                className="rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={handleSaveEvent}
+                className="rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
+              >
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <input
@@ -305,6 +376,19 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                     <div className="flex items-center gap-1.5 text-sm font-bold text-gold-400">
                       <IconTrophy className="h-3.5 w-3.5" /> {g.winner}
                     </div>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditValue(g.event ?? '')
+                        setEditingGame(g)
+                      }}
+                      className="p-1.5 text-fog-600 transition-colors hover:text-gold-400"
+                      aria-label="Anlass bearbeiten"
+                    >
+                      <IconPencil className="h-4 w-4" />
+                    </span>
                     <span
                       role="button"
                       tabIndex={0}

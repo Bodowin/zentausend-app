@@ -68,7 +68,9 @@ export function SetupScreen({
   const [manage, setManage] = useState(false)
   const [newMember, setNewMember] = useState('')
   const [guest, setGuest] = useState('')
-  const [event, setEvent] = useState(initialEvent ?? '')
+  // Ohne Vorbelegung (Revanche o. Ä.) den zuletzt genutzten Anlass vorschlagen –
+  // spart bei einem mehrtägigen Urlaub das erneute Eintippen bei jedem Spiel.
+  const [event, setEvent] = useState(initialEvent ?? getPrefs().lastEvent)
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>(initialDiceMode ?? getPrefs().defaultDiceMode)
   const [goalScore, setGoalScore] = useState(initialGoalScore ?? 10000)
@@ -496,7 +498,10 @@ export function SetupScreen({
           ))}
         </div>
         <button
-          onClick={() => onStart(players, event, testMode, diceMode, goalScore, entryMin)}
+          onClick={() => {
+            setPrefs({ lastEvent: event.trim() })
+            onStart(players, event, testMode, diceMode, goalScore, entryMin)
+          }}
           disabled={players.length < 2}
           className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
         >

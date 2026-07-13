@@ -1,5 +1,5 @@
 import { getSupabase } from './supabase'
-import { getHistory, removeGame, replaceHistory } from './storage'
+import { getHistory, removeGame, replaceHistory, setGameEvent } from './storage'
 import type { GameRecord } from './types'
 import type { Database } from './database.types'
 
@@ -131,6 +131,53 @@ export async function deleteGame(game: GameRecord): Promise<DeleteResult> {
 
   removeGame(game.id)
   return 'ok'
+}
+
+export type EditResult = 'ok' | 'denied' | 'offline'
+
+/**
+ * Setzt nachträglich den Anlass eines Spiels – lokal SOFORT und synchron
+ * (blockiert nie die Oberfläche), der Cloud-Abgleich läuft danach mit
+ * Timeout-Schutz im Hintergrund (gleiches Muster wie `fetchCloudGames`: ohne
+ * Guard könnte ein hängender Request bei schwachem Netz den Speichern-Vorgang
+ * ewig blockieren). Ein verwehrtes UPDATE meldet 0 Zeilen statt eines Fehlers,
+ * daher danach prüfen, ob der Datensatz noch existiert, um „verweigert" von
+ * „nie in der Cloud" zu unterscheiden.
+ */
+export async function editGameEvent(game: GameRecord, event: string): Promise<EditResult> {
+  setGameEvent(game.id, event)
+
+  const supabase = getSupabase()
+  if (!supabase || isOffline()) return 'offline'
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { data: updated } = await supabase
+      .from('games')
+      .update({ event: event.trim() })
+      .eq('client_id', key(game))
+      .select('id')
+      .abortSignal(controller.signal)
+
+    if (updated && updated.length > 0) return 'ok'
+
+    // Nichts aktualisiert: liegt es noch unverändert in der Cloud (→ verweigert,
+    // Code fehlt/falsch oder keine Update-Policy) oder war es nie dort (nur lokal)?
+    const { data: still } = await supabase
+      .from('games')
+      .select('id')
+      .eq('client_id', key(game))
+      .limit(1)
+      .abortSignal(controller.signal)
+
+    return still && still.length > 0 ? 'denied' : 'offline'
+  } catch (e) {
+    console.warn('Cloud-Update abgebrochen (Timeout/offline):', e)
+    return 'offline'
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export interface SyncResult {

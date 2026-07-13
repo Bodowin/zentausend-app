@@ -18,6 +18,9 @@ export interface Prefs {
   handoff: boolean
   /** Mini-Punktekurve in den Spieler-Kacheln. */
   miniChart: boolean
+  /** Zuletzt verwendeter Anlass – Vorschlag fürs nächste Spiel (z. B. ein
+   * mehrtägiger Urlaub, ohne ihn jedes Mal neu eintippen zu müssen). */
+  lastEvent: string
 }
 
 const DEFAULTS: Prefs = {
@@ -26,6 +29,7 @@ const DEFAULTS: Prefs = {
   defaultDiceMode: 'real',
   handoff: true,
   miniChart: true,
+  lastEvent: '',
 }
 
 export function getPrefs(): Prefs {
