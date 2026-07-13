@@ -21,10 +21,11 @@ import { Celebration, type CelebrationData } from './components/Celebration'
 import { celebrationFor } from './lib/celebration'
 
 const INTRO_KEY = '10k_seen_intro'
+const UNDO_LIMIT = 30
+const CELEBRATION_HANDOFF_DELAY_MS = 2000
 
 type View = 'setup' | 'game' | 'stats'
 
-/** Vollständiger Schnappschuss für einen einstufigen Undo. */
 interface Snapshot {
   players: Player[]
   idx: number
@@ -36,15 +37,23 @@ interface Snapshot {
   accumulated: number
   turns: Turn[]
   rolled: number[]
+  thrown: number[]
+  throwSeq: number
   action: string
 }
 
+interface BustAnnounce {
+  name: string
+  lost: number
+  nextName: string | null
+}
+
 const uid = () => `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`
+const sortDice = (values: number[]) => [...values].sort((a, b) => a - b)
 
 export function App() {
   const [view, setView] = useState<View>('setup')
 
-  // --- Spielzustand ---
   const [players, setPlayers] = useState<Player[]>([])
   const [event, setEvent] = useState('')
   const [idx, setIdx] = useState(0)
@@ -54,10 +63,8 @@ export function App() {
   const [winner, setWinner] = useState<Player | null>(null)
   const [testMode, setTestMode] = useState(false)
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
-  // Konfigurierbares Ziel + Einstiegsgrenze (Standard: 10.000 / 350).
   const [goalScore, setGoalScore] = useState(WINNING_SCORE)
   const [entryMin, setEntryMin] = useState(ENTRY_MIN)
-  // Vorbelegung des Setup-Screens für eine Revanche (gleicher Kader, Sieger beginnt).
   const [setupSeed, setSetupSeed] = useState<{
     players: Player[]
     event: string
@@ -66,40 +73,20 @@ export function App() {
     entryMin: number
   } | null>(null)
 
-  // --- Zugzustand ---
-  // Bereits ausgelegte Würfel dieser "Hand" (über mehrere Würfe hinweg, bis
-  // heiße Würfel). Werden GEMEINSAM gewertet, damit Drillinge auch über mehrere
-  // Würfe entstehen (drei 1er = 1000, nicht 3×100).
   const [kept, setKept] = useState<number[]>([])
-  // Würfel des aktuellen Wurfs (noch nicht "weiter" bestätigt).
   const [dice, setDice] = useState<number[]>([])
-  // Gesicherte Punkte aus abgeschlossenen heißen Würfeln in diesem Zug.
   const [accumulated, setAccumulated] = useState(0)
-  // Zug-für-Zug-Verlauf für die Runden-Analyse.
   const [turns, setTurns] = useState<Turn[]>([])
-  // Virtueller Modus: aktuell geworfene, noch nicht ausgelegte Würfel.
   const [rolled, setRolled] = useState<number[]>([])
-  // Virtueller Modus: die Augen des aktuellen Wurfs (stabile Reihenfolge für die
-  // Schale) + Zähler, der die Schale bei jedem neuen Wurf frisch aufsetzt.
   const [thrown, setThrown] = useState<number[]>([])
   const [throwSeq, setThrowSeq] = useState(0)
   const [toast, setToast] = useState('')
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
-  // Kurze „X ist dran"-Einblendung beim Spielerwechsel (Übergabe am Tisch).
   const [handoff, setHandoff] = useState<string | null>(null)
-  // Niete: großes Banner statt sofortigem Weiterschalten – `commit` führt die
-  // eigentliche Zug-Auflösung erst aus, wenn "Nächster Spieler" bestätigt wird.
-  const [bustAnnounce, setBustAnnounce] = useState<{ name: string; lost: number; commit: () => void } | null>(
-    null,
-  )
-  // Mehrstufiges Undo: Stapel von Schnappschüssen (jüngster zuletzt).
+  const [bustAnnounce, setBustAnnounce] = useState<BustAnnounce | null>(null)
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
-  const UNDO_LIMIT = 30
-
-  // Fortsetzbares (unterbrochenes) Spiel aus dem letzten Mal.
   const [resumable, setResumable] = useState<ActiveGame | null>(() => loadActiveGame())
 
-  // Erklärungs-Bildschirm beim ersten Start (und über „?" erneut aufrufbar).
   const [showIntro, setShowIntro] = useState(() => {
     try {
       return !localStorage.getItem(INTRO_KEY)
@@ -107,6 +94,7 @@ export function App() {
       return false
     }
   })
+
   const closeIntro = () => {
     try {
       localStorage.setItem(INTRO_KEY, '1')
@@ -116,33 +104,34 @@ export function App() {
     setShowIntro(false)
   }
 
-  // Die ganze Hand (ausgelegt + aktueller Wurf) wird gemeinsam gewertet.
   const combined = useMemo(() => [...kept, ...dice], [kept, dice])
   const result = useMemo(() => calculateScore(combined), [combined])
-  const inHand = 6 - kept.length // Würfel, die diesen Wurf geworfen/getippt werden
+  const inHand = 6 - kept.length
 
-  // Laufendes Spiel bei jeder Änderung sichern, damit es fortsetzbar ist.
+  // Das sichtbare Ergebnis eines virtuellen Wurfs wird gemeinsam mit Auswahl
+  // und Restmenge gespeichert. Ein Reload kann dadurch keinen neuen Wurf ziehen.
   useEffect(() => {
-    if (view === 'game' && (phase === 'active' || phase === 'lastChance')) {
-      saveActiveGame({
-        players,
-        idx,
-        round,
-        phase,
-        target,
-        event,
-        testMode,
-        diceMode,
-        goalScore,
-        entryMin,
-        kept,
-        dice,
-        accumulated,
-        turns,
-        rolled,
-        savedAt: new Date().toISOString(),
-      })
-    }
+    if (view !== 'game' || (phase !== 'active' && phase !== 'lastChance')) return
+    saveActiveGame({
+      players,
+      idx,
+      round,
+      phase,
+      target,
+      event,
+      testMode,
+      diceMode,
+      goalScore,
+      entryMin,
+      kept,
+      dice,
+      accumulated,
+      turns,
+      rolled,
+      thrown,
+      throwSeq,
+      savedAt: new Date().toISOString(),
+    })
   }, [
     view,
     players,
@@ -160,23 +149,21 @@ export function App() {
     accumulated,
     turns,
     rolled,
+    thrown,
+    throwSeq,
   ])
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
-    window.setTimeout(() => setToast((t) => (t === msg ? '' : t)), 1800)
+    window.setTimeout(() => setToast((current) => (current === msg ? '' : current)), 1800)
   }, [])
 
-  // „X ist dran"-Banner nach kurzer Zeit selbst ausblenden. Etwas länger als
-  // die frühere kleine Einblendung, damit das jetzt große Banner in Ruhe
-  // gelesen werden kann.
   useEffect(() => {
     if (!handoff) return
-    const t = window.setTimeout(() => setHandoff(null), 2000)
-    return () => window.clearTimeout(t)
+    const timer = window.setTimeout(() => setHandoff(null), 2000)
+    return () => window.clearTimeout(timer)
   }, [handoff])
 
-  // --- Setup ---
   const startGame = (
     chosen: Player[],
     evt: string,
@@ -185,14 +172,12 @@ export function App() {
     goal: number,
     entry: number,
   ) => {
-    setPlayers(chosen.map((p) => ({ ...p, score: 0, busts: 0 })))
+    setPlayers(chosen.map((player) => ({ ...player, score: 0, busts: 0 })))
     setEvent(evt.trim())
     setTestMode(test)
     setDiceMode(mode)
     setGoalScore(goal)
     setEntryMin(entry)
-    setRolled([])
-    setThrown([])
     setIdx(0)
     setRound(1)
     setPhase('active')
@@ -202,28 +187,34 @@ export function App() {
     setDice([])
     setAccumulated(0)
     setTurns([])
+    setRolled([])
+    setThrown([])
+    setThrowSeq(0)
+    setToast('')
+    setCelebration(null)
+    setHandoff(null)
+    setBustAnnounce(null)
     setUndoStack([])
     setResumable(null)
-    setToast('')
     setView('game')
   }
 
   const exitToSetup = () => {
     setPhase('setup')
     setWinner(null)
-    setSetupSeed(null) // „Neues Spiel" startet mit leerem Kader
-    setResumable(loadActiveGame()) // unterbrochenes Spiel ggf. zum Fortsetzen anbieten
+    setCelebration(null)
+    setHandoff(null)
+    setBustAnnounce(null)
+    setSetupSeed(null)
+    setResumable(loadActiveGame())
     setView('setup')
   }
 
-  // Revanche: gleicher Kader, Sieger beginnt, Reihenfolge im Uhrzeigersinn
-  // beibehalten. Der Setup-Screen wird damit vorbelegt – die Reihenfolge bleibt
-  // dort frei änderbar, bevor man erneut startet.
   const startRematch = () => {
-    const wi = winner ? players.findIndex((p) => p.id === winner.id) : 0
-    const start = wi < 0 ? 0 : wi
-    const ordered = [...players.slice(start), ...players.slice(0, start)].map((p) => ({
-      ...p,
+    const winnerIndex = winner ? players.findIndex((player) => player.id === winner.id) : 0
+    const start = winnerIndex < 0 ? 0 : winnerIndex
+    const ordered = [...players.slice(start), ...players.slice(0, start)].map((player) => ({
+      ...player,
       score: 0,
       busts: 0,
     }))
@@ -240,47 +231,63 @@ export function App() {
     setResumable(null)
   }
 
-  const resumeGame = (g: ActiveGame) => {
-    setPlayers(g.players)
-    setIdx(g.idx)
-    setRound(g.round)
-    setPhase(g.phase)
-    setTarget(g.target)
-    setEvent(g.event)
-    setTestMode(g.testMode)
-    setGoalScore(g.goalScore ?? WINNING_SCORE)
-    setEntryMin(g.entryMin ?? ENTRY_MIN)
-    setKept(g.kept ?? [])
-    setAccumulated(g.accumulated)
-    setTurns(g.turns ?? [])
-    setDiceMode(g.diceMode ?? 'real')
-    // Virtueller Modus: laufenden Wurf nicht fortsetzen – Effekt wirft frisch.
-    setDice(g.diceMode === 'virtual' ? [] : g.dice)
-    setRolled(g.diceMode === 'virtual' ? [] : (g.rolled ?? []))
-    setThrown([])
+  const resumeGame = (game: ActiveGame) => {
+    const mode = game.diceMode ?? 'real'
+    const reconstructedThrow =
+      mode === 'virtual'
+        ? game.thrown?.length
+          ? sortDice(game.thrown)
+          : sortDice([...(game.dice ?? []), ...(game.rolled ?? [])])
+        : []
+
+    setPlayers(game.players)
+    setIdx(game.idx)
+    setRound(game.round)
+    setPhase(game.phase)
+    setTarget(game.target)
+    setEvent(game.event)
+    setTestMode(game.testMode)
+    setGoalScore(game.goalScore ?? WINNING_SCORE)
+    setEntryMin(game.entryMin ?? ENTRY_MIN)
+    setKept(game.kept ?? [])
+    setAccumulated(game.accumulated)
+    setTurns(game.turns ?? [])
+    setDiceMode(mode)
+
+    // Im virtuellen Modus wird derselbe Wurf noch einmal dargestellt, die frühere
+    // Auswahl aber bewusst zurückgesetzt. So bleibt das Ergebnis fair und der
+    // Spieler kann nach einem Reload eindeutig neu auswählen.
+    setDice(mode === 'virtual' ? [] : game.dice ?? [])
+    setRolled(mode === 'virtual' ? reconstructedThrow : game.rolled ?? [])
+    setThrown(reconstructedThrow)
+    setThrowSeq((game.throwSeq ?? 0) + 1)
     setWinner(null)
+    setCelebration(null)
+    setHandoff(null)
+    setBustAnnounce(null)
     setUndoStack([])
     setResumable(null)
     setToast('')
     setView('game')
+    if (mode === 'virtual' && reconstructedThrow.length) showToast('Wurf wiederhergestellt')
   }
 
-  // --- Würfel-Eingabe ---
-  const addDie = (val: number) => {
+  const addDie = (value: number) => {
     if (kept.length + dice.length >= 6 || phase === 'finished') return
     buzz(6)
-    setDice((d) => [...d, val].sort())
+    setDice((current) => sortDice([...current, value]))
   }
-  const removeDie = (i: number) => setDice((d) => d.filter((_, j) => j !== i))
+
+  const removeDie = (index: number) => setDice((current) => current.filter((_, i) => i !== index))
   const clearDice = () => setDice([])
 
   const takeSnapshot = useCallback(
-    (action: string) =>
+    (action: string) => {
       setUndoStack((stack) =>
         [
           ...stack,
           {
-            players: players.map((p) => ({ ...p })),
+            players: players.map((player) => ({ ...player })),
             idx,
             round,
             phase,
@@ -288,58 +295,73 @@ export function App() {
             kept: [...kept],
             dice: [...dice],
             accumulated,
-            turns: [...turns],
+            turns: turns.map((turn) => ({ ...turn })),
             rolled: [...rolled],
+            thrown: [...thrown],
+            throwSeq,
             action,
           },
         ].slice(-UNDO_LIMIT),
-      ),
-    [players, idx, round, phase, target, kept, dice, accumulated, turns, rolled],
+      )
+    },
+    [players, idx, round, phase, target, kept, dice, accumulated, turns, rolled, thrown, throwSeq],
   )
 
   const undo = () => {
-    const snap = undoStack[undoStack.length - 1]
-    if (!snap) return
-    setPlayers(snap.players)
-    setIdx(snap.idx)
-    setRound(snap.round)
-    setPhase(snap.phase)
-    setTarget(snap.target)
-    setKept(snap.kept)
-    setAccumulated(snap.accumulated)
-    setTurns(snap.turns)
-    // Virtueller Modus: laufenden Wurf nicht rekonstruieren – frische Schale.
-    setDice(diceMode === 'virtual' ? [] : snap.dice)
-    setRolled(diceMode === 'virtual' ? [] : snap.rolled)
-    setThrown([])
+    const snapshot = undoStack[undoStack.length - 1]
+    if (!snapshot) return
+
+    setPlayers(snapshot.players)
+    setIdx(snapshot.idx)
+    setRound(snapshot.round)
+    setPhase(snapshot.phase)
+    setTarget(snapshot.target)
+    setKept(snapshot.kept)
+    setAccumulated(snapshot.accumulated)
+    setTurns(snapshot.turns)
     setWinner(null)
+    setCelebration(null)
+    setHandoff(null)
+    setBustAnnounce(null)
+
+    if (diceMode === 'virtual') {
+      // Gleiches Ergebnis erneut zeigen, aber Auswahl zurücksetzen.
+      setDice([])
+      setRolled(snapshot.thrown)
+      setThrown(snapshot.thrown)
+      setThrowSeq(snapshot.throwSeq + 1)
+    } else {
+      setDice(snapshot.dice)
+      setRolled(snapshot.rolled)
+      setThrown(snapshot.thrown)
+      setThrowSeq(snapshot.throwSeq)
+    }
+
     setUndoStack((stack) => stack.slice(0, -1))
-    showToast('Rückgängig')
+    showToast(`${snapshot.action === 'bank' ? 'Sichern' : snapshot.action === 'bust' ? 'Niete' : 'Zocken'} rückgängig`)
   }
 
-  // Feiert die Schale gerade etwas (Pasch, Straße, heiße Würfel …)? Dann erst
-  // die Feier zu Ende laufen lassen, bevor „X ist dran" erscheint – beide sind
-  // Vollbild-Einblendungen und überlagerten sich sonst.
-  const CELEBRATION_HANDOFF_DELAY_MS = 2000
-
-  // --- Zug-Auflösung (rein, ohne Seiteneffekte) ---
   const resolveTurn = useCallback(
-    (nextPlayers: Player[], justScored: number, nextTurns: Turn[], celebrating: boolean) => {
-      const n = nextPlayers.length
-      const last = n - 1
+    (
+      nextPlayers: Player[],
+      justScored: number,
+      nextTurns: Turn[],
+      celebrating: boolean,
+      suppressHandoff = false,
+    ) => {
+      const count = nextPlayers.length
+      const last = count - 1
 
       const finish = () => {
-        const sorted = [...nextPlayers].sort((a, b) => b.score - a.score)
-        const win = sorted[0]
+        const win = [...nextPlayers].sort((a, b) => b.score - a.score)[0]
         setPlayers(nextPlayers)
         setWinner(win)
         setPhase('finished')
-        // Testspiele werden weder lokal noch in der Cloud gespeichert.
         if (!testMode) {
           const record = saveGame(win, nextPlayers, event, nextTurns)
-          void pushGame(record) // fire-and-forget: offline bleibt es lokal, Sync später
+          void pushGame(record)
         }
-        clearActiveGame() // Spiel ist vorbei → nicht mehr fortsetzbar
+        clearActiveGame()
         buzz([12, 40, 12, 40, 60])
       }
 
@@ -354,10 +376,10 @@ export function App() {
         setDice([])
         setRolled([])
         setThrown([])
-        if (getPrefs().handoff) {
+        if (!suppressHandoff && getPrefs().handoff) {
           const name = nextPlayers[nextIdx].name
           if (celebrating) window.setTimeout(() => setHandoff(name), CELEBRATION_HANDOFF_DELAY_MS)
-          else setHandoff(name) // „X ist dran" (optional)
+          else setHandoff(name)
         }
       }
 
@@ -368,68 +390,61 @@ export function App() {
         return advance(idx + 1, 'lastChance', round, nextTarget)
       }
 
-      // phase === 'active'
       if (justScored >= goalScore) {
         if (idx === last) return finish()
         showToast('Letzte Runde!')
         return advance(idx + 1, 'lastChance', round, justScored)
       }
 
-      const nextIdx = (idx + 1) % n
+      const nextIdx = (idx + 1) % count
       const nextRound = nextIdx === 0 ? round + 1 : round
       return advance(nextIdx, 'active', nextRound, target)
     },
     [phase, idx, target, round, event, testMode, goalScore, showToast],
   )
 
-  // --- Aktionen ---
-  // Weiterwürfeln: aktuellen Wurf zur Hand dazulegen und die RESTLICHEN neu
-  // würfeln. Sind alle 6 ausgelegt → heiße Würfel: Hand-Punkte sichern, neu mit 6.
   const handleContinue = () => {
     if (!result.isValid || result.score === 0 || dice.length === 0) return
     takeSnapshot('continue')
     buzz(10)
     const newKept = [...kept, ...dice]
-    const cel = celebrationFor(combined, newKept.length === 6)
-    if (cel) setCelebration(cel)
+    const special = celebrationFor(combined, newKept.length === 6)
+    if (special) setCelebration(special)
+
     if (newKept.length === 6) {
-      // Heiße Würfel: die ganze Hand ist gewertet → Punkte sichern, frisch starten.
-      setAccumulated((a) => a + calculateScore(newKept).score)
+      setAccumulated((current) => current + calculateScore(newKept).score)
       setKept([])
-      if (!cel) showToast('Heiße Würfel!')
+      if (!special) showToast('Heiße Würfel!')
     } else {
       setKept(newKept)
-      if (!cel) showToast('Zocken!')
+      if (!special) showToast('Zocken!')
     }
-    setDice([])
-    setRolled([])
-    setThrown([]) // virtueller Modus: Effekt präsentiert den nächsten Wurf
-  }
 
-  // Würfel-Modus mitten im Spiel wechseln (nur sinnvoll am Zug-Anfang).
-  const toggleDiceMode = () => {
-    setDiceMode((m) => (m === 'real' ? 'virtual' : 'real'))
-    setRolled([])
     setDice([])
+    setRolled([])
     setThrown([])
   }
 
-  // --- Virtueller Würfel-Modus (Schale auf einem Screen) ---
-  const rnd6 = () => 1 + Math.floor(Math.random() * 6)
-  // Neuen Wurf in die Schale legen: Augen vorab bestimmen (Physik landet genau
-  // darauf), nichts ausgewählt. Die Schale setzt über throwSeq frisch auf.
-  const newThrow = useCallback(() => {
-    const n = 6 - kept.length
-    if (n <= 0) return
-    const vals = Array.from({ length: n }, rnd6).sort((a, b) => a - b)
-    setThrown(vals)
-    setRolled(vals)
+  const toggleDiceMode = () => {
+    setDiceMode((mode) => (mode === 'real' ? 'virtual' : 'real'))
+    setRolled([])
     setDice([])
-    setThrowSeq((s) => s + 1)
+    setThrown([])
+    setThrowSeq((sequence) => sequence + 1)
+  }
+
+  const rnd6 = () => 1 + Math.floor(Math.random() * 6)
+
+  const newThrow = useCallback(() => {
+    const count = 6 - kept.length
+    if (count <= 0) return
+    const values = Array.from({ length: count }, rnd6).sort((a, b) => a - b)
+    setThrown(values)
+    setRolled(values)
+    setDice([])
+    setThrowSeq((sequence) => sequence + 1)
   }, [kept.length])
 
-  // Sobald ein neuer Wurf fällig ist (Zuganfang, nach „Weiter", heiße Würfel),
-  // automatisch eine frische Schale präsentieren – getippt wird in der Schale.
   useEffect(() => {
     if (
       diceMode === 'virtual' &&
@@ -444,59 +459,61 @@ export function App() {
     }
   }, [diceMode, view, phase, winner, thrown.length, dice.length, kept.length, newThrow])
 
-  // Auswahl aus der Schale übernehmen: ausgelegte = gewertete Augen.
   const handleBowlSelect = (selected: number[], remaining: number[]) => {
     buzz(6)
-    setDice([...selected].sort((a, b) => a - b))
-    setRolled([...remaining].sort((a, b) => a - b))
+    setDice(sortDice(selected))
+    setRolled(sortDice(remaining))
   }
 
   const handleBank = () => {
     if (!result.isValid) return
     const pot = accumulated + result.score
     if (pot === 0) return
-    // Einstiegsregel: wer noch bei 0 steht, braucht mindestens entryMin.
     if (players[idx].score === 0 && pot < entryMin) return
-    const cel = celebrationFor(combined, combined.length === 6)
-    // Beim Sichern zeigt die Feier bewusst die GESAMT im Zug gesicherten Punkte
-    // (inkl. evtl. schon gebankter heißer Würfel) statt nur des Werts dieses
-    // einen Wurfs – das ist die Zahl, die gerade wirklich aufs Konto geht. Beim
-    // Weiterwürfeln (Zocken) bleibt die Feier unverändert (Wurf-Wert/„Heiße
-    // Würfel!"), da dort noch nichts final gesichert ist.
-    if (cel) setCelebration({ ...cel, sub: `${pot.toLocaleString('de-DE')} Punkte`, bigSub: true })
+
+    const special = celebrationFor(combined, combined.length === 6)
+    if (special) {
+      setCelebration({ ...special, sub: `${pot.toLocaleString('de-DE')} Punkte`, bigSub: true })
+    }
+
     takeSnapshot('bank')
     buzz(14)
-    const newPlayers = players.map((p, i) =>
-      i === idx ? { ...p, score: p.score + pot } : p,
+    const nextPlayers = players.map((player, index) =>
+      index === idx ? { ...player, score: player.score + pot } : player,
     )
     const nextTurns = [...turns, { round, player: players[idx].name, points: pot, bust: false }]
     setTurns(nextTurns)
-    resolveTurn(newPlayers, newPlayers[idx].score, nextTurns, !!cel)
+    resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, Boolean(special))
   }
 
-  // Niete: den Zug NICHT sofort auflösen, sondern erst ein großes „ausgezockt"-
-  // Banner zeigen und auf explizite Bestätigung warten (bustAnnounce.commit).
-  // So bleibt der Verlust kurz sichtbar, statt dass sofort zum nächsten
-  // Spieler gesprungen wird – gerade bei einem großen Zug frustrierend schnell.
   const handleBust = () => {
+    if (bustAnnounce) return
     takeSnapshot('bust')
     buzz([18, 30, 18])
+
     const lost = totalPotential
     const bustedName = players[idx].name
-    const newPlayers = players.map((p, i) => (i === idx ? { ...p, busts: p.busts + 1 } : p))
-    const nextTurns = [...turns, { round, player: players[idx].name, points: 0, bust: true }]
-    setBustAnnounce({
-      name: bustedName,
-      lost,
-      commit: () => {
-        setTurns(nextTurns)
-        setBustAnnounce(null)
-        resolveTurn(newPlayers, newPlayers[idx].score, nextTurns, false)
-      },
-    })
+    const nextPlayers = players.map((player, index) =>
+      index === idx ? { ...player, busts: player.busts + 1 } : player,
+    )
+    const nextTurns = [...turns, { round, player: bustedName, points: 0, bust: true }]
+    const finishes = phase === 'lastChance' && idx === players.length - 1
+    const nextIndex = phase === 'lastChance' ? idx + 1 : (idx + 1) % players.length
+    const nextName = finishes ? null : nextPlayers[nextIndex]?.name ?? null
+
+    // Die Niete wird SOFORT fachlich verbucht. Das Banner ist nur noch eine
+    // blockierende Übergabe – ein Reload kann die Niete nicht mehr zurücknehmen.
+    setBustAnnounce({ name: bustedName, lost, nextName })
+    setTurns(nextTurns)
+    resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, false, true)
   }
 
-  // --- Abgeleitete Werte ---
+  const acknowledgeBust = () => {
+    const nextName = bustAnnounce?.nextName ?? null
+    setBustAnnounce(null)
+    if (nextName && getPrefs().handoff) setHandoff(nextName)
+  }
+
   const current = players[idx]
   const effectiveTarget = phase === 'lastChance' ? target + 1 : goalScore
   const neededForWin = current ? Math.max(0, effectiveTarget - current.score) : 0
@@ -504,16 +521,11 @@ export function App() {
 
   const risk = useMemo(() => {
     if (!result.isValid || dice.length === 0 || result.score === 0) return null
-    // Ganze Hand gelegt → heiße Würfel: 6 frische, kein aktiver Pasch mehr.
     if (combined.length === 6) return computeRisk(6, false)
-    // Sonst werden die restlichen Würfel neu geworfen; ein Joker-Pasch wertet weiter.
     return computeRisk(6 - combined.length, result.hasJokerTriple)
   }, [result, dice.length, combined.length])
 
-  // --- Rendering ---
-  if (view === 'stats') {
-    return <StatsScreen onBack={() => setView('setup')} />
-  }
+  if (view === 'stats') return <StatsScreen onBack={() => setView('setup')} />
 
   if (view === 'setup') {
     return (
@@ -538,61 +550,54 @@ export function App() {
   }
 
   if (!current) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-fog-400">Lade…</div>
-    )
+    return <div className="flex min-h-screen items-center justify-center text-fog-400">Lade…</div>
   }
 
   return (
     <>
       <GameScreen
-      players={players}
-      idx={idx}
-      round={round}
-      phase={phase}
-      event={event}
-      effectiveTarget={effectiveTarget}
-      neededForWin={neededForWin}
-      testMode={testMode}
-      diceMode={diceMode}
-      goalScore={goalScore}
-      entryMin={entryMin}
-      kept={kept}
-      dice={dice}
-      rolled={rolled}
-      turns={turns}
-      thrown={thrown}
-      throwSeq={throwSeq}
-      inHand={inHand}
-      accumulated={accumulated}
-      result={result}
-      totalPotential={totalPotential}
-      risk={risk}
-      toast={toast}
-      winner={winner}
-      canUndo={undoStack.length > 0}
-      onAddDie={addDie}
-      onRemoveDie={removeDie}
-      onClearDice={clearDice}
-      onBowlSelect={handleBowlSelect}
-      onContinue={handleContinue}
-      onBank={handleBank}
-      onBust={handleBust}
-      onUndo={undo}
-      onExit={exitToSetup}
-      onNewGame={exitToSetup}
-      onRematch={startRematch}
-      onToggleDiceMode={toggleDiceMode}
+        players={players}
+        idx={idx}
+        round={round}
+        phase={phase}
+        event={event}
+        effectiveTarget={effectiveTarget}
+        neededForWin={neededForWin}
+        testMode={testMode}
+        diceMode={diceMode}
+        goalScore={goalScore}
+        entryMin={entryMin}
+        kept={kept}
+        dice={dice}
+        rolled={rolled}
+        turns={turns}
+        thrown={thrown}
+        throwSeq={throwSeq}
+        inHand={inHand}
+        accumulated={accumulated}
+        result={result}
+        totalPotential={totalPotential}
+        risk={risk}
+        toast={toast}
+        winner={winner}
+        canUndo={undoStack.length > 0}
+        onAddDie={addDie}
+        onRemoveDie={removeDie}
+        onClearDice={clearDice}
+        onBowlSelect={handleBowlSelect}
+        onContinue={handleContinue}
+        onBank={handleBank}
+        onBust={handleBust}
+        onUndo={undo}
+        onExit={exitToSetup}
+        onNewGame={exitToSetup}
+        onRematch={startRematch}
+        onToggleDiceMode={toggleDiceMode}
       />
+
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
+
       {handoff && (
-        // Großes, mittiges Banner über der ganzen Spielfläche – am oberen
-        // Bildschirmrand (v.a. auf großen/quer gehaltenen Geräten wie einem
-        // aufrecht am Tisch stehenden iPad) geht ein kleiner Hinweis leicht
-        // unter. Blockiert bewusst (statt pointer-events-none): sonst würde ein
-        // Tipp währenddessen zur Schale darunter durchgereicht und der Wurf
-        // liefe unsichtbar hinter dem Banner an. Ein Tipp aufs Banner selbst
-        // überspringt es sofort, sonst blendet es nach kurzer Zeit von selbst aus.
         <button
           type="button"
           onClick={() => setHandoff(null)}
@@ -614,13 +619,16 @@ export function App() {
           </div>
         </button>
       )}
+
       {bustAnnounce && (
-        // Anders als die Übergabe-Einblendung BLOCKIEREND (pointer-events-auto)
-        // und ohne Auto-Ausblenden: der Verlust soll bewusst wahrgenommen
-        // werden, bevor es weitergeht – kein Wegtippen aus Versehen.
-        <div className="glass fixed inset-0 z-[56] flex items-center justify-center px-6 animate-pop">
+        <div
+          className="glass fixed inset-0 z-[56] flex items-center justify-center px-6 animate-pop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bust-title"
+        >
           <div className="flex flex-col items-center gap-4 rounded-3xl border-2 border-coral-500/60 bg-coral-500/10 px-10 py-9 text-center shadow-2xl shadow-black/50">
-            <span className="font-display text-4xl font-black tracking-tight text-coral-400">
+            <span id="bust-title" className="font-display text-4xl font-black tracking-tight text-coral-400">
               {bustAnnounce.name} hat sich ausgezockt!
             </span>
             {bustAnnounce.lost > 0 && (
@@ -629,10 +637,11 @@ export function App() {
               </span>
             )}
             <button
-              onClick={bustAnnounce.commit}
+              type="button"
+              onClick={acknowledgeBust}
               className="mt-2 rounded-2xl bg-gradient-to-b from-coral-400 to-coral-500 px-8 py-3.5 font-bold text-white shadow-lg transition-all active:scale-[0.98]"
             >
-              Nächster Spieler →
+              {bustAnnounce.nextName ? `${bustAnnounce.nextName} ist dran →` : 'Ergebnis anzeigen →'}
             </button>
           </div>
         </div>

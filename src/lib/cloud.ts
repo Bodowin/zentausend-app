@@ -5,18 +5,22 @@ import type { Database } from './database.types'
 
 type Row = Database['public']['Tables']['games']['Row']
 type Insert = Database['public']['Tables']['games']['Insert']
+type PendingEventEdits = Record<string, string>
 
-const key = (g: GameRecord) => String(g.id)
+const EVENT_EDIT_QUEUE_KEY = '10k_pending_event_edits_v1'
+const CLOUD_TIMEOUT_MS = 3500
+const key = (game: GameRecord) => String(game.id)
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false
 
-function toRow(g: GameRecord): Insert {
+function toRow(game: GameRecord): Insert {
   return {
-    client_id: key(g),
-    played_at: g.date,
-    event: g.event ?? '',
-    winner: g.winner,
-    winner_score: g.winnerScore,
-    players: g.players as unknown as Insert['players'],
-    turns: (g.turns ?? []) as unknown as Insert['turns'],
+    client_id: key(game),
+    played_at: game.date,
+    event: game.event ?? '',
+    winner: game.winner,
+    winner_score: game.winnerScore,
+    players: game.players as unknown as Insert['players'],
+    turns: (game.turns ?? []) as unknown as Insert['turns'],
   }
 }
 
@@ -32,44 +36,98 @@ function fromRow(row: Row): GameRecord {
   }
 }
 
-/** Meldet der Browser sicher „offline"? (true nur bei eindeutig getrennt.) */
-const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false
-
-// Wie lange auf die Cloud gewartet wird, bevor wir aufgeben. Wichtig auf See mit
-// schwachem Signal: ein hängender fetch läuft sonst in den ~8s-Browser-Timeout,
-// und die Statistik bliebe so lange auf „Synchronisiere…" stehen.
-const CLOUD_TIMEOUT_MS = 3500
-
-/** Schiebt ein einzelnes Spiel in die Cloud (idempotent über client_id). */
-export async function pushGame(game: GameRecord): Promise<boolean> {
-  const supabase = getSupabase()
-  if (!supabase || isOffline()) return false
-  const { error } = await supabase
-    .from('games')
-    .upsert(toRow(game), { onConflict: 'client_id', ignoreDuplicates: true })
-  if (error) {
-    console.warn('Cloud-Push fehlgeschlagen:', error.message)
-    return false
+function readPendingEventEdits(): PendingEventEdits {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(EVENT_EDIT_QUEUE_KEY) || '{}') as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, event]) => typeof event === 'string')
+        .map(([id, event]) => [id, (event as string).trim()]),
+    )
+  } catch {
+    return {}
   }
-  return true
+}
+
+function writePendingEventEdits(edits: PendingEventEdits): void {
+  try {
+    if (Object.keys(edits).length === 0) localStorage.removeItem(EVENT_EDIT_QUEUE_KEY)
+    else localStorage.setItem(EVENT_EDIT_QUEUE_KEY, JSON.stringify(edits))
+  } catch {
+    /* local-only fallback remains in history */
+  }
+}
+
+function queueEventEdit(clientId: string, event: string): void {
+  const edits = readPendingEventEdits()
+  edits[clientId] = event.trim()
+  writePendingEventEdits(edits)
+}
+
+function clearEventEdit(clientId: string): void {
+  const edits = readPendingEventEdits()
+  if (!(clientId in edits)) return
+  delete edits[clientId]
+  writePendingEventEdits(edits)
+}
+
+export function pendingEventEditCount(): number {
+  return Object.keys(readPendingEventEdits()).length
 }
 
 /**
- * Holt alle Spiele aus der Cloud (neueste zuerst).
- *
- * `ok` unterscheidet „Cloud leer" von „Cloud nicht erreichbar/Fehler", damit
- * der Aufrufer nicht fälschlich „synchronisiert" meldet.
+ * Deterministischer Merge:
+ * - Ohne offene lokale Änderung gewinnt die Cloud-Kopie derselben Spiel-ID.
+ * - Eine noch nicht synchronisierte Anlass-Änderung wird anschließend darübergelegt.
  */
+export function mergeHistories(
+  local: GameRecord[],
+  cloud: GameRecord[],
+  pendingEdits: PendingEventEdits = {},
+): GameRecord[] {
+  const byId = new Map<string, GameRecord>()
+  for (const game of local) byId.set(key(game), game)
+  for (const game of cloud) byId.set(key(game), game)
+  for (const [clientId, event] of Object.entries(pendingEdits)) {
+    const game = byId.get(clientId)
+    if (game) byId.set(clientId, { ...game, event })
+  }
+  return [...byId.values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+}
+
+/** Schiebt ein einzelnes Spiel idempotent in die Cloud. */
+export async function pushGame(game: GameRecord): Promise<boolean> {
+  const supabase = getSupabase()
+  if (!supabase || isOffline()) return false
+
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { error } = await supabase
+      .from('games')
+      .upsert(toRow(game), { onConflict: 'client_id', ignoreDuplicates: true })
+      .abortSignal(controller.signal)
+    if (error) {
+      console.warn('Cloud-Push fehlgeschlagen:', error.message)
+      return false
+    }
+    return true
+  } catch (error) {
+    console.warn('Cloud-Push abgebrochen (Timeout/offline):', error)
+    return false
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/** Holt alle Cloud-Spiele; `ok` trennt eine leere Cloud von einem Netzfehler. */
 export async function fetchCloudGames(): Promise<{ games: GameRecord[]; ok: boolean }> {
   const supabase = getSupabase()
-  if (!supabase) return { games: [], ok: false }
-  // Eindeutig offline → gar nicht erst versuchen (spart den langen Timeout).
-  if (isOffline()) return { games: [], ok: false }
+  if (!supabase || isOffline()) return { games: [], ok: false }
 
-  // Schwaches Netz: nach CLOUD_TIMEOUT_MS abbrechen, damit die Oberfläche
-  // schnell auf die lokalen Daten zurückfällt statt sekundenlang zu warten.
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), CLOUD_TIMEOUT_MS)
+  const timer = window.setTimeout(() => controller.abort(), CLOUD_TIMEOUT_MS)
   try {
     const { data, error } = await supabase
       .from('games')
@@ -82,137 +140,182 @@ export async function fetchCloudGames(): Promise<{ games: GameRecord[]; ok: bool
       return { games: [], ok: false }
     }
     return { games: (data ?? []).map(fromRow), ok: true }
-  } catch (e) {
-    console.warn('Cloud-Fetch abgebrochen (Timeout/offline):', e)
+  } catch (error) {
+    console.warn('Cloud-Fetch abgebrochen (Timeout/offline):', error)
     return { games: [], ok: false }
   } finally {
-    clearTimeout(timer)
+    window.clearTimeout(timer)
   }
 }
 
 export type DeleteResult = 'ok' | 'denied' | 'offline'
 
-/**
- * Löscht ein Spiel lokal und – falls vorhanden – in der Cloud.
- *
- * Das Cloud-Löschen ist durch den Clique-Code geschützt. Da RLS ein verwehrtes
- * DELETE nicht als Fehler, sondern als „0 Zeilen" meldet, prüfen wir danach, ob
- * der Datensatz noch existiert:
- *  - in der Cloud gelöscht → 'ok'
- *  - existiert noch in der Cloud (Code fehlt/falsch) → 'denied' (lokal bleibt)
- *  - war nie in der Cloud (nur lokal) → lokal entfernt, 'ok'
- */
+/** Löscht lokal und – bei erreichbarer Cloud und gültigem Admin-Code – remote. */
 export async function deleteGame(game: GameRecord): Promise<DeleteResult> {
   const supabase = getSupabase()
   if (!supabase) {
     removeGame(game.id)
-    return 'offline'
-  }
-
-  const { data: deleted } = await supabase
-    .from('games')
-    .delete()
-    .eq('client_id', key(game))
-    .select('id')
-
-  if (deleted && deleted.length > 0) {
-    removeGame(game.id)
     return 'ok'
   }
+  if (isOffline()) return 'offline'
 
-  // Nichts gelöscht: liegt es noch in der Cloud (→ verweigert) oder war es nur lokal?
-  const { data: still } = await supabase
-    .from('games')
-    .select('id')
-    .eq('client_id', key(game))
-    .limit(1)
-
-  if (still && still.length > 0) return 'denied'
-
-  removeGame(game.id)
-  return 'ok'
-}
-
-export type EditResult = 'ok' | 'denied' | 'offline'
-
-/**
- * Setzt nachträglich den Anlass eines Spiels – lokal SOFORT und synchron
- * (blockiert nie die Oberfläche), der Cloud-Abgleich läuft danach mit
- * Timeout-Schutz im Hintergrund (gleiches Muster wie `fetchCloudGames`: ohne
- * Guard könnte ein hängender Request bei schwachem Netz den Speichern-Vorgang
- * ewig blockieren). Ein verwehrtes UPDATE meldet 0 Zeilen statt eines Fehlers,
- * daher danach prüfen, ob der Datensatz noch existiert, um „verweigert" von
- * „nie in der Cloud" zu unterscheiden.
- */
-export async function editGameEvent(game: GameRecord, event: string): Promise<EditResult> {
-  setGameEvent(game.id, event)
-
-  const supabase = getSupabase()
-  if (!supabase || isOffline()) return 'offline'
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), CLOUD_TIMEOUT_MS)
+  const deleteController = new AbortController()
+  const deleteTimer = window.setTimeout(() => deleteController.abort(), CLOUD_TIMEOUT_MS)
   try {
-    const { data: updated } = await supabase
+    const { data: deleted, error } = await supabase
       .from('games')
-      .update({ event: event.trim() })
+      .delete()
       .eq('client_id', key(game))
       .select('id')
-      .abortSignal(controller.signal)
+      .abortSignal(deleteController.signal)
+    if (error) {
+      console.warn('Cloud-Löschen fehlgeschlagen:', error.message)
+      return 'offline'
+    }
+    if (deleted && deleted.length > 0) {
+      removeGame(game.id)
+      return 'ok'
+    }
+  } catch (error) {
+    console.warn('Cloud-Löschen abgebrochen (Timeout/offline):', error)
+    return 'offline'
+  } finally {
+    window.clearTimeout(deleteTimer)
+  }
 
-    if (updated && updated.length > 0) return 'ok'
-
-    // Nichts aktualisiert: liegt es noch unverändert in der Cloud (→ verweigert,
-    // Code fehlt/falsch oder keine Update-Policy) oder war es nie dort (nur lokal)?
-    const { data: still } = await supabase
+  // RLS meldet ein verweigertes DELETE oft als erfolgreich mit 0 Zeilen.
+  const checkController = new AbortController()
+  const checkTimer = window.setTimeout(() => checkController.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { data: still, error } = await supabase
       .from('games')
       .select('id')
       .eq('client_id', key(game))
       .limit(1)
-      .abortSignal(controller.signal)
-
-    return still && still.length > 0 ? 'denied' : 'offline'
-  } catch (e) {
-    console.warn('Cloud-Update abgebrochen (Timeout/offline):', e)
+      .abortSignal(checkController.signal)
+    if (error) return 'offline'
+    if (still && still.length > 0) return 'denied'
+    removeGame(game.id)
+    return 'ok'
+  } catch (error) {
+    console.warn('Cloud-Löschprüfung abgebrochen:', error)
     return 'offline'
   } finally {
-    clearTimeout(timer)
+    window.clearTimeout(checkTimer)
   }
+}
+
+export type EditResult = 'ok' | 'denied' | 'offline'
+
+async function updateCloudEvent(clientId: string, event: string): Promise<EditResult> {
+  const supabase = getSupabase()
+  if (!supabase || isOffline()) return 'offline'
+
+  const updateController = new AbortController()
+  const updateTimer = window.setTimeout(() => updateController.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { data: updated, error } = await supabase
+      .from('games')
+      .update({ event: event.trim() })
+      .eq('client_id', clientId)
+      .select('id')
+      .abortSignal(updateController.signal)
+    if (error) {
+      console.warn('Cloud-Update fehlgeschlagen:', error.message)
+      return 'offline'
+    }
+    if (updated && updated.length > 0) return 'ok'
+  } catch (error) {
+    console.warn('Cloud-Update abgebrochen (Timeout/offline):', error)
+    return 'offline'
+  } finally {
+    window.clearTimeout(updateTimer)
+  }
+
+  const checkController = new AbortController()
+  const checkTimer = window.setTimeout(() => checkController.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { data: still, error } = await supabase
+      .from('games')
+      .select('id')
+      .eq('client_id', clientId)
+      .limit(1)
+      .abortSignal(checkController.signal)
+    if (error) return 'offline'
+    return still && still.length > 0 ? 'denied' : 'offline'
+  } catch (error) {
+    console.warn('Cloud-Update-Prüfung abgebrochen:', error)
+    return 'offline'
+  } finally {
+    window.clearTimeout(checkTimer)
+  }
+}
+
+/**
+ * Speichert den Anlass sofort lokal und merkt ihn als ausstehend, bis die Cloud
+ * die Änderung bestätigt. Damit überlebt die Änderung Offline-Starts und wird
+ * beim nächsten Statistik-Sync automatisch erneut versucht.
+ */
+export async function editGameEvent(game: GameRecord, event: string): Promise<EditResult> {
+  const trimmed = event.trim()
+  const clientId = key(game)
+  setGameEvent(game.id, trimmed)
+  queueEventEdit(clientId, trimmed)
+
+  const result = await updateCloudEvent(clientId, trimmed)
+  if (result === 'ok') clearEventEdit(clientId)
+  return result
 }
 
 export interface SyncResult {
   games: GameRecord[]
   online: boolean
+  /** Noch nicht bestätigte lokale Änderungen. */
+  pending: number
 }
 
 /**
- * Synchronisiert beide Richtungen und liefert die zusammengeführte Liste:
- *  1. lädt die Cloud-Spiele,
- *  2. schiebt lokale Spiele hoch, die in der Cloud fehlen,
- *  3. merged beide Quellen dedupliziert über die Spiel-ID.
- *
- * Offline-first: Schlägt die Cloud fehl, kommen einfach die lokalen Spiele
- * zurück (online: false).
+ * Synchronisiert beide Richtungen. Cloud-Kopien gewinnen bei gleicher ID,
+ * außer für explizit als ausstehend markierte lokale Anlass-Änderungen.
  */
 export async function syncAndMerge(): Promise<SyncResult> {
   const local = getHistory()
-  // Kein Cloud-Client oder sicher offline → sofort lokal, kein Warten.
-  if (!getSupabase() || isOffline()) return { games: local, online: false }
+  const initialPending = readPendingEventEdits()
+  if (!getSupabase() || isOffline()) {
+    return { games: local, online: false, pending: Object.keys(initialPending).length }
+  }
 
-  const { games: cloud, ok } = await fetchCloudGames()
-  // Fetch fehlgeschlagen → ehrlich offline melden, nichts hochladen, lokal bleiben.
-  if (!ok) return { games: local, online: false }
+  const fetched = await fetchCloudGames()
+  if (!fetched.ok) {
+    return { games: local, online: false, pending: Object.keys(initialPending).length }
+  }
 
+  let cloud = [...fetched.games]
   const cloudIds = new Set(cloud.map(key))
-  const missing = local.filter((g) => !cloudIds.has(key(g)))
-  if (missing.length) await Promise.allSettled(missing.map(pushGame))
 
-  const byId = new Map<string, GameRecord>()
-  for (const g of [...cloud, ...local]) byId.set(key(g), g)
-  const games = [...byId.values()].sort(
-    (a, b) => Date.parse(b.date) - Date.parse(a.date),
-  )
-  // Erfolgreich gemerged → lokal cachen, damit Offline-Start die Cloud-Spiele kennt.
+  // Bereits vorhandene Cloud-Zeilen mit offenen lokalen Anlass-Änderungen aktualisieren.
+  for (const [clientId, event] of Object.entries(initialPending)) {
+    if (!cloudIds.has(clientId)) continue
+    const result = await updateCloudEvent(clientId, event)
+    if (result === 'ok') {
+      clearEventEdit(clientId)
+      cloud = cloud.map((game) => (key(game) === clientId ? { ...game, event } : game))
+    }
+  }
+
+  // Vollständig lokale Spiele hochladen. Der lokale Datensatz enthält bereits
+  // einen gegebenenfalls offline bearbeiteten Anlass.
+  const missing = local.filter((game) => !cloudIds.has(key(game)))
+  for (const game of missing) {
+    if (await pushGame(game)) {
+      cloud.push(game)
+      cloudIds.add(key(game))
+      clearEventEdit(key(game))
+    }
+  }
+
+  const pending = readPendingEventEdits()
+  const games = mergeHistories(local, cloud, pending)
   replaceHistory(games)
-  return { games, online: true }
+  return { games, online: true, pending: Object.keys(pending).length }
 }

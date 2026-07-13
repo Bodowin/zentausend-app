@@ -25,7 +25,9 @@ export default defineConfig({
         theme_color: '#0a0e16',
         background_color: '#060910',
         display: 'standalone',
-        orientation: 'portrait',
+        // iPad-Querformat ist ein vollwertiger Spielmodus; die installierte PWA
+        // darf deshalb nicht künstlich auf Hochformat festgelegt werden.
+        orientation: 'any',
         lang: 'de',
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },

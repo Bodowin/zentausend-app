@@ -452,7 +452,7 @@ export function GameScreen(p: Props) {
         <div className="flex items-center gap-1.5">
           <button
             onClick={p.onToggleDiceMode}
-            disabled={dice.length > 0 || rolled.length > 0}
+            disabled={dice.length > 0 || (diceMode === 'virtual' && bowlPhase !== 'ready')}
             className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30"
             aria-label="Würfel-Modus wechseln"
           >
@@ -542,7 +542,7 @@ export function GameScreen(p: Props) {
       {lastChance && leader && (
         <div className="flex items-center justify-center gap-2 border-b border-coral-500/30 bg-coral-500/10 px-4 py-2 text-center text-xs font-bold animate-pop">
           <IconTrophy className="h-4 w-4 text-gold-400" />
-          <span className="text-fog-100">{leader.name} hat {fmt(goalScore)}!</span>
+          <span className="text-fog-100">{leader.name} führt mit {fmt(leader.score)}!</span>
           <span className="text-coral-300">{fmt(beatScore)} muss überboten werden</span>
         </div>
       )}
