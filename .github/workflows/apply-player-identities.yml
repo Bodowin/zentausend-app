@@ -28,8 +28,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate patch script
-        run: node --check scripts/apply-player-identities.mjs
+      - name: Validate patch scripts
+        run: |
+          node --check scripts/apply-player-identities.mjs
+          node --check scripts/remove-unused-player-uid.mjs
 
       - name: Apply guarded identity patch
         id: patch
@@ -37,6 +39,7 @@ jobs:
           set +e
           node scripts/apply-player-identities.mjs 2>&1 | tee player-identity-patch-error.txt
           status=${PIPESTATUS[0]}
+          if [ "$status" -eq 0 ]; then node scripts/remove-unused-player-uid.mjs; fi
           exit $status
 
       - name: Capture patch mismatch
@@ -74,7 +77,7 @@ jobs:
         run: exit 1
 
       - name: Remove one-time patch machinery
-        run: git rm -f scripts/apply-player-identities.mjs .github/workflows/apply-player-identities.yml
+        run: git rm -f scripts/apply-player-identities.mjs scripts/remove-unused-player-uid.mjs .github/workflows/apply-player-identities.yml
 
       - name: Commit validated source
         run: |
