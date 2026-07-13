@@ -458,7 +458,12 @@ export function App() {
     // Einstiegsregel: wer noch bei 0 steht, braucht mindestens entryMin.
     if (players[idx].score === 0 && pot < entryMin) return
     const cel = celebrationFor(combined, combined.length === 6)
-    if (cel) setCelebration(cel)
+    // Beim Sichern zeigt die Feier bewusst die GESAMT im Zug gesicherten Punkte
+    // (inkl. evtl. schon gebankter heißer Würfel) statt nur des Werts dieses
+    // einen Wurfs – das ist die Zahl, die gerade wirklich aufs Konto geht. Beim
+    // Weiterwürfeln (Zocken) bleibt die Feier unverändert (Wurf-Wert/„Heiße
+    // Würfel!"), da dort noch nichts final gesichert ist.
+    if (cel) setCelebration({ ...cel, sub: `${pot.toLocaleString('de-DE')} Punkte`, bigSub: true })
     takeSnapshot('bank')
     buzz(14)
     const newPlayers = players.map((p, i) =>
@@ -584,9 +589,16 @@ export function App() {
         // Großes, mittiges Banner über der ganzen Spielfläche – am oberen
         // Bildschirmrand (v.a. auf großen/quer gehaltenen Geräten wie einem
         // aufrecht am Tisch stehenden iPad) geht ein kleiner Hinweis leicht
-        // unter. Bleibt nicht-blockierend (pointer-events-none), damit man bei
-        // Bedarf sofort weiterspielen kann, statt zu warten.
-        <div className="glass pointer-events-none fixed inset-0 z-[55] flex items-center justify-center px-6 animate-pop">
+        // unter. Blockiert bewusst (statt pointer-events-none): sonst würde ein
+        // Tipp währenddessen zur Schale darunter durchgereicht und der Wurf
+        // liefe unsichtbar hinter dem Banner an. Ein Tipp aufs Banner selbst
+        // überspringt es sofort, sonst blendet es nach kurzer Zeit von selbst aus.
+        <button
+          type="button"
+          onClick={() => setHandoff(null)}
+          aria-label="Übergabe überspringen"
+          className="glass fixed inset-0 z-[55] flex items-center justify-center px-6 animate-pop"
+        >
           <div
             className="flex flex-col items-center gap-3 rounded-3xl border-2 px-12 py-9 text-center shadow-2xl shadow-black/50"
             style={{ borderColor: `${playerColor(handoff)}80`, backgroundColor: `${playerColor(handoff)}14` }}
@@ -596,8 +608,11 @@ export function App() {
               {handoff}
             </span>
             <span className="text-lg font-bold uppercase tracking-[0.2em] text-fog-300">ist dran</span>
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-fog-600">
+              Tippen zum Fortfahren
+            </span>
           </div>
-        </div>
+        </button>
       )}
       {bustAnnounce && (
         // Anders als die Übergabe-Einblendung BLOCKIEREND (pointer-events-auto)
