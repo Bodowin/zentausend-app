@@ -85,3 +85,13 @@ source = replaceSection(
 )
 
 fs.writeFileSync(path, source)
+
+const storagePath = 'src/lib/storage.ts'
+let storage = fs.readFileSync(storagePath, 'utf8')
+storage = replaceOnce(
+  storage,
+  "export function aggregateStats(history = getHistory(), event?: string): PlayerStats[] {\n  const games = event ? history.filter((g) => g.event === event) : history\n  const names = identityNameMap(games)\n",
+  "export function aggregateStats(history = getHistory(), event?: string): PlayerStats[] {\n  const games = event ? history.filter((g) => g.event === event) : history\n  // Der Anlassfilter ändert nur die Kennzahlen. Der Anzeigename kommt immer\n  // aus dem vollständigen Verlauf, damit alte Events nicht auf alte Namen zurückfallen.\n  const names = identityNameMap(history)\n",
+  'global identity name in event-filtered stats',
+)
+fs.writeFileSync(storagePath, storage)
