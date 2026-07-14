@@ -86,7 +86,7 @@ test('opens an identity-aware personal profile with honest turn-data coverage', 
   await expect(page.getByText('Gabi', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: /Zurück/ }).click()
-  await page.getByRole('button', { name: 'Urlaub' }).click()
+  await page.getByRole('button', { name: 'Urlaub', exact: true }).click()
   await page.getByRole('button', { name: 'Profil von Bodowin öffnen' }).click()
 
   await expect(page.getByText('Gefiltert: Urlaub', { exact: true })).toBeVisible()
