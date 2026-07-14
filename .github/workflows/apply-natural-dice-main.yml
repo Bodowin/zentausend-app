@@ -1,5 +1,6 @@
 name: Apply natural dice on main
 
+# Einmaliger Main-Trigger: Produktcode wird erst nach vollständig grünen Tests committed.
 on:
   push:
     branches:
