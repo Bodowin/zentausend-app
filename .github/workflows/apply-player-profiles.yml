@@ -32,19 +32,40 @@ jobs:
         run: npm ci
 
       - name: Apply guarded player profile wiring
-        run: node scripts/apply-player-profiles.mjs
+        run: |
+          node scripts/apply-player-profiles.mjs
+          grep -q "PlayerProfileScreen" src/components/StatsScreen.tsx
+          grep -q "Profil von ' + s.name + ' öffnen" src/components/StatsScreen.tsx
+          grep -q "Antippen für Profil" src/components/StatsScreen.tsx
 
       - name: Unit tests
         run: npm test
 
       - name: Production build
-        run: npm run build
+        run: |
+          rm -rf dist
+          npm run build
+          grep -R -q "Antippen für Profil" dist/assets
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Browser journeys
+      - name: Player profile browser journey
+        run: npx playwright test e2e/player-profiles.spec.ts
+
+      - name: Complete browser suite
         run: npm run test:e2e
+
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-l-playwright-diagnostics
+          path: |
+            playwright-report
+            test-results
+            src/components/StatsScreen.tsx
+          retention-days: 3
 
       - name: Remove one-time machinery
         run: git rm -f scripts/apply-player-profiles.mjs .github/workflows/apply-player-profiles.yml
