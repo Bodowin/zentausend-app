@@ -1,0 +1,65 @@
+name: Apply package K active-game cloud
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/apply-package-k.mjs
+      - .github/workflows/apply-package-k.yml
+      - src/lib/activeGame.ts
+      - src/lib/activeGameCloud.ts
+      - src/components/CloudGameDialog.tsx
+      - src/lib/activeGame.test.ts
+      - src/lib/activeGameCloud.test.ts
+      - e2e/active-game-cloud.spec.ts
+      - supabase/migrations/20260714113219_seed_active_game_cloud_state.sql
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build-e2e:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply guarded App wiring
+        run: |
+          node --check scripts/apply-package-k.mjs
+          node scripts/apply-package-k.mjs
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser journeys
+        run: npm run test:e2e
+
+      - name: Commit validated package K
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f scripts/apply-package-k.mjs .github/workflows/apply-package-k.yml
+          git add src/App.tsx
+          git commit -m "Sync running games safely across devices"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
