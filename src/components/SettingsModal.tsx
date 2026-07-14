@@ -96,6 +96,23 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             </span>
           </button>
 
+          <button
+            type="button"
+            role="switch"
+            aria-label="Haptisches Feedback"
+            aria-checked={prefs.haptics}
+            onClick={() => updatePrefs({ haptics: !prefs.haptics })}
+            className="mt-4 flex w-full items-center justify-between"
+          >
+            <span className="flex flex-col text-left">
+              <span className="text-sm font-bold text-fog-200">Haptisches Feedback</span>
+              <span className="text-[11px] text-fog-500">Kurzes Vibrieren bei Spielaktionen · Standard aus</span>
+            </span>
+            <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.haptics ? 'bg-mint-500' : 'bg-ink-600'}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${prefs.haptics ? 'left-[26px]' : 'left-1'}`} />
+            </span>
+          </button>
+
           {/* „X ist dran"-Übergabe */}
           <button
             type="button"

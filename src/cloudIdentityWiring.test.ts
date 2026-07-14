@@ -18,7 +18,7 @@ describe('cloud player identity wiring', () => {
   })
 
   it('surfaces invalid codes and immediately reloads after profile changes', () => {
-    expect(statsSource).toContain('Clique-Code ungültig – in Einstellungen erneuern')
+    expect(statsSource).toContain('Crew-Code prüfen')
     expect(statsSource).toContain('void reload()')
   })
 

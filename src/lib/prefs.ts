@@ -10,6 +10,8 @@ export type DiceTheme = 'classic' | 'ruby' | 'onyx' | 'sky' | 'emerald'
 export interface Prefs {
   /** Aufprall-/Tipp-Sounds im virtuellen Würfelmodus. */
   sound: boolean
+  /** Dezentes Vibrationsfeedback bei Spielaktionen; pro Gerät abschaltbar. */
+  haptics: boolean
   /** Optik der virtuellen Würfel. */
   diceTheme: DiceTheme
   /** Zuletzt genutzter Würfelmodus (Vorauswahl im Startbildschirm). */
@@ -25,6 +27,7 @@ export interface Prefs {
 
 const DEFAULTS: Prefs = {
   sound: true,
+  haptics: false,
   diceTheme: 'classic',
   defaultDiceMode: 'real',
   handoff: true,

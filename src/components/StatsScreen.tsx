@@ -31,6 +31,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [online, setOnline] = useState(false)
   const [codeDenied, setCodeDenied] = useState(false)
   const [pendingSync, setPendingSync] = useState(() => pendingEventEditCount())
+  const [cloudCount, setCloudCount] = useState<number | null>(null)
   const [integrity, setIntegrity] = useState(() => getHistoryIntegrityReport())
   const [filter, setFilter] = useState<string>('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -52,6 +53,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       setGames(res.games)
       setOnline(res.online)
       setPendingSync(res.pending)
+      setCloudCount(res.cloudCount)
       setCodeDenied(res.codeDenied)
       if (res.identityConflicts > 0) {
         setMsg(`${res.identityConflicts} Spieler-Zuordnungs-Konflikt${res.identityConflicts === 1 ? '' : 'e'} lokal gelöst.`)
@@ -69,6 +71,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       setGames(res.games)
       setOnline(res.online)
       setPendingSync(res.pending)
+      setCloudCount(res.cloudCount)
       setCodeDenied(res.codeDenied)
       if (res.identityConflicts > 0) {
         setMsg(`${res.identityConflicts} Spieler-Zuordnungs-Konflikt${res.identityConflicts === 1 ? '' : 'e'} lokal gelöst.`)
@@ -322,32 +325,86 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
-      {/* Sync-Status */}
-      <div className="mb-4 flex items-center gap-2 text-[11px]">
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${
-            loading
-              ? 'animate-pulse bg-gold-500'
-              : pendingSync > 0
-                ? 'bg-gold-500'
-                : online
-                  ? 'bg-mint-400'
-                  : 'bg-fog-600'
-          }`}
-        />
-        <span className="text-fog-500">
-          {loading
-            ? 'Synchronisiere mit der Cloud…'
-            : codeDenied
-              ? 'Clique-Code ungültig – in Einstellungen erneuern'
-              : pendingSync > 0
-              ? `${pendingSync} ${pendingSync === 1 ? 'Änderung wartet' : 'Änderungen warten'} auf Cloud`
+      {/* Familienfreundlicher Sicherungsstatus mit explizitem manuellen Abgleich. */}
+      <div
+        className={`mb-4 rounded-2xl border p-3 ${
+          codeDenied
+            ? 'border-coral-500/40 bg-coral-500/10'
+            : pendingSync > 0
+              ? 'border-gold-500/40 bg-gold-500/10'
               : online
-                ? 'Mit Cloud synchronisiert · auf allen Geräten gleich'
-                : cloudEnabled
-                  ? 'Offline – nur dieses Gerät'
-                  : 'Lokal – nur dieses Gerät'}
-        </span>
+                ? 'border-mint-500/30 bg-mint-500/10'
+                : 'border-ink-700 bg-ink-900/40'
+        }`}
+        aria-live="polite"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
+                  loading
+                    ? 'animate-pulse bg-gold-500'
+                    : codeDenied
+                      ? 'bg-coral-400'
+                      : pendingSync > 0
+                        ? 'bg-gold-500'
+                        : online
+                          ? 'bg-mint-400'
+                          : 'bg-fog-600'
+                }`}
+              />
+              <span className="font-bold text-fog-100">
+                {loading
+                  ? 'Sicherung läuft…'
+                  : codeDenied
+                    ? 'Crew-Code prüfen'
+                    : pendingSync > 0
+                      ? 'Noch nicht alles gesichert'
+                      : online
+                        ? 'Alles gesichert'
+                        : cloudEnabled
+                          ? 'Gerade offline'
+                          : 'Nur auf diesem Gerät'}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-fog-400">
+              {games.length} {games.length === 1 ? 'Spiel' : 'Spiele'} auf diesem Gerät
+              {cloudCount !== null && <> · {cloudCount} in der Cloud</>}
+            </div>
+            <div className="mt-1 text-[11px] leading-relaxed text-fog-500">
+              {loading
+                ? 'Lokale und gemeinsame Spielstände werden abgeglichen.'
+                : codeDenied
+                  ? 'Der gespeicherte Crew-Code stimmt nicht. Deine lokalen Spiele bleiben erhalten.'
+                  : pendingSync > 0
+                    ? `${pendingSync} ${pendingSync === 1 ? 'Änderung ist' : 'Änderungen sind'} noch nur auf diesem Gerät.`
+                    : online
+                      ? 'Eure Spielstände sind auf allen Geräten gleich.'
+                      : cloudEnabled
+                        ? 'Sobald wieder Internet da ist, kannst du erneut sichern.'
+                        : 'Cloud-Sicherung ist auf diesem Gerät nicht eingerichtet.'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+            aria-label="Jetzt sichern"
+            className="shrink-0 rounded-xl border border-ink-600 bg-ink-800 px-3 py-2 text-xs font-bold text-fog-200 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Läuft…' : 'Jetzt sichern'}
+          </button>
+        </div>
+        {codeDenied && (
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="mt-3 w-full rounded-xl bg-coral-500/20 px-3 py-2 text-xs font-bold text-coral-300"
+          >
+            Crew-Code ändern
+          </button>
+        )}
       </div>
 
       {events.length > 0 && (

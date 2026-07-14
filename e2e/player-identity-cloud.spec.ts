@@ -33,13 +33,17 @@ test('pushes local player identities with versioned compare-and-swap', async ({ 
     preferredNames: { 'player-gabi': 'Gabi' },
   }
   let patchBody: { version?: number; payload?: unknown } | null = null
+  let gameReads = 0
   await seedCloudPage(page, localState)
 
   await page.route(`${SUPABASE}/rest/v1/**`, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (url.pathname.endsWith('/rpc/check_clique_code')) return json(route, true)
-    if (url.pathname.endsWith('/games')) return json(route, [])
+    if (url.pathname.endsWith('/games')) {
+      gameReads += 1
+      return json(route, [])
+    }
     if (!url.pathname.endsWith('/clique_state')) return json(route, { message: 'unexpected request' }, 404)
 
     if (request.method() === 'GET') {
@@ -68,7 +72,12 @@ test('pushes local player identities with versioned compare-and-swap', async ({ 
 
   await page.goto('/')
   await page.getByRole('button', { name: /Statistik/ }).click()
-  await expect(page.getByText('Mit Cloud synchronisiert · auf allen Geräten gleich')).toBeVisible()
+  await expect(page.getByText('Alles gesichert', { exact: true })).toBeVisible()
+  await expect(page.getByText('0 Spiele auf diesem Gerät · 0 in der Cloud', { exact: true })).toBeVisible()
+
+  const readsAfterOpen = gameReads
+  await page.getByRole('button', { name: 'Jetzt sichern' }).click()
+  await expect.poll(() => gameReads).toBeGreaterThan(readsAfterOpen)
 
   expect(patchBody).toEqual({ version: 2, payload: localState })
   await expect
@@ -100,5 +109,6 @@ test('shows a rotated or invalid clique code instead of claiming successful sync
 
   await page.goto('/')
   await page.getByRole('button', { name: /Statistik/ }).click()
-  await expect(page.getByText('Clique-Code ungültig – in Einstellungen erneuern')).toBeVisible()
+  await expect(page.getByText('Crew-Code prüfen', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Crew-Code ändern' })).toBeVisible()
 })

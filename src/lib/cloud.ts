@@ -283,6 +283,8 @@ export interface SyncResult {
   pending: number
   identityConflicts: number
   codeDenied: boolean
+  /** Anzahl bestätigter Spiele in der Cloud; null, wenn nicht verlässlich abrufbar. */
+  cloudCount: number | null
 }
 
 /**
@@ -300,6 +302,7 @@ export async function syncAndMerge(): Promise<SyncResult> {
       pending: Object.keys(initialPending).length + initialIdentityPending,
       identityConflicts: 0,
       codeDenied: false,
+      cloudCount: null,
     }
   }
 
@@ -312,6 +315,7 @@ export async function syncAndMerge(): Promise<SyncResult> {
       pending: Object.keys(initialPending).length + identity.pending,
       identityConflicts: identity.conflicts,
       codeDenied: identity.denied,
+      cloudCount: null,
     }
   }
 
@@ -357,5 +361,6 @@ export async function syncAndMerge(): Promise<SyncResult> {
     pending: Object.keys(pending).length + identity.pending + failedGameUploads,
     identityConflicts: identity.conflicts,
     codeDenied: identity.denied,
+    cloudCount: cloud.length,
   }
 }

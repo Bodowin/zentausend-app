@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const PREFS = {
   sound: false,
+  haptics: false,
   diceTheme: 'classic',
   defaultDiceMode: 'real',
   handoff: false,
@@ -167,6 +168,22 @@ test.describe('10.000 browser journeys', () => {
     await expect(page.getByText(/1 neu importiert · 1 gesamt/)).toBeVisible()
     await expect(page.getByText('E2E Backup', { exact: true })).toBeVisible()
     await expect(page.getByText('Gabi', { exact: true }).first()).toBeVisible()
+  })
+
+  test('stores haptic feedback as an optional device setting', async ({ page }) => {
+    await openCleanApp(page)
+    await page.getByRole('button', { name: 'Einstellungen' }).click()
+
+    const haptics = page.getByRole('switch', { name: 'Haptisches Feedback' })
+    await expect(haptics).toHaveAttribute('aria-checked', 'false')
+    await haptics.click()
+    await expect(haptics).toHaveAttribute('aria-checked', 'true')
+    await page.getByRole('button', { name: 'Speichern', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Einstellungen' })).toBeVisible()
+
+    await page.reload()
+    await page.getByRole('button', { name: 'Einstellungen' }).click()
+    await expect(page.getByRole('switch', { name: 'Haptisches Feedback' })).toHaveAttribute('aria-checked', 'true')
   })
 
   test('keeps the stable player id when a roster member is renamed', async ({ page }) => {
