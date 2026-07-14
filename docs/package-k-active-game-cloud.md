@@ -26,3 +26,4 @@ Ohne Netz bleibt der bestehende lokale Autosave vollständig funktionsfähig. Be
 - Unit-Tests decken neuer/lokaler Stand, fremdes Besitzergerät, unterschiedliche Sitzungen und Tombstones ab.
 - Browser-Tests decken die Übernahme auf einem neuen Gerät und die ausdrückliche Entscheidung zwischen zwei laufenden Spielen ab.
 - Datenbankänderung: idempotenter Seed der vorhandenen `clique_state`-Tabelle; keine neue Tabelle und keine gelockerten RLS-Regeln.
+- Vor dem Merge laufen dieselben Unit-, Build- und Browserprüfungen nochmals unabhängig auf dem bereinigten finalen PR-Head.
