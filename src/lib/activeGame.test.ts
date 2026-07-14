@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearActiveGame, loadActiveGame, parseActiveGame, saveActiveGame } from './activeGame'
 
 const base = {
+  sessionId: 'game-test-session',
   players: [
     { id: 'a', name: 'Bodo', score: 500, busts: 1 },
     { id: 'b', name: 'Dana', score: 350, busts: 0 },
@@ -26,8 +27,9 @@ const base = {
 }
 
 describe('parseActiveGame', () => {
-  it('behält das unveränderliche Ergebnis eines virtuellen Wurfs', () => {
+  it('behält Sitzungs-ID und unveränderliches Ergebnis eines virtuellen Wurfs', () => {
     const parsed = parseActiveGame(JSON.stringify(base))
+    expect(parsed?.sessionId).toBe('game-test-session')
     expect(parsed?.thrown).toEqual([2, 3, 4, 5, 6])
     expect(parsed?.dice).toEqual([5])
     expect(parsed?.rolled).toEqual([2, 3, 4, 6])
@@ -39,11 +41,14 @@ describe('parseActiveGame', () => {
     expect(parseActiveGame(JSON.stringify(corrupted))).toBeNull()
   })
 
-  it('akzeptiert Legacy-Stände ohne thrown für eine sichere Rekonstruktion', () => {
-    const { thrown: _thrown, throwSeq: _throwSeq, ...legacy } = base
-    const parsed = parseActiveGame(JSON.stringify(legacy))
+  it('akzeptiert Legacy-Stände ohne thrown und Sitzungs-ID für eine sichere Rekonstruktion', () => {
+    const { thrown: _thrown, throwSeq: _throwSeq, sessionId: _sessionId, ...legacy } = base
+    const raw = JSON.stringify(legacy)
+    const parsed = parseActiveGame(raw)
     expect(parsed).not.toBeNull()
     expect(parsed?.thrown).toEqual([])
+    expect(parsed?.sessionId).toMatch(/^legacy-/)
+    expect(parseActiveGame(raw)?.sessionId).toBe(parsed?.sessionId)
   })
 
   it('verwirft ungültige Spieler- und Rundendaten früh', () => {
