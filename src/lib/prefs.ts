@@ -12,6 +12,8 @@ export interface Prefs {
   sound: boolean
   /** Dezentes Vibrationsfeedback bei Spielaktionen; pro Gerät abschaltbar. */
   haptics: boolean
+  /** Optionales Schütteln des Geräts als Würfel-Geste; vermeidet standardmäßig Sensor-Prompts. */
+  shakeToRoll: boolean
   /** Optik der virtuellen Würfel. */
   diceTheme: DiceTheme
   /** Zuletzt genutzter Würfelmodus (Vorauswahl im Startbildschirm). */
@@ -28,6 +30,7 @@ export interface Prefs {
 const DEFAULTS: Prefs = {
   sound: true,
   haptics: false,
+  shakeToRoll: false,
   diceTheme: 'classic',
   defaultDiceMode: 'real',
   handoff: true,

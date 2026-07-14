@@ -20,9 +20,13 @@ import * as CANNON from 'cannon-es'
 import { useEffect, useRef, useState } from 'react'
 import { getPrefs, DICE_THEMES } from '../lib/prefs'
 import { PIPS } from '../lib/dicePips'
+import { buzz } from '../lib/haptics'
+import { createSeededRandom, mixSeed, seededSignedNoise } from '../lib/diceThrowSeed'
 
 type DiceArenaProps = {
   values: number[]
+  /** Stabiler Bewegungs-Seed; verändert nie die bereits gezogenen Augenzahlen. */
+  seed?: number
   /** Optionaler Abschluss-Hook, wenn die Würfel zur Ruhe gekommen sind. */
   onSettle?: () => void
   /** Erlaubt das Antippen der gelandeten Würfel zur Auswahl (Auslegen). */
@@ -175,22 +179,26 @@ type Attempt = { pos: V[][]; quat: Q[][]; impacts: Impact[]; topSlots: number[];
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
-function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: number; FIXED_DT: number; MAX_STEPS: number }): Attempt {
+function runAttempt(
+  n: number,
+  cfg: { h: number; Rb: number; y0: number; G: number; FIXED_DT: number; MAX_STEPS: number },
+  random: () => number,
+): Attempt {
   const { h, Rb, y0, G, FIXED_DT, MAX_STEPS } = cfg
   const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -G, 0) })
   world.allowSleep = true
   ;(world.solver as CANNON.GSSolver).iterations = 14
   world.broadphase = new CANNON.NaiveBroadphase()
   const ground = new CANNON.Material('g'), dieM = new CANNON.Material('d')
-  world.addContactMaterial(new CANNON.ContactMaterial(ground, dieM, { friction: 0.1, restitution: 0.3 }))
-  world.addContactMaterial(new CANNON.ContactMaterial(dieM, dieM, { friction: 0.06, restitution: 0.25 }))
-  world.defaultContactMaterial.friction = 0.1
+  world.addContactMaterial(new CANNON.ContactMaterial(ground, dieM, { friction: 0.16, restitution: 0.24 }))
+  world.addContactMaterial(new CANNON.ContactMaterial(dieM, dieM, { friction: 0.09, restitution: 0.18 }))
+  world.defaultContactMaterial.friction = 0.14
 
   const floor = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
   floor.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
   world.addBody(floor)
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2
     const nrm = new CANNON.Vec3(-Math.cos(a), 0.22, -Math.sin(a)); nrm.normalize()
     const w = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
     w.quaternion.setFromVectors(new CANNON.Vec3(0, 0, 1), nrm)
@@ -201,25 +209,33 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
   let curFrame = 0
   const impacts: Impact[] = []
   const bodies: CANNON.Body[] = []
+  const handX = (random() - 0.5) * Rb * 0.18
+  const commonSide = (random() - 0.5) * 0.8
+  const commonLift = 1.25 + random() * 0.45
+  const commonForward = 5.1 + random() * 0.8
+  const commonSpin = 19 + random() * 8
+  const center = (n - 1) / 2
   for (let i = 0; i < n; i++) {
     const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
-    b.sleepSpeedLimit = 0.15; b.sleepTimeLimit = 0.3; b.linearDamping = 0.01; b.angularDamping = 0.03
-    // Echter Wurf aus der Hand: die Würfel starten als Traube am vorderen Rand
-    // (nah beim Spieler, leicht über der Schale) …
+    b.sleepSpeedLimit = 0.12; b.sleepTimeLimit = 0.42; b.linearDamping = 0.025; b.angularDamping = 0.045
+    // Ein Wurf aus EINER Hand: gemeinsame Grundbewegung, dazu kleine individuelle
+    // Abweichungen und eine leichte zeitliche Staffelung durch die Abwurfhöhe.
+    const lane = i - center
     b.position.set(
-      (Math.random() - 0.5) * Rb * 0.45,
-      y0 * 0.55 + Math.random() * 0.8 + i * 0.3,
-      Rb * 0.6 + (Math.random() - 0.5) * 0.4,
+      handX + lane * h * 0.42 + (random() - 0.5) * h * 0.45,
+      y0 * 0.56 + i * 0.09 + random() * 0.32,
+      Rb * 0.58 + (random() - 0.5) * 0.22,
     )
-    b.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28)
-    // … und fliegen in einem flachen Bogen nach vorn in die Schale: Schwung
-    // Richtung Mitte, kaum Aufwärts-Toss, kräftiges Vorwärts-Tumbeln. Flach
-    // genug, dass sie optisch nie über den hinteren Schalenrand hinausschießen.
-    b.velocity.set((Math.random() - 0.5) * 2.4, 1.2 + Math.random() * 0.9, -(4.5 + Math.random() * 2))
+    b.quaternion.setFromEuler(random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2)
+    b.velocity.set(
+      commonSide + lane * 0.22 + (random() - 0.5) * 0.75,
+      commonLift + (random() - 0.5) * 0.35,
+      -(commonForward + (random() - 0.5) * 0.7),
+    )
     b.angularVelocity.set(
-      -(16 + Math.random() * 16),
-      (Math.random() - 0.5) * 12,
-      (Math.random() - 0.5) * 12,
+      -(commonSpin + (random() - 0.5) * 7),
+      (random() - 0.5) * 8 + lane * 0.7,
+      (random() - 0.5) * 9,
     )
     const idx = i
     b.addEventListener('collide', (e: { contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
@@ -232,6 +248,7 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
   const pos: V[][] = bodies.map(() => [])
   const quat: Q[][] = bodies.map(() => [])
   let restFrames = 0
+  let settled = false
   for (curFrame = 0; curFrame < MAX_STEPS; curFrame++) {
     world.step(FIXED_DT)
     for (let i = 0; i < n; i++) {
@@ -242,17 +259,19 @@ function runAttempt(n: number, cfg: { h: number; Rb: number; y0: number; G: numb
     const allSlow = bodies.every(
       (b) => b.sleepState === CANNON.Body.SLEEPING || (b.velocity.lengthSquared() < 0.02 && b.angularVelocity.lengthSquared() < 0.05),
     )
-    if (allSlow) { if (++restFrames > 10) break } else restFrames = 0
+    if (allSlow) {
+      if (++restFrames > 16) { settled = true; break }
+    } else restFrames = 0
   }
 
-  let cocked = false
+  let cocked = !settled
   const topSlots: number[] = []
   for (let i = 0; i < n; i++) {
     const last = quat[i].length - 1
     const q = quat[i][last]
     const { slot, dot } = topSlotFromQuat(q)
     topSlots.push(slot)
-    if (dot < 0.92) cocked = true
+    if (dot < 0.93) cocked = true
     // Auf einem anderen Würfel gestapelt? Ruht deutlich über dem Boden → neu würfeln.
     if (pos[i][last][1] > h * 1.7) cocked = true
   }
@@ -270,8 +289,11 @@ type Phase = 'ready' | 'rolling' | 'landed'
 // Wie weit ein ausgewählter Würfel zum Auslegen aus der Schale steigt (Bowl-Einheiten).
 const LIFT = 1.9
 
+let motionPermission: 'unknown' | 'granted' | 'denied' = 'unknown'
+
 export default function DiceArena({
   values,
+  seed = 0x6d2b79f5,
   onSettle,
   selectable = false,
   invalidValues = [],
@@ -359,9 +381,11 @@ export default function DiceArena({
       return () => clearTimeout(t)
     }
 
-    const cfg = { h, Rb, y0, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 600 }
-    let attempt = runAttempt(n, cfg)
-    for (let k = 0; k < 9 && attempt.cocked; k++) attempt = runAttempt(n, cfg)
+    const cfg = { h, Rb, y0, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 720 }
+    let attempt = runAttempt(n, cfg, createSeededRandom(mixSeed(seed, 0)))
+    for (let k = 1; k < 8 && attempt.cocked; k++) {
+      attempt = runAttempt(n, cfg, createSeededRandom(mixSeed(seed, k)))
+    }
 
     const labelings = attempt.topSlots.map((slot, i) => chooseLabeling(slot, vals[i]))
     attempt.impacts.sort((a, b) => a.frame - b.frame)
@@ -370,7 +394,7 @@ export default function DiceArena({
       frames: attempt.frames, S, sizePx, feltPx, FIXED_DT: cfg.FIXED_DT, camTilt, perspective,
     }
     setReady(true)
-  }, [values])
+  }, [values, seed])
 
   // --- „In der Hand": Würfel drehen sich an der Startposition, bis getippt wird. ---
   useEffect(() => {
@@ -399,7 +423,7 @@ export default function DiceArena({
   useEffect(() => {
     if (phase !== 'rolling') return
     const d = dataRef.current; if (!d) return
-    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.6
+    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.45
     const pulses = new Array(n).fill(0)
     let impactPtr = 0, raf = 0, shake = 0
     const start = performance.now()
@@ -421,7 +445,7 @@ export default function DiceArena({
         const im = d.impacts[impactPtr++]
         pulses[im.die] = Math.min(0.14, pulses[im.die] + im.intensity * 0.13)
         playClick(im.intensity)
-        navigator.vibrate?.(Math.round(4 + im.intensity * 10))
+        buzz(Math.round(4 + im.intensity * 10))
         shake = Math.min(5, shake + im.intensity * 3.5)
         // Staub nur bei Bodenkontakt (Würfel ist unten, nicht an der Wand).
         const ip = d.pos[im.die]?.[Math.min(im.frame, (d.pos[im.die]?.length ?? 1) - 1)]
@@ -434,7 +458,7 @@ export default function DiceArena({
       if (cam) {
         cam.style.transform =
           shake > 0.25
-            ? `translate(${(Math.random() - 0.5) * shake}px, ${(Math.random() - 0.5) * shake}px)`
+            ? `translate(${seededSignedNoise(seed, i0, 0) * shake}px, ${seededSignedNoise(seed, i0, 1) * shake}px)`
             : ''
         shake *= 0.85
       }
@@ -472,14 +496,26 @@ export default function DiceArena({
 
   // --- Schütteln zum Würfeln (DeviceMotion). iOS verlangt eine Erlaubnis, die
   // nur in einer User-Geste angefragt werden darf → beim ersten Wurf-Tipp.
-  const [motionOk, setMotionOk] = useState(false)
+  const motionEnabled = getPrefs().shakeToRoll
+  const [motionOk, setMotionOk] = useState(() => motionEnabled && motionPermission === 'granted')
   const requestMotion = () => {
+    if (!motionEnabled || motionPermission === 'denied') return
+    if (motionPermission === 'granted') { setMotionOk(true); return }
     try {
       const DM = window.DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> } | undefined
-      if (DM?.requestPermission) DM.requestPermission().then((r) => setMotionOk(r === 'granted')).catch(() => {})
-      else if ('DeviceMotionEvent' in window) setMotionOk(true)
+      if (DM?.requestPermission) {
+        DM.requestPermission()
+          .then((result) => {
+            motionPermission = result === 'granted' ? 'granted' : 'denied'
+            setMotionOk(motionPermission === 'granted')
+          })
+          .catch(() => { motionPermission = 'denied' })
+      } else if ('DeviceMotionEvent' in window) {
+        motionPermission = 'granted'
+        setMotionOk(true)
+      }
     } catch {
-      /* kein Sensor – ignorieren */
+      motionPermission = 'denied'
     }
   }
   useEffect(() => {
@@ -492,7 +528,7 @@ export default function DiceArena({
       const now = performance.now()
       if (mag > 14 && now - lastTrigger > 800) {
         lastTrigger = now
-        navigator.vibrate?.(20)
+        buzz(20)
         unlockDiceAudio()
         setPhase('rolling')
       }
@@ -504,7 +540,7 @@ export default function DiceArena({
   const handleTap = () => {
     if (phase === 'ready') {
       unlockDiceAudio() // erste Geste → Sound entsperren
-      requestMotion() // ab jetzt geht auch Handy-Schütteln
+      if (motionEnabled) requestMotion() // Sensorzugriff nur nach ausdrücklicher Aktivierung
       setPhase('rolling')
     } else if (phase === 'landed' && !selectable) onSettleRef.current?.()
   }
@@ -512,7 +548,7 @@ export default function DiceArena({
   // Einen gelandeten Würfel aus-/abwählen und die neue Auswahl melden.
   const toggleDie = (i: number) => {
     if (phase !== 'landed' || !selectable) return
-    navigator.vibrate?.(8)
+    buzz(8)
     unlockDiceAudio()
     playTap()
     // Kurzes Aufblitzen des angetippten Würfels.
@@ -596,7 +632,9 @@ export default function DiceArena({
       {(phase === 'ready' || (phase === 'landed' && !selectable)) && (
         <button className="da-tap" onClick={handleTap} aria-label={phase === 'ready' ? 'Würfeln' : 'Weiter'} />
       )}
-      {phase === 'ready' && <div className="da-hint">{motionOk ? 'Tippen oder schütteln' : 'Tippen zum Würfeln'}</div>}
+      {phase === 'ready' && (
+        <div className="da-hint">{motionEnabled && motionOk ? 'Tippen oder schütteln' : 'Tippen zum Würfeln'}</div>
+      )}
       {phase === 'landed' && selectable && <div className="da-hint">Würfel antippen, die zählen</div>}
       {phase === 'landed' && !selectable && <div className="da-hint">Tippen für weiter</div>}
     </div>
