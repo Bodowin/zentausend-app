@@ -1,26 +1,24 @@
 name: Apply natural dice on main
 
-# Einmaliger Main-Trigger: Produktcode wird erst nach vollständig grünen Tests committed.
 on:
-  push:
+  pull_request:
     branches:
       - main
-    paths:
-      - .github/workflows/apply-natural-dice-main.yml
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   patch-test-build-e2e:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.head_ref == 'chatgpt/natural-dice-validated'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout main
+      - name: Checkout validation branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: chatgpt/natural-dice-validated
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -97,7 +95,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/package-i-workflow-diagnostic.md
           git commit -m "Record package I workflow diagnostic"
-          git push origin HEAD:main
+          git push origin HEAD:chatgpt/natural-dice-validated
           exit 1
 
       - name: Remove one-time machinery
@@ -111,4 +109,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/lib/diceThrowSeed.ts src/lib/diceThrowSeed.test.ts src/lib/prefs.ts src/components/SettingsModal.tsx src/components/GameScreen.tsx src/components/DiceArena.tsx src/naturalDiceWiring.test.ts e2e/app.spec.ts docs/package-i-natural-dice.md
           git commit -m "Make virtual dice motion natural and sensor prompts optional"
-          git push origin HEAD:main
+          git push origin HEAD:chatgpt/natural-dice-validated
