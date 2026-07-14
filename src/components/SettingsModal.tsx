@@ -113,6 +113,23 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             </span>
           </button>
 
+          <button
+            type="button"
+            role="switch"
+            aria-label="Schütteln zum Würfeln"
+            aria-checked={prefs.shakeToRoll}
+            onClick={() => updatePrefs({ shakeToRoll: !prefs.shakeToRoll })}
+            className="mt-4 flex w-full items-center justify-between"
+          >
+            <span className="flex flex-col text-left">
+              <span className="text-sm font-bold text-fog-200">Schütteln zum Würfeln</span>
+              <span className="text-[11px] text-fog-500">Optional · kann einmalig Sensorzugriff anfragen</span>
+            </span>
+            <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.shakeToRoll ? 'bg-mint-500' : 'bg-ink-600'}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${prefs.shakeToRoll ? 'left-[26px]' : 'left-1'}`} />
+            </span>
+          </button>
+
           {/* „X ist dran"-Übergabe */}
           <button
             type="button"

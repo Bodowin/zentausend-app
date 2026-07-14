@@ -6,6 +6,7 @@ import { playerColor } from '../lib/colors'
 import { getPrefs } from '../lib/prefs'
 import { computeGameAnalysis } from '../lib/storage'
 import { PIPS } from '../lib/dicePips'
+import { diceThrowSeed } from '../lib/diceThrowSeed'
 import { GameChart } from './GameChart'
 import {
   IconCheck,
@@ -158,6 +159,18 @@ export function GameScreen(p: Props) {
   // macht diese Augenzahl zur Rettung – das hebt der „Pasch"-Hinweis hervor.
   // Gemeinsame y-Skala für die Mini-Punktekurven (höchster Punktestand).
   const maxScore = Math.max(1, ...players.map((pl) => pl.score))
+  const throwMotionSeed = useMemo(
+    () =>
+      diceThrowSeed({
+        values: thrown,
+        round,
+        playerIndex: idx,
+        turnCount: turns.length,
+        keptCount: kept.length,
+        accumulated,
+      }),
+    [thrown, round, idx, turns.length, kept.length, accumulated],
+  )
   const showMiniChart = getPrefs().miniChart
   const laidOut = [...kept, ...dice]
   const laidGroups = [1, 2, 3, 4, 5, 6]
@@ -695,6 +708,7 @@ export function GameScreen(p: Props) {
                   <DiceArena
                     key={throwSeq}
                     values={thrown}
+                    seed={throwMotionSeed}
                     selectable
                     invalidValues={result.invalidDice}
                     onSelectionChange={p.onBowlSelect}
