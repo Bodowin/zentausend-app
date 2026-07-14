@@ -218,4 +218,76 @@ test.describe('10.000 browser journeys', () => {
       )
       .toBe('player:name:gabi')
   })
+
+  test('protects a running game before another one is started', async ({ page }) => {
+    const activeGame = {
+      players: [
+        { id: 'player:name:gabi', name: 'Gabi', score: 850, busts: 1 },
+        { id: 'player:name:mabi', name: 'Mabi', score: 500, busts: 0 },
+      ],
+      idx: 1,
+      round: 3,
+      phase: 'active',
+      target: 0,
+      event: 'Familienabend',
+      testMode: false,
+      diceMode: 'real',
+      goalScore: 10000,
+      entryMin: 350,
+      kept: [],
+      dice: [],
+      accumulated: 0,
+      turns: [],
+      rolled: [],
+      thrown: [],
+      throwSeq: 0,
+      savedAt: '2026-07-14T08:00:00.000Z',
+    }
+    await openCleanApp(page, { '10k_active_game': JSON.stringify(activeGame) })
+    await choosePlayers(page)
+
+    await page.getByRole('button', { name: 'Spiel starten · 2 Spieler' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Laufendes Spiel ersetzen?' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Altes Spiel fortsetzen' }).click()
+
+    await expect(page.getByText('Runde 3', { exact: true })).toBeVisible()
+    await expect(page.locator('[aria-current="true"]')).toContainText('Mabi')
+  })
+
+  test('restores a safety copy when the main active-game value is damaged', async ({ page }) => {
+    const activeGame = {
+      players: [
+        { id: 'player:name:gabi', name: 'Gabi', score: 1200, busts: 0 },
+        { id: 'player:name:mabi', name: 'Mabi', score: 900, busts: 2 },
+      ],
+      idx: 0,
+      round: 4,
+      phase: 'active',
+      target: 0,
+      event: 'Recovery Test',
+      testMode: true,
+      diceMode: 'real',
+      goalScore: 5000,
+      entryMin: 0,
+      kept: [],
+      dice: [],
+      accumulated: 0,
+      turns: [],
+      rolled: [],
+      thrown: [],
+      throwSeq: 0,
+      savedAt: '2026-07-14T08:30:00.000Z',
+    }
+    await openCleanApp(page, {
+      '10k_active_game': '{broken',
+      '10k_active_game_recovery_v1': JSON.stringify([JSON.stringify(activeGame)]),
+    })
+
+    await expect(page.getByText('Sicherheitskopie wiederhergestellt', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: /Spiel fortsetzen/ }).click()
+    await expect(page.getByText('Runde 4', { exact: true })).toBeVisible()
+    await expect(page.locator('[aria-current="true"]')).toContainText('Gabi')
+  })
+
 })

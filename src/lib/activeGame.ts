@@ -1,6 +1,9 @@
 import type { DiceMode, GameState, Player, Turn } from './types'
 
 const KEY = '10k_active_game'
+const RECOVERY_KEY = '10k_active_game_recovery_v1'
+const CORRUPT_KEY = '10k_active_game_corrupt_v1'
+const RECOVERY_LIMIT = 3
 
 /** Vollständiger Zustand eines laufenden Spiels, um es später fortzusetzen. */
 export interface ActiveGame {
@@ -26,14 +29,8 @@ export interface ActiveGame {
   /** Sequenznummer zum frischen Mounten der Würfelschale. */
   throwSeq?: number
   savedAt: string
-}
-
-export function saveActiveGame(game: ActiveGame): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(game))
-  } catch {
-    /* ignore */
-  }
+  /** Nur zur Anzeige: Der Hauptstand war beschädigt und wurde aus einer Sicherung repariert. */
+  recoveredFromBackup?: boolean
 }
 
 const isDie = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 6
@@ -75,6 +72,46 @@ function sameDiceBag(a: number[], b: number[]): boolean {
   const aa = sort(a)
   const bb = sort(b)
   return aa.every((v, i) => v === bb[i])
+}
+
+function readRecoveryRaws(): string[] {
+  try {
+    const raw = localStorage.getItem(RECOVERY_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function persistable(game: ActiveGame): Omit<ActiveGame, 'recoveredFromBackup'> {
+  const { recoveredFromBackup: _recovered, ...stored } = game
+  return stored
+}
+
+/**
+ * Speichert den aktuellen Stand und rotiert vorherige, gültige Versionen als
+ * lokale Sicherheitskopien. Maximal drei Stände bleiben erhalten.
+ */
+export function saveActiveGame(game: ActiveGame): void {
+  const nextRaw = JSON.stringify(persistable(game))
+
+  try {
+    const previousRaw = localStorage.getItem(KEY)
+    if (previousRaw && previousRaw !== nextRaw && parseActiveGame(previousRaw)) {
+      const backups = [previousRaw, ...readRecoveryRaws().filter((raw) => raw !== previousRaw)]
+      localStorage.setItem(RECOVERY_KEY, JSON.stringify(backups.slice(0, RECOVERY_LIMIT)))
+    }
+  } catch {
+    /* Sicherungsrotation darf den primären Autosave nie verhindern. */
+  }
+
+  try {
+    localStorage.setItem(KEY, nextRaw)
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -143,17 +180,48 @@ export function parseActiveGame(raw: string | null): ActiveGame | null {
   }
 }
 
+/**
+ * Liest den Hauptstand. Ist er beschädigt, wird das Original separat gesichert
+ * und die jüngste gültige Sicherheitskopie automatisch wiederhergestellt.
+ * Ohne Hauptstand erfolgt bewusst keine Wiederherstellung, damit ein absichtlich
+ * verworfenes Spiel nicht erneut auftaucht.
+ */
 export function loadActiveGame(): ActiveGame | null {
   try {
-    return parseActiveGame(localStorage.getItem(KEY))
+    const raw = localStorage.getItem(KEY)
+    if (!raw) return null
+
+    const current = parseActiveGame(raw)
+    if (current) return current
+
+    try {
+      localStorage.setItem(CORRUPT_KEY, raw)
+    } catch {
+      /* Diagnosekopie ist best effort. */
+    }
+
+    for (const candidate of readRecoveryRaws()) {
+      const restored = parseActiveGame(candidate)
+      if (!restored) continue
+      try {
+        localStorage.setItem(KEY, candidate)
+      } catch {
+        /* Anzeige ist auch möglich, wenn das Zurückschreiben fehlschlägt. */
+      }
+      return { ...restored, recoveredFromBackup: true }
+    }
+    return null
   } catch {
     return null
   }
 }
 
+/** Bewusstes Verwerfen entfernt Hauptstand, Sicherungen und Diagnosekopie. */
 export function clearActiveGame(): void {
   try {
     localStorage.removeItem(KEY)
+    localStorage.removeItem(RECOVERY_KEY)
+    localStorage.removeItem(CORRUPT_KEY)
   } catch {
     /* ignore */
   }

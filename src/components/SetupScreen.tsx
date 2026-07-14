@@ -49,6 +49,17 @@ interface Props {
 const GOAL_PRESETS = [5000, 10000, 15000]
 const ENTRY_PRESETS = [0, 350, 500, 1000]
 
+const formatResumeTime = (savedAt: string) => {
+  const date = new Date(savedAt)
+  if (Number.isNaN(date.getTime())) return 'Zeitpunkt unbekannt'
+  return new Intl.DateTimeFormat('de-AT', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
 export function SetupScreen({
   makePlayer,
   onStart,
@@ -77,6 +88,8 @@ export function SetupScreen({
   const [entryMin, setEntryMin] = useState(initialEntryMin ?? 350)
   const [optsOpen, setOptsOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [startConflictOpen, setStartConflictOpen] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
   const [codeDismissed, setCodeDismissed] = useState(() => {
     try {
       return !!localStorage.getItem(CODE_DISMISS_KEY)
@@ -121,6 +134,19 @@ export function SetupScreen({
     setCodeDismissed(true)
   }
 
+  const startConfiguredGame = () => {
+  setPrefs({ lastEvent: event.trim() })
+  onStart(players, event, testMode, diceMode, goalScore, entryMin)
+}
+
+const requestStart = () => {
+  if (resumable) {
+    setStartConflictOpen(true)
+    return
+  }
+  startConfiguredGame()
+}
+
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 pt-[max(env(safe-area-inset-top),1.25rem)]">
       <header className="mb-7 mt-2 flex items-center justify-between animate-rise">
@@ -154,6 +180,84 @@ export function SetupScreen({
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
+      {startConflictOpen && resumable && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4" role="presentation">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Laufendes Spiel ersetzen?"
+            className="w-full max-w-sm rounded-3xl border border-gold-500/40 bg-ink-900 p-5 shadow-2xl"
+          >
+            <h2 className="text-lg font-black text-fog-100">Laufendes Spiel ersetzen?</h2>
+            <p className="mt-2 text-sm leading-relaxed text-fog-400">
+              Runde {resumable.round} mit {resumable.players.map((player) => player.name).join(', ')} ist noch gespeichert.
+              Ein neues Spiel ersetzt diesen Stand und seine Sicherheitskopien.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setStartConflictOpen(false)
+                onResume(resumable)
+              }}
+              className="mt-5 w-full rounded-xl bg-gold-500 px-4 py-3 font-bold text-ink-950"
+            >
+              Altes Spiel fortsetzen
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStartConflictOpen(false)
+                onDiscardResume()
+                startConfiguredGame()
+              }}
+              className="mt-2 w-full rounded-xl border border-coral-500/40 bg-coral-500/10 px-4 py-3 font-bold text-coral-300"
+            >
+              Neues Spiel starten
+            </button>
+            <button
+              type="button"
+              onClick={() => setStartConflictOpen(false)}
+              className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-fog-500"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {discardOpen && resumable && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4" role="presentation">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Laufendes Spiel verwerfen?"
+            className="w-full max-w-sm rounded-3xl border border-coral-500/40 bg-ink-900 p-5 shadow-2xl"
+          >
+            <h2 className="text-lg font-black text-fog-100">Laufendes Spiel verwerfen?</h2>
+            <p className="mt-2 text-sm leading-relaxed text-fog-400">
+              Der aktuelle Stand und alle drei lokalen Sicherheitskopien werden gelöscht.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDiscardOpen(false)
+                onDiscardResume()
+              }}
+              className="mt-5 w-full rounded-xl bg-coral-500 px-4 py-3 font-bold text-white"
+            >
+              Endgültig verwerfen
+            </button>
+            <button
+              type="button"
+              onClick={() => setDiscardOpen(false)}
+              className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-fog-400"
+            >
+              Spiel behalten
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Einmaliger Hinweis: Clique-Code eingeben, um die Cloud-Sync zu aktivieren. */}
       {needsCode && (
         <div className="mb-5 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
@@ -177,28 +281,37 @@ export function SetupScreen({
       )}
 
       {resumable && (
-        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
-          <button onClick={() => onResume(resumable)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-500/20 text-gold-400">
-              <IconRefresh className="h-5 w-5" />
-            </span>
-            <span className="flex min-w-0 flex-col">
-              <span className="font-bold text-fog-100">Spiel fortsetzen</span>
-              <span className="truncate text-xs text-fog-400">
-                Runde {resumable.round} · {resumable.players.map((p) => p.name).join(', ')}
-                {resumable.testMode ? ' · TEST' : ''}
+        <div className="mb-5 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
+          {resumable.recoveredFromBackup && (
+            <div className="mb-3 rounded-xl border border-mint-500/30 bg-mint-500/10 px-3 py-2 text-xs font-bold text-mint-300">
+              Sicherheitskopie wiederhergestellt
+            </div>
+          )}
+          <div className="flex items-start gap-3">
+            <button onClick={() => onResume(resumable)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-500/20 text-gold-400">
+                <IconRefresh className="h-5 w-5" />
               </span>
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              if (window.confirm('Laufendes Spiel verwerfen? Der Spielstand geht verloren.')) onDiscardResume()
-            }}
-            className="shrink-0 p-1.5 text-fog-600 transition-colors hover:text-coral-400"
-            aria-label="Laufendes Spiel verwerfen"
-          >
-            <IconX />
-          </button>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="font-bold text-fog-100">Spiel fortsetzen</span>
+                <span className="mt-0.5 text-xs text-fog-400">
+                  Runde {resumable.round} · {resumable.players[resumable.idx]?.name ?? 'Unbekannt'} ist dran
+                  {resumable.testMode ? ' · TEST' : ''}
+                </span>
+                <span className="mt-1 truncate text-[11px] text-fog-500">
+                  {resumable.players.map((player) => player.name + ' ' + player.score.toLocaleString('de-DE')).join(' · ')}
+                </span>
+                <span className="mt-1 text-[10px] text-fog-600">Gespeichert: {formatResumeTime(resumable.savedAt)}</span>
+              </span>
+            </button>
+            <button
+              onClick={() => setDiscardOpen(true)}
+              className="shrink-0 p-1.5 text-fog-600 transition-colors hover:text-coral-400"
+              aria-label="Laufendes Spiel verwerfen"
+            >
+              <IconX />
+            </button>
+          </div>
         </div>
       )}
 
@@ -269,7 +382,7 @@ export function SetupScreen({
               {roster.map((name) => {
                 const i = players.findIndex((p) => p.name === name)
                 const active = i >= 0
-                return (
+  return (
                   <button
                     key={name}
                     onClick={() => (active ? removeAt(i) : add(name))}
@@ -499,10 +612,7 @@ export function SetupScreen({
           ))}
         </div>
         <button
-          onClick={() => {
-            setPrefs({ lastEvent: event.trim() })
-            onStart(players, event, testMode, diceMode, goalScore, entryMin)
-          }}
+          onClick={requestStart}
           disabled={players.length < 2}
           className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
         >
