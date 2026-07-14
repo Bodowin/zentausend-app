@@ -100,7 +100,7 @@ jobs:
 
       - name: Remove one-time machinery
         if: steps.e2e.outcome == 'success'
-        run: git rm -f scripts/apply-natural-dice-main.mjs .github/workflows/apply-natural-dice-main.yml docs/package-i-workflow-diagnostic.md
+        run: git rm -f --ignore-unmatch scripts/apply-natural-dice-main.mjs .github/workflows/apply-natural-dice-main.yml docs/package-i-workflow-diagnostic.md
 
       - name: Commit validated natural dice update
         if: steps.e2e.outcome == 'success'
