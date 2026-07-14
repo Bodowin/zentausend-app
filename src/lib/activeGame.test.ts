@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { parseActiveGame } from './activeGame'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearActiveGame, loadActiveGame, parseActiveGame, saveActiveGame } from './activeGame'
 
 const base = {
   players: [
@@ -50,5 +50,56 @@ describe('parseActiveGame', () => {
     expect(parseActiveGame(JSON.stringify({ ...base, idx: 9 }))).toBeNull()
     expect(parseActiveGame(JSON.stringify({ ...base, round: 0 }))).toBeNull()
     expect(parseActiveGame(JSON.stringify({ ...base, players: [{ id: '', name: '', score: -1, busts: -1 }] }))).toBeNull()
+  })
+})
+
+
+describe('active game recovery', () => {
+  beforeEach(() => {
+    const values = new Map<string, string>()
+    const storage = {
+      get length() { return values.size },
+      clear: () => values.clear(),
+      getItem: (key: string) => values.get(key) ?? null,
+      key: (index: number) => [...values.keys()][index] ?? null,
+      removeItem: (key: string) => { values.delete(key) },
+      setItem: (key: string, value: string) => { values.set(key, value) },
+    } satisfies Storage
+    vi.stubGlobal('localStorage', storage)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('rotates at most three valid safety copies', () => {
+    for (let round = 1; round <= 5; round++) {
+      saveActiveGame({ ...base, round, savedAt: '2026-07-13T12:0' + round + ':00.000Z' })
+    }
+
+    const backups = JSON.parse(localStorage.getItem('10k_active_game_recovery_v1') || '[]') as string[]
+    expect(backups).toHaveLength(3)
+    expect(backups.map((raw) => JSON.parse(raw).round)).toEqual([4, 3, 2])
+  })
+
+  it('restores the newest valid copy when the primary value is damaged', () => {
+    const validRaw = JSON.stringify(base)
+    localStorage.setItem('10k_active_game', '{broken')
+    localStorage.setItem('10k_active_game_recovery_v1', JSON.stringify([validRaw]))
+
+    const restored = loadActiveGame()
+
+    expect(restored?.round).toBe(2)
+    expect(restored?.recoveredFromBackup).toBe(true)
+    expect(localStorage.getItem('10k_active_game')).toBe(validRaw)
+    expect(localStorage.getItem('10k_active_game_corrupt_v1')).toBe('{broken')
+  })
+
+  it('does not resurrect an intentionally discarded game', () => {
+    saveActiveGame(base)
+    saveActiveGame({ ...base, round: 3 })
+    clearActiveGame()
+
+    expect(loadActiveGame()).toBeNull()
+    expect(localStorage.getItem('10k_active_game_recovery_v1')).toBeNull()
+    expect(localStorage.getItem('10k_active_game_corrupt_v1')).toBeNull()
   })
 })
