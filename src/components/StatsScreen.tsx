@@ -19,6 +19,7 @@ import { IconBack, IconChart, IconPencil, IconTrash, IconTrophy } from './Icons'
 import { SettingsModal } from './SettingsModal'
 import { AnalysisScreen } from './AnalysisScreen'
 import { PlayerManager } from './PlayerManager'
+import { PlayerProfileScreen } from './PlayerProfileScreen'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
 
@@ -39,6 +40,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [showPlayers, setShowPlayers] = useState(false)
   const [focusAdmin, setFocusAdmin] = useState(false)
   const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null)
+  const [profileId, setProfileId] = useState<string | null>(null)
   // Nachträglich den Anlass eines Spiels bearbeiten (z. B. vergessen zu setzen
   // oder Tippfehler korrigieren) – hält Spiel + Eingabefeld-Wert getrennt vom
   // eigentlichen Spiel-Objekt, bis gespeichert wird.
@@ -151,6 +153,17 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       else if (result === 'denied') flash('Lokal gespeichert · Clique-Code prüfen.')
       else flash('Lokal gespeichert · wird später synchronisiert.')
     })
+  }
+
+  if (profileId) {
+    return (
+      <PlayerProfileScreen
+        playerId={profileId}
+        games={games}
+        event={filter || undefined}
+        onBack={() => setProfileId(null)}
+      />
+    )
   }
 
   if (analysisGame) {
@@ -493,9 +506,12 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             <DuelSection players={stats.map((s) => ({ id: s.id, name: s.name }))} games={games} event={filter || undefined} />
           )}
 
-          {/* Ewige Bestenliste */}
+          {/* Ewige Bestenliste und Einstieg in persönliche Profile */}
           <section className="mb-6">
-            <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">Ewige Bestenliste</h2>
+            <div className="mb-2 flex items-end justify-between gap-3">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-fog-500">Ewige Bestenliste</h2>
+              <span className="text-[10px] text-fog-600">Antippen für Profil</span>
+            </div>
             <div className="overflow-hidden rounded-2xl border border-ink-700/80 bg-ink-850/80">
               <div className="grid grid-cols-[1.6fr_0.6fr_0.6fr_0.9fr] gap-2 border-b border-ink-800 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-fog-600">
                 <span>Spieler</span>
@@ -504,21 +520,24 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
                 <span className="text-right">Bestwert</span>
               </div>
               {stats.map((s, i) => (
-                <div
+                <button
+                  type="button"
                   key={s.id}
-                  className="grid grid-cols-[1.6fr_0.6fr_0.6fr_0.9fr] items-center gap-2 border-b border-ink-800/60 px-4 py-2.5 text-sm last:border-0"
+                  onClick={() => setProfileId(s.id)}
+                  aria-label={'Profil von ' + s.name + ' öffnen'}
+                  className="grid w-full grid-cols-[1.6fr_0.6fr_0.6fr_0.9fr] items-center gap-2 border-b border-ink-800/60 px-4 py-2.5 text-left text-sm transition-colors last:border-0 hover:bg-ink-800/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold-500/60"
                 >
-                  <span className="flex items-center gap-2 font-semibold text-fog-100">
+                  <span className="flex min-w-0 items-center gap-2 font-semibold text-fog-100">
                     <span className="w-4 shrink-0 text-center text-xs">
                       {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-fog-600">{i + 1}</span>}
                     </span>
-                    {s.name}
-                    <span className="text-[10px] font-normal text-fog-600">{s.games} Sp.</span>
+                    <span className="truncate">{s.name}</span>
+                    <span className="shrink-0 text-[10px] font-normal text-fog-600">{s.games} Sp.</span>
                   </span>
                   <span className="text-right font-mono font-bold text-gold-400">{s.wins}</span>
                   <span className="text-right font-mono text-coral-400">{s.bustRate.toFixed(1)}</span>
                   <span className="text-right font-mono text-fog-300">{fmt(s.bestScore)}</span>
-                </div>
+                </button>
               ))}
             </div>
           </section>

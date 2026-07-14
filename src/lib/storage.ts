@@ -261,7 +261,9 @@ export function getEvents(history = getHistory()): string[] {
  */
 export function aggregateStats(history = getHistory(), event?: string): PlayerStats[] {
   const games = event ? history.filter((g) => g.event === event) : history
-  const names = identityNameMap(games)
+  // Der Anlassfilter ändert nur die Kennzahlen. Der Anzeigename kommt immer
+  // aus dem vollständigen Verlauf, damit alte Events nicht auf alte Namen zurückfallen.
+  const names = identityNameMap(history)
   const map = new Map<string, PlayerStats>()
 
   for (const game of games) {
