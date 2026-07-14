@@ -1,6 +1,6 @@
 name: Apply family sync on main
 
-# Einmaliger Merge-Trigger: Produktcode wird erst nach vollständig grünen Tests committed.
+# Korrigierter Einmal-Trigger: Produktcode wird erst nach vollständig grünen Tests committed.
 on:
   push:
     branches:
@@ -72,7 +72,6 @@ jobs:
       - name: Record safe diagnostic
         if: steps.patch.outcome == 'failure' || steps.unit.outcome == 'failure' || steps.build.outcome == 'failure' || steps.chromium.outcome == 'failure' || steps.e2e.outcome == 'failure'
         run: |
-          cp /tmp/package-h-*.log /tmp/ 2>/dev/null || true
           git reset --hard HEAD
           git clean -fd
           mkdir -p docs
@@ -103,7 +102,7 @@ jobs:
 
       - name: Remove one-time machinery
         if: steps.e2e.outcome == 'success'
-        run: git rm -f scripts/apply-family-sync-main.mjs .github/workflows/apply-family-sync-main.yml
+        run: git rm -f scripts/apply-family-sync-main.mjs .github/workflows/apply-family-sync-main.yml docs/package-h-workflow-diagnostic.md
 
       - name: Commit validated main update
         if: steps.e2e.outcome == 'success'
