@@ -31,28 +31,82 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate guarded patch
-        run: node --check scripts/apply-family-sync-main.mjs
-
-      - name: Apply family sync
-        run: node scripts/apply-family-sync-main.mjs
+      - name: Validate and apply guarded patch
+        id: patch
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node --check scripts/apply-family-sync-main.mjs 2>&1 | tee /tmp/package-h-patch.log
+          node scripts/apply-family-sync-main.mjs 2>&1 | tee -a /tmp/package-h-patch.log
 
       - name: Unit tests
-        run: npm test
+        id: unit
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/package-h-unit.log
 
       - name: Production build
-        run: npm run build
+        id: build
+        if: steps.patch.outcome == 'success' && steps.unit.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/package-h-build.log
 
       - name: Install Chromium
+        id: chromium
+        if: steps.patch.outcome == 'success' && steps.unit.outcome == 'success' && steps.build.outcome == 'success'
+        continue-on-error: true
         run: npx playwright install --with-deps chromium
 
       - name: Browser journeys
-        run: npm run test:e2e
+        id: e2e
+        if: steps.chromium.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee /tmp/package-h-e2e.log
+
+      - name: Record safe diagnostic
+        if: steps.patch.outcome == 'failure' || steps.unit.outcome == 'failure' || steps.build.outcome == 'failure' || steps.chromium.outcome == 'failure' || steps.e2e.outcome == 'failure'
+        run: |
+          cp /tmp/package-h-*.log /tmp/ 2>/dev/null || true
+          git reset --hard HEAD
+          git clean -fd
+          mkdir -p docs
+          {
+            echo '# Paket H – Workflow-Diagnose'
+            echo
+            echo "Patch: ${{ steps.patch.outcome }}"
+            echo "Unit: ${{ steps.unit.outcome }}"
+            echo "Build: ${{ steps.build.outcome }}"
+            echo "Chromium: ${{ steps.chromium.outcome }}"
+            echo "E2E: ${{ steps.e2e.outcome }}"
+            for file in /tmp/package-h-patch.log /tmp/package-h-unit.log /tmp/package-h-build.log /tmp/package-h-e2e.log; do
+              if [ -f "$file" ]; then
+                echo
+                echo "## $(basename "$file")"
+                echo '```text'
+                tail -n 120 "$file"
+                echo '```'
+              fi
+            done
+          } > docs/package-h-workflow-diagnostic.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/package-h-workflow-diagnostic.md
+          git commit -m "Record package H workflow diagnostic"
+          git push origin HEAD:main
+          exit 1
 
       - name: Remove one-time machinery
+        if: steps.e2e.outcome == 'success'
         run: git rm -f scripts/apply-family-sync-main.mjs .github/workflows/apply-family-sync-main.yml
 
       - name: Commit validated main update
+        if: steps.e2e.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
