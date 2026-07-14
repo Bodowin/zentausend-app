@@ -1,7 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DiceMode, GameState, Player, Turn } from './lib/types'
 import {
   clearActiveGame,
+  createActiveGameSessionId,
   loadActiveGame,
   saveActiveGame,
   type ActiveGame,
@@ -17,6 +18,15 @@ import { SetupScreen } from './components/SetupScreen'
 import { IntroScreen } from './components/IntroScreen'
 import { Celebration, type CelebrationData } from './components/Celebration'
 import { celebrationFor } from './lib/celebration'
+import {
+  clearCloudActiveGame,
+  inspectActiveGameCloud,
+  replaceCloudActiveGame,
+  syncActiveGameToCloud,
+  takeOverCloudActiveGame,
+  type ActiveGameCloudPrompt,
+} from './lib/activeGameCloud'
+import { CloudGameDialog } from './components/CloudGameDialog'
 
 const GameScreen = lazy(() =>
   import('./components/GameScreen').then((module) => ({ default: module.GameScreen })),
@@ -79,6 +89,7 @@ export function App() {
   const [diceMode, setDiceMode] = useState<DiceMode>('real')
   const [goalScore, setGoalScore] = useState(WINNING_SCORE)
   const [entryMin, setEntryMin] = useState(ENTRY_MIN)
+  const [sessionId, setSessionId] = useState('')
   const [setupSeed, setSetupSeed] = useState<{
     players: Player[]
     event: string
@@ -100,6 +111,11 @@ export function App() {
   const [bustAnnounce, setBustAnnounce] = useState<BustAnnounce | null>(null)
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const [resumable, setResumable] = useState<ActiveGame | null>(() => loadActiveGame())
+  const initialResume = useRef(resumable)
+  const [cloudPrompt, setCloudPrompt] = useState<ActiveGameCloudPrompt | null>(null)
+  const [cloudBusy, setCloudBusy] = useState(false)
+  const cloudSyncGeneration = useRef(0)
+  const dismissedCloudVersion = useRef<number | null>(null)
 
   const [showIntro, setShowIntro] = useState(() => {
     try {
@@ -118,15 +134,32 @@ export function App() {
     setShowIntro(false)
   }
 
+  useEffect(() => {
+    let cancelled = false
+    void inspectActiveGameCloud(initialResume.current).then((prompt) => {
+      if (!cancelled && prompt && dismissedCloudVersion.current !== prompt.snapshot.version) {
+        setCloudPrompt(prompt)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const combined = useMemo(() => [...kept, ...dice], [kept, dice])
   const result = useMemo(() => calculateScore(combined), [combined])
   const inHand = 6 - kept.length
 
   // Das sichtbare Ergebnis eines virtuellen Wurfs wird gemeinsam mit Auswahl
   // und Restmenge gespeichert. Ein Reload kann dadurch keinen neuen Wurf ziehen.
+  // Dieselbe validierte Momentaufnahme wird kurz verzögert zusätzlich per CAS in
+  // der Cloud gesichert. Ein fremder Gerätebesitzer wird niemals überschrieben.
   useEffect(() => {
-    if (view !== 'game' || (phase !== 'active' && phase !== 'lastChance')) return
-    saveActiveGame({
+    const generation = ++cloudSyncGeneration.current
+    if (view !== 'game' || (phase !== 'active' && phase !== 'lastChance') || !sessionId) return
+
+    const snapshot: ActiveGame = {
+      sessionId,
       players,
       idx,
       round,
@@ -145,9 +178,22 @@ export function App() {
       thrown,
       throwSeq,
       savedAt: new Date().toISOString(),
-    })
+    }
+    saveActiveGame(snapshot)
+
+    const timer = window.setTimeout(() => {
+      void syncActiveGameToCloud(snapshot).then((result) => {
+        if (cloudSyncGeneration.current !== generation) return
+        if (result.prompt && dismissedCloudVersion.current !== result.prompt.snapshot.version) {
+          setCloudPrompt(result.prompt)
+        }
+      })
+    }, 700)
+
+    return () => window.clearTimeout(timer)
   }, [
     view,
+    sessionId,
     players,
     idx,
     round,
@@ -192,6 +238,7 @@ export function App() {
     setDiceMode(mode)
     setGoalScore(goal)
     setEntryMin(entry)
+    setSessionId(createActiveGameSessionId())
     setIdx(0)
     setRound(1)
     setPhase('active')
@@ -232,6 +279,8 @@ export function App() {
       score: 0,
       busts: 0,
     }))
+    cloudSyncGeneration.current += 1
+    void clearCloudActiveGame(sessionId)
     clearActiveGame()
     setSetupSeed({ players: ordered, event, diceMode, goalScore, entryMin })
     setPhase('setup')
@@ -241,8 +290,11 @@ export function App() {
   }
 
   const discardResume = () => {
+    const discardedSession = resumable?.sessionId ?? ''
+    cloudSyncGeneration.current += 1
     clearActiveGame()
     setResumable(null)
+    if (discardedSession) void clearCloudActiveGame(discardedSession)
   }
 
   const resumeGame = (game: ActiveGame) => {
@@ -263,6 +315,7 @@ export function App() {
     setTestMode(game.testMode)
     setGoalScore(game.goalScore ?? WINNING_SCORE)
     setEntryMin(game.entryMin ?? ENTRY_MIN)
+    setSessionId(game.sessionId)
     setKept(game.kept ?? [])
     setAccumulated(game.accumulated)
     setTurns(game.turns ?? [])
@@ -284,6 +337,61 @@ export function App() {
     setToast('')
     setView('game')
     if (mode === 'virtual' && reconstructedThrow.length) showToast('Wurf wiederhergestellt')
+  }
+
+  const useCloudGame = async () => {
+    const prompt = cloudPrompt
+    const cloudGame = prompt?.snapshot.game
+    if (!prompt || !cloudGame || cloudBusy) return
+    setCloudBusy(true)
+    try {
+      const result = await takeOverCloudActiveGame(prompt.snapshot)
+      if (result.status === 'saved') {
+        const game = result.snapshot?.game ?? cloudGame
+        dismissedCloudVersion.current = null
+        saveActiveGame(game)
+        setResumable(game)
+        setCloudPrompt(null)
+        resumeGame(game)
+        return
+      }
+      if (result.prompt) setCloudPrompt(result.prompt)
+      else showToast(result.status === 'denied' ? 'Crew-Code prüfen' : 'Cloud-Übernahme fehlgeschlagen')
+    } finally {
+      setCloudBusy(false)
+    }
+  }
+
+  const keepLocalCloudGame = async () => {
+    const prompt = cloudPrompt
+    const local = loadActiveGame()
+    if (!prompt || !local || cloudBusy) return
+    setCloudBusy(true)
+    try {
+      const result = await replaceCloudActiveGame(local, prompt.snapshot.version)
+      if (result.status === 'saved') {
+        dismissedCloudVersion.current = null
+        setCloudPrompt(null)
+        showToast('Lokaler Spielstand ist jetzt in der Cloud')
+        return
+      }
+      if (result.prompt) setCloudPrompt(result.prompt)
+      else showToast(result.status === 'denied' ? 'Crew-Code prüfen' : 'Cloud-Sicherung fehlgeschlagen')
+    } finally {
+      setCloudBusy(false)
+    }
+  }
+
+  const discardLocalAfterCloudClear = () => {
+    cloudSyncGeneration.current += 1
+    clearActiveGame()
+    setResumable(null)
+    setCloudPrompt(null)
+  }
+
+  const closeCloudPrompt = () => {
+    if (cloudPrompt) dismissedCloudVersion.current = cloudPrompt.snapshot.version
+    setCloudPrompt(null)
   }
 
   const addDie = (value: number) => {
@@ -377,6 +485,8 @@ export function App() {
             .then(({ pushGame }) => pushGame(record))
             .catch((error) => console.warn('Cloud-Modul konnte nicht geladen werden:', error))
         }
+        cloudSyncGeneration.current += 1
+        void clearCloudActiveGame(sessionId)
         clearActiveGame()
         buzz([12, 40, 12, 40, 60])
       }
@@ -416,7 +526,7 @@ export function App() {
       const nextRound = nextIdx === 0 ? round + 1 : round
       return advance(nextIdx, 'active', nextRound, target)
     },
-    [phase, idx, target, round, event, testMode, goalScore, showToast],
+    [phase, idx, target, round, event, testMode, goalScore, sessionId, showToast],
   )
 
   const handleContinue = () => {
@@ -547,11 +657,25 @@ export function App() {
     return computeRisk(6 - combined.length, result.hasJokerTriple)
   }, [result, dice.length, combined.length])
 
+  const cloudDialog = cloudPrompt ? (
+    <CloudGameDialog
+      prompt={cloudPrompt}
+      busy={cloudBusy}
+      onUseCloud={useCloudGame}
+      onKeepLocal={keepLocalCloudGame}
+      onDiscardLocal={discardLocalAfterCloudClear}
+      onClose={closeCloudPrompt}
+    />
+  ) : null
+
   if (view === 'stats') {
     return (
-      <Suspense fallback={<ScreenFallback label="Statistik wird geladen…" />}>
-        <StatsScreen onBack={() => setView('setup')} />
-      </Suspense>
+      <>
+        <Suspense fallback={<ScreenFallback label="Statistik wird geladen…" />}>
+          <StatsScreen onBack={() => setView('setup')} />
+        </Suspense>
+        {cloudDialog}
+      </>
     )
   }
 
@@ -573,6 +697,7 @@ export function App() {
           initialEntryMin={setupSeed?.entryMin}
         />
         {showIntro && <IntroScreen onClose={closeIntro} />}
+        {cloudDialog}
       </>
     )
   }
@@ -624,6 +749,8 @@ export function App() {
           onToggleDiceMode={toggleDiceMode}
         />
       </Suspense>
+
+      {cloudDialog}
 
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
 
