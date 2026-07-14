@@ -1,5 +1,6 @@
 name: Apply family sync on main
 
+# Einmaliger Merge-Trigger: Produktcode wird erst nach vollständig grünen Tests committed.
 on:
   push:
     branches:
