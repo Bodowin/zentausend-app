@@ -25,4 +25,4 @@ Jede Zeile der ewigen Bestenliste ist antippbar. Ein aktiver Anlassfilter wird i
 
 ## Abnahme
 
-Unit-Tests prüfen stabile IDs, Namenswechsel, Serien, Anlassfilter, Turn-Coverage und Altspiele. Browser-Tests prüfen das Öffnen des Profils sowie die Übernahme des Anlassfilters.
+Unit-Tests prüfen stabile IDs, Namenswechsel, Serien, Anlassfilter, Turn-Coverage und Altspiele. Browser-Tests prüfen das Öffnen des Profils sowie die Übernahme des Anlassfilters. Die vollständige bestehende Browser-Suite deckt zusätzlich Spieler-Zusammenführen und Rückgängig gegen die neue antippbare Bestenliste ab.
