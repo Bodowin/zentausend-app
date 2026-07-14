@@ -1,0 +1,117 @@
+name: Apply safe resume package
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/apply-safe-resume.mjs
+      - .github/workflows/apply-safe-resume.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build-e2e:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply guarded safe resume patch
+        id: patch
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node --check scripts/apply-safe-resume.mjs 2>&1 | tee /tmp/package-j-patch.log
+          node scripts/apply-safe-resume.mjs 2>&1 | tee -a /tmp/package-j-patch.log
+
+      - name: Unit tests
+        id: unit
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/package-j-unit.log
+
+      - name: Production build
+        id: build
+        if: steps.patch.outcome == 'success' && steps.unit.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/package-j-build.log
+
+      - name: Install Chromium
+        id: chromium
+        if: steps.patch.outcome == 'success' && steps.unit.outcome == 'success' && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser journeys
+        id: e2e
+        if: steps.chromium.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee /tmp/package-j-e2e.log
+
+      - name: Record safe diagnostic
+        if: steps.patch.outcome == 'failure' || steps.unit.outcome == 'failure' || steps.build.outcome == 'failure' || steps.chromium.outcome == 'failure' || steps.e2e.outcome == 'failure'
+        run: |
+          git reset --hard HEAD
+          git clean -fd
+          mkdir -p docs
+          {
+            echo '# Paket J – Workflow-Diagnose'
+            echo
+            echo "Patch: ${{ steps.patch.outcome }}"
+            echo "Unit: ${{ steps.unit.outcome }}"
+            echo "Build: ${{ steps.build.outcome }}"
+            echo "Chromium: ${{ steps.chromium.outcome }}"
+            echo "E2E: ${{ steps.e2e.outcome }}"
+            for file in /tmp/package-j-patch.log /tmp/package-j-unit.log /tmp/package-j-build.log /tmp/package-j-e2e.log; do
+              if [ -f "$file" ]; then
+                echo
+                echo "## $(basename "$file")"
+                echo '```text'
+                tail -n 160 "$file"
+                echo '```'
+              fi
+            done
+          } > docs/package-j-workflow-diagnostic.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/package-j-workflow-diagnostic.md
+          git commit -m "Record package J workflow diagnostic"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          exit 1
+
+      - name: Remove one-time machinery
+        if: steps.e2e.outcome == 'success'
+        run: |
+          git rm -f scripts/apply-safe-resume.mjs .github/workflows/apply-safe-resume.yml
+          rm -f docs/package-j-workflow-diagnostic.md
+          git add -A
+
+      - name: Commit validated safe resume update
+        if: steps.e2e.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/activeGame.ts src/lib/activeGame.test.ts src/components/SetupScreen.tsx src/safeResumeWiring.test.ts e2e/app.spec.ts docs/package-j-safe-resume.md
+          git commit -m "Protect and recover running games safely"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
