@@ -7,6 +7,8 @@ const RECOVERY_LIMIT = 3
 
 /** Vollständiger Zustand eines laufenden Spiels, um es später fortzusetzen. */
 export interface ActiveGame {
+  /** Stabile Identität der laufenden Partie – bleibt über Reloads und Gerätewechsel gleich. */
+  sessionId: string
   players: Player[]
   idx: number
   round: number
@@ -36,6 +38,24 @@ export interface ActiveGame {
 const isDie = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 6
 const isNonNegativeInt = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0
 const isPositiveInt = (n: unknown): n is number => Number.isInteger(n) && (n as number) > 0
+
+function hashText(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+export function createActiveGameSessionId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  } catch {
+    /* fallback below */
+  }
+  return `game-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+}
 
 function isPlayer(p: unknown): p is Player {
   if (!p || typeof p !== 'object') return false
@@ -156,6 +176,10 @@ export function parseActiveGame(raw: string | null): ActiveGame | null {
     if (value.entryMin !== undefined && (!isNonNegativeInt(value.entryMin) || value.entryMin > 100_000)) return null
 
     return {
+      sessionId:
+        typeof value.sessionId === 'string' && value.sessionId.trim()
+          ? value.sessionId
+          : `legacy-${hashText(raw)}`,
       players,
       idx: value.idx,
       round: value.round,
