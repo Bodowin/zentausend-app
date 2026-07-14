@@ -6,11 +6,28 @@ function replaceOnce(source, before, after, label) {
   return source.replace(before, after)
 }
 
+function replaceBetween(source, start, end, replacement, label) {
+  const startCount = source.split(start).length - 1
+  const endCount = source.split(end).length - 1
+  if (startCount !== 1 || endCount !== 1) {
+    throw new Error(`${label}: expected one start/end marker, found ${startCount}/${endCount}`)
+  }
+  const from = source.indexOf(start)
+  const to = source.indexOf(end, from)
+  if (to < 0) throw new Error(`${label}: end marker occurs before start marker`)
+  return source.slice(0, from) + replacement + source.slice(to)
+}
+
 function update(path, transform) {
   const source = fs.readFileSync(path, 'utf8')
   const next = transform(source)
   if (next === source) throw new Error(`${path}: patch made no changes`)
   fs.writeFileSync(path, next)
+}
+
+/** Build literal JSX without letting this generator evaluate JSX template expressions. */
+function jsx(value) {
+  return value.replaceAll('\\${', '${').replaceAll('\\`', '`')
 }
 
 update('src/lib/prefs.ts', (input) => {
@@ -30,16 +47,31 @@ update('src/lib/prefs.ts', (input) => {
   return source
 })
 
-update('src/lib/haptics.ts', () => `import { getPrefs } from './prefs'\n\n/** Dezentes haptisches Feedback (HTML5 Vibration API), wo verfügbar und aktiviert. */\nexport function buzz(pattern: number | number[] = 8): void {\n  try {\n    if (!getPrefs().haptics) return\n    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {\n      navigator.vibrate(pattern)\n    }\n  } catch {\n    /* nicht unterstützt – ignorieren */\n  }\n}\n`)
-
-update('src/components/SettingsModal.tsx', (input) =>
-  replaceOnce(
-    input,
-    `          </button>\n\n          {/* „X ist dran"-Übergabe */}`,
-    `          </button>\n\n          <button\n            type="button"\n            role="switch"\n            aria-label="Haptisches Feedback"\n            aria-checked={prefs.haptics}\n            onClick={() => updatePrefs({ haptics: !prefs.haptics })}\n            className="mt-4 flex w-full items-center justify-between"\n          >\n            <span className="flex flex-col text-left">\n              <span className="text-sm font-bold text-fog-200">Haptisches Feedback</span>\n              <span className="text-[11px] text-fog-500">Kurzes Vibrieren bei Spielaktionen · Standard aus</span>\n            </span>\n            <span className={\`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.haptics ? 'bg-mint-500' : 'bg-ink-600'}\`}>\n              <span className={\`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 ${prefs.haptics ? 'left-[26px]' : 'left-1'}\`} />\n            </span>\n          </button>\n\n          {/* „X ist dran"-Übergabe */}`,
-    'haptics settings toggle',
-  ),
+update(
+  'src/lib/haptics.ts',
+  () => `import { getPrefs } from './prefs'\n\n/** Dezentes haptisches Feedback (HTML5 Vibration API), wo verfügbar und aktiviert. */\nexport function buzz(pattern: number | number[] = 8): void {\n  try {\n    if (!getPrefs().haptics) return\n    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {\n      navigator.vibrate(pattern)\n    }\n  } catch {\n    /* nicht unterstützt – ignorieren */\n  }\n}\n`,
 )
+
+update('src/components/SettingsModal.tsx', (input) => {
+  const marker = `          {/* „X ist dran"-Übergabe */}`
+  const toggle = jsx(String.raw`          <button
+            type="button"
+            role="switch"
+            aria-label="Haptisches Feedback"
+            aria-checked={prefs.haptics}
+            onClick={() => updatePrefs({ haptics: !prefs.haptics })}
+            className="mt-4 flex w-full items-center justify-between"
+          >
+            <span className="flex flex-col text-left">
+              <span className="text-sm font-bold text-fog-200">Haptisches Feedback</span>
+              <span className="text-[11px] text-fog-500">Kurzes Vibrieren bei Spielaktionen · Standard aus</span>
+            </span>
+            <span className={\`relative h-7 w-[52px] shrink-0 rounded-full transition-colors \${prefs.haptics ? 'bg-mint-500' : 'bg-ink-600'}\`}>
+              <span className={\`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-200 \${prefs.haptics ? 'left-[26px]' : 'left-1'}\`} />
+            </span>
+          </button>`)
+  return replaceOnce(input, marker, `${toggle}\n\n${marker}`, 'haptics settings toggle')
+})
 
 update('src/lib/cloud.ts', (input) => {
   let source = input
@@ -83,10 +115,94 @@ update('src/components/StatsScreen.tsx', (input) => {
   const syncCount = source.split(syncMarker).length - 1
   if (syncCount !== 2) throw new Error(`sync result wiring: expected 2 matches, found ${syncCount}`)
   source = source.replaceAll(syncMarker, syncReplacement)
-  source = replaceOnce(
+
+  const card = jsx(String.raw`      {/* Familienfreundlicher Sicherungsstatus mit explizitem manuellen Abgleich. */}
+      <div
+        className={\`mb-4 rounded-2xl border p-3 \${
+          codeDenied
+            ? 'border-coral-500/40 bg-coral-500/10'
+            : pendingSync > 0
+              ? 'border-gold-500/40 bg-gold-500/10'
+              : online
+                ? 'border-mint-500/30 bg-mint-500/10'
+                : 'border-ink-700 bg-ink-900/40'
+        }\`}
+        aria-live="polite"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span
+                className={\`inline-block h-2.5 w-2.5 shrink-0 rounded-full \${
+                  loading
+                    ? 'animate-pulse bg-gold-500'
+                    : codeDenied
+                      ? 'bg-coral-400'
+                      : pendingSync > 0
+                        ? 'bg-gold-500'
+                        : online
+                          ? 'bg-mint-400'
+                          : 'bg-fog-600'
+                }\`}
+              />
+              <span className="font-bold text-fog-100">
+                {loading
+                  ? 'Sicherung läuft…'
+                  : codeDenied
+                    ? 'Crew-Code prüfen'
+                    : pendingSync > 0
+                      ? 'Noch nicht alles gesichert'
+                      : online
+                        ? 'Alles gesichert'
+                        : cloudEnabled
+                          ? 'Gerade offline'
+                          : 'Nur auf diesem Gerät'}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-fog-400">
+              {games.length} {games.length === 1 ? 'Spiel' : 'Spiele'} auf diesem Gerät
+              {cloudCount !== null && <> · {cloudCount} in der Cloud</>}
+            </div>
+            <div className="mt-1 text-[11px] leading-relaxed text-fog-500">
+              {loading
+                ? 'Lokale und gemeinsame Spielstände werden abgeglichen.'
+                : codeDenied
+                  ? 'Der gespeicherte Crew-Code stimmt nicht. Deine lokalen Spiele bleiben erhalten.'
+                  : pendingSync > 0
+                    ? \`\${pendingSync} \${pendingSync === 1 ? 'Änderung ist' : 'Änderungen sind'} noch nur auf diesem Gerät.\`
+                    : online
+                      ? 'Eure Spielstände sind auf allen Geräten gleich.'
+                      : cloudEnabled
+                        ? 'Sobald wieder Internet da ist, kannst du erneut sichern.'
+                        : 'Cloud-Sicherung ist auf diesem Gerät nicht eingerichtet.'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+            aria-label="Jetzt sichern"
+            className="shrink-0 rounded-xl border border-ink-600 bg-ink-800 px-3 py-2 text-xs font-bold text-fog-200 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Läuft…' : 'Jetzt sichern'}
+          </button>
+        </div>
+        {codeDenied && (
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="mt-3 w-full rounded-xl bg-coral-500/20 px-3 py-2 text-xs font-bold text-coral-300"
+          >
+            Crew-Code ändern
+          </button>
+        )}
+      </div>`)
+
+  source = replaceBetween(
     source,
-    `      {/* Sync-Status */}\n      <div className="mb-4 flex items-center gap-2 text-[11px]">\n        <span\n          className={\`inline-block h-2 w-2 rounded-full ${\n            loading\n              ? 'animate-pulse bg-gold-500'\n              : pendingSync > 0\n                ? 'bg-gold-500'\n                : online\n                  ? 'bg-mint-400'\n                  : 'bg-fog-600'\n          }\`}\n        />\n        <span className="text-fog-500">\n          {loading\n            ? 'Synchronisiere mit der Cloud…'\n            : codeDenied\n              ? 'Clique-Code ungültig – in Einstellungen erneuern'\n              : pendingSync > 0\n              ? \`${'${pendingSync}'} ${'${pendingSync === 1 ? \'Änderung wartet\' : \'Änderungen warten\'}'} auf Cloud\`\n              : online\n                ? 'Mit Cloud synchronisiert · auf allen Geräten gleich'\n                : cloudEnabled\n                  ? 'Offline – nur dieses Gerät'\n                  : 'Lokal – nur dieses Gerät'}\n        </span>\n      </div>`,
-    `      {/* Familienfreundlicher Sicherungsstatus mit explizitem manuellen Abgleich. */}\n      <div\n        className={\`mb-4 rounded-2xl border p-3 ${\n          codeDenied\n            ? 'border-coral-500/40 bg-coral-500/10'\n            : pendingSync > 0\n              ? 'border-gold-500/40 bg-gold-500/10'\n              : online\n                ? 'border-mint-500/30 bg-mint-500/10'\n                : 'border-ink-700 bg-ink-900/40'\n        }\`}\n        aria-live="polite"\n      >\n        <div className="flex items-start justify-between gap-3">\n          <div className="min-w-0 flex-1">\n            <div className="flex items-center gap-2">\n              <span\n                className={\`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${\n                  loading\n                    ? 'animate-pulse bg-gold-500'\n                    : codeDenied\n                      ? 'bg-coral-400'\n                      : pendingSync > 0\n                        ? 'bg-gold-500'\n                        : online\n                          ? 'bg-mint-400'\n                          : 'bg-fog-600'\n                }\`}\n              />\n              <span className="font-bold text-fog-100">\n                {loading\n                  ? 'Sicherung läuft…'\n                  : codeDenied\n                    ? 'Crew-Code prüfen'\n                    : pendingSync > 0\n                      ? 'Noch nicht alles gesichert'\n                      : online\n                        ? 'Alles gesichert'\n                        : cloudEnabled\n                          ? 'Gerade offline'\n                          : 'Nur auf diesem Gerät'}\n              </span>\n            </div>\n            <div className="mt-1 text-[11px] text-fog-400">\n              {games.length} ${'${games.length === 1 ? \'Spiel\' : \'Spiele\'}'} auf diesem Gerät\n              {cloudCount !== null && <> · {cloudCount} in der Cloud</>}\n            </div>\n            <div className="mt-1 text-[11px] leading-relaxed text-fog-500">\n              {loading\n                ? 'Lokale und gemeinsame Spielstände werden abgeglichen.'\n                : codeDenied\n                  ? 'Der gespeicherte Crew-Code stimmt nicht. Deine lokalen Spiele bleiben erhalten.'\n                  : pendingSync > 0\n                    ? \`${'${pendingSync}'} ${'${pendingSync === 1 ? \'Änderung ist\' : \'Änderungen sind\'}'} noch nur auf diesem Gerät.\`\n                    : online\n                      ? 'Eure Spielstände sind auf allen Geräten gleich.'\n                      : cloudEnabled\n                        ? 'Sobald wieder Internet da ist, kannst du erneut sichern.'\n                        : 'Cloud-Sicherung ist auf diesem Gerät nicht eingerichtet.'}\n            </div>\n          </div>\n          <button\n            type="button"\n            onClick={() => void reload()}\n            disabled={loading}\n            aria-label="Jetzt sichern"\n            className="shrink-0 rounded-xl border border-ink-600 bg-ink-800 px-3 py-2 text-xs font-bold text-fog-200 transition-colors disabled:opacity-50"\n          >\n            {loading ? 'Läuft…' : 'Jetzt sichern'}\n          </button>\n        </div>\n        {codeDenied && (\n          <button\n            type="button"\n            onClick={() => setShowSettings(true)}\n            className="mt-3 w-full rounded-xl bg-coral-500/20 px-3 py-2 text-xs font-bold text-coral-300"\n          >\n            Crew-Code ändern\n          </button>\n        )}\n      </div>`,
+    `      {/* Sync-Status */}`,
+    `\n\n      {events.length > 0 && (`,
+    card,
     'family sync card',
   )
   return source
@@ -139,7 +255,7 @@ update('e2e/player-identity-cloud.spec.ts', (input) => {
 
 fs.writeFileSync(
   'src/familySyncWiring.test.ts',
-  `import { describe, expect, it } from 'vitest'\nimport cloudSource from './lib/cloud.ts?raw'\nimport statsSource from './components/StatsScreen.tsx?raw'\nimport prefsSource from './lib/prefs.ts?raw'\nimport hapticsSource from './lib/haptics.ts?raw'\n\ndescribe('family-friendly sync and haptics wiring', () => {\n  it('reports confirmed cloud counts', () => {\n    expect(cloudSource).toContain('cloudCount: number | null')\n    expect(cloudSource).toContain('cloudCount: cloud.length')\n  })\n\n  it('offers an explicit save action and plain-language status', () => {\n    expect(statsSource).toContain('Alles gesichert')\n    expect(statsSource).toContain('Jetzt sichern')\n    expect(statsSource).toContain('Crew-Code prüfen')\n  })\n\n  it('keeps haptics optional and disabled by default', () => {\n    expect(prefsSource).toContain('haptics: false')\n    expect(hapticsSource).toContain("if (!getPrefs().haptics) return")\n  })\n})\n`,
+  `import { describe, expect, it } from 'vitest'\nimport cloudSource from './lib/cloud.ts?raw'\nimport statsSource from './components/StatsScreen.tsx?raw'\nimport prefsSource from './lib/prefs.ts?raw'\nimport hapticsSource from './lib/haptics.ts?raw'\n\ndescribe('family-friendly sync and haptics wiring', () => {\n  it('reports confirmed cloud counts', () => {\n    expect(cloudSource).toContain('cloudCount: number | null')\n    expect(cloudSource).toContain('cloudCount: cloud.length')\n  })\n\n  it('offers an explicit save action and plain-language status', () => {\n    expect(statsSource).toContain('Alles gesichert')\n    expect(statsSource).toContain('Jetzt sichern')\n    expect(statsSource).toContain('Crew-Code prüfen')\n  })\n\n  it('keeps haptics optional and disabled by default', () => {\n    expect(prefsSource).toContain('haptics: false')\n    expect(hapticsSource).toContain(\"if (!getPrefs().haptics) return\")\n  })\n})\n`,
 )
 
 fs.writeFileSync(
