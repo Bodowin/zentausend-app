@@ -76,6 +76,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/StatsScreen.tsx src/components/PlayerProfileScreen.tsx src/lib/playerProfiles.ts src/lib/playerProfiles.test.ts src/lib/storage.ts src/lib/statsIdentityFilter.test.ts e2e/player-profiles.spec.ts e2e/player-management.spec.ts docs/package-l-player-profiles.md docs/package-l-player-profiles-plan.md
+          git add src/components/StatsScreen.tsx src/components/PlayerProfileScreen.tsx src/lib/playerProfiles.ts src/lib/playerProfiles.test.ts src/lib/storage.ts src/lib/statsIdentityFilter.test.ts e2e/player-profiles.spec.ts e2e/player-management.spec.ts docs/package-l-player-profiles.md
           git commit -m "Add personal player profiles and performance trends"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
