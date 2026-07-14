@@ -60,6 +60,63 @@ jobs:
           PY
           node --check scripts/apply-safe-resume.mjs 2>&1 | tee /tmp/package-j-patch.log
           node scripts/apply-safe-resume.mjs 2>&1 | tee -a /tmp/package-j-patch.log
+          python - <<'PY' 2>&1 | tee -a /tmp/package-j-patch.log
+          from pathlib import Path
+
+          setup_path = Path('src/components/SetupScreen.tsx')
+          setup = setup_path.read_text()
+          start = setup.find('const startConfiguredGame = () => {')
+          if start < 0:
+              raise SystemExit('generated startConfiguredGame handler missing')
+          line_start = setup.rfind('\n', 0, start) + 1
+          end_marker = "    startConfiguredGame()\n  }\n\n"
+          end = setup.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('generated requestStart handler end missing')
+          end += len(end_marker)
+          setup = setup[:line_start] + setup[end:]
+
+          handler = """  const startConfiguredGame = () => {
+            setPrefs({ lastEvent: event.trim() })
+            onStart(players, event, testMode, diceMode, goalScore, entryMin)
+          }
+
+          const requestStart = () => {
+            if (resumable) {
+              setStartConflictOpen(true)
+              return
+            }
+            startConfiguredGame()
+          }
+
+          """
+          anchor = "    setCodeDismissed(true)\n  }\n\n  return (\n"
+          if setup.count(anchor) != 1:
+              raise SystemExit(f'main component return anchor count: {setup.count(anchor)}')
+          setup = setup.replace(anchor, "    setCodeDismissed(true)\n  }\n\n" + handler + "  return (\n")
+          setup_path.write_text(setup)
+
+          Path('src/safeResumeWiring.test.ts').write_text("""import { describe, expect, it } from 'vitest'
+          import activeSource from './lib/activeGame.ts?raw'
+          import setupSource from './components/SetupScreen.tsx?raw'
+
+          describe('safe resume wiring', () => {
+            it('keeps bounded backups and restores only a damaged primary value', () => {
+              expect(activeSource).toContain('const RECOVERY_LIMIT = 3')
+              expect(activeSource).toContain('if (!raw) return null')
+              expect(activeSource).toContain('recoveredFromBackup: true')
+            })
+
+            it('requires an explicit decision before replacing or discarding a running game', () => {
+              expect(setupSource).toContain('Laufendes Spiel ersetzen?')
+              expect(setupSource).toContain('Altes Spiel fortsetzen')
+              expect(setupSource).toContain('Endgültig verwerfen')
+              expect(setupSource).not.toContain("window.confirm('Laufendes Spiel verwerfen?")
+            })
+          })
+          """)
+          print('Safe resume generated wiring normalized.')
+          PY
 
       - name: Unit tests
         id: unit
