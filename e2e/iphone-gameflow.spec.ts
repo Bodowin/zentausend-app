@@ -1,6 +1,4 @@
-import fs from 'node:fs'
-
-const spec = `import { expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 const activeGame = {
   sessionId: 'iphone-flow-test',
@@ -86,16 +84,3 @@ test('fills an iPhone viewport and starts the next throw only after the handoff'
   expect(finalSize.scrollHeight).toBeLessThanOrEqual(finalSize.innerHeight + 1)
   expect(finalSize.scrollWidth).toBeLessThanOrEqual(finalSize.innerWidth + 1)
 })
-`
-
-fs.writeFileSync('e2e/iphone-gameflow.spec.ts', spec)
-
-const configPath = 'playwright.webkit.config.ts'
-let config = fs.readFileSync(configPath, 'utf8')
-const before = "  testMatch: /production-hardening\\.spec\\.ts/,"
-const after = "  testMatch: /(production-hardening|iphone-gameflow)\\.spec\\.ts/,"
-if (!config.includes(before)) throw new Error('WebKit testMatch marker fehlt')
-config = config.replace(before, after)
-fs.writeFileSync(configPath, config)
-
-console.log('Paket O Tests angelegt')
