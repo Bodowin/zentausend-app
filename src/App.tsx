@@ -13,6 +13,7 @@ import { saveGame } from './lib/storage'
 import { buzz } from './lib/haptics'
 import { playerColor } from './lib/colors'
 import { getPrefs } from './lib/prefs'
+import { hasCliqueCode } from './lib/cliqueCode'
 import { playerIdForName } from './lib/playerIdentity'
 import { SetupScreen } from './components/SetupScreen'
 import { IntroScreen } from './components/IntroScreen'
@@ -37,7 +38,6 @@ const StatsScreen = lazy(() =>
 
 const INTRO_KEY = '10k_seen_intro'
 const UNDO_LIMIT = 30
-const CELEBRATION_HANDOFF_DELAY_MS = 2000
 
 type View = 'setup' | 'game' | 'stats'
 
@@ -61,6 +61,13 @@ interface BustAnnounce {
   name: string
   lost: number
   nextName: string | null
+}
+
+interface TurnHandoff {
+  scoredName: string
+  points: number
+  total: number
+  nextName: string
 }
 
 const sortDice = (values: number[]) => [...values].sort((a, b) => a - b)
@@ -107,7 +114,7 @@ export function App() {
   const [throwSeq, setThrowSeq] = useState(0)
   const [toast, setToast] = useState('')
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
-  const [handoff, setHandoff] = useState<string | null>(null)
+  const [handoff, setHandoff] = useState<TurnHandoff | null>(null)
   const [bustAnnounce, setBustAnnounce] = useState<BustAnnounce | null>(null)
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const [resumable, setResumable] = useState<ActiveGame | null>(() => loadActiveGame())
@@ -136,13 +143,24 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false
-    void inspectActiveGameCloud(initialResume.current).then((prompt) => {
-      if (!cancelled && prompt && dismissedCloudVersion.current !== prompt.snapshot.version) {
-        setCloudPrompt(prompt)
+
+    const inspectCloudGame = () => {
+      if (!hasCliqueCode()) {
+        setCloudPrompt(null)
+        return
       }
-    })
+      void inspectActiveGameCloud(initialResume.current).then((prompt) => {
+        if (!cancelled && prompt && dismissedCloudVersion.current !== prompt.snapshot.version) {
+          setCloudPrompt(prompt)
+        }
+      })
+    }
+
+    inspectCloudGame()
+    window.addEventListener('10k-clique-code-changed', inspectCloudGame)
     return () => {
       cancelled = true
+      window.removeEventListener('10k-clique-code-changed', inspectCloudGame)
     }
   }, [])
 
@@ -180,6 +198,7 @@ export function App() {
       savedAt: new Date().toISOString(),
     }
     saveActiveGame(snapshot)
+    if (!hasCliqueCode()) return
 
     const timer = window.setTimeout(() => {
       void syncActiveGameToCloud(snapshot).then((result) => {
@@ -217,12 +236,6 @@ export function App() {
     setToast(msg)
     window.setTimeout(() => setToast((current) => (current === msg ? '' : current)), 1800)
   }, [])
-
-  useEffect(() => {
-    if (!handoff) return
-    const timer = window.setTimeout(() => setHandoff(null), 2000)
-    return () => window.clearTimeout(timer)
-  }, [handoff])
 
   const startGame = (
     chosen: Player[],
@@ -468,8 +481,10 @@ export function App() {
       nextPlayers: Player[],
       justScored: number,
       nextTurns: Turn[],
-      celebrating: boolean,
+      _celebrating: boolean,
       suppressHandoff = false,
+      turnPoints = 0,
+      scoredName = '',
     ) => {
       const count = nextPlayers.length
       const last = count - 1
@@ -503,9 +518,12 @@ export function App() {
         setRolled([])
         setThrown([])
         if (!suppressHandoff && getPrefs().handoff) {
-          const name = nextPlayers[nextIdx].name
-          if (celebrating) window.setTimeout(() => setHandoff(name), CELEBRATION_HANDOFF_DELAY_MS)
-          else setHandoff(name)
+          setHandoff({
+            scoredName,
+            points: turnPoints,
+            total: justScored,
+            nextName: nextPlayers[nextIdx].name,
+          })
         }
       }
 
@@ -577,13 +595,28 @@ export function App() {
       view === 'game' &&
       (phase === 'active' || phase === 'lastChance') &&
       !winner &&
+      !celebration &&
+      !handoff &&
+      !bustAnnounce &&
       thrown.length === 0 &&
       dice.length === 0 &&
       kept.length < 6
     ) {
       newThrow()
     }
-  }, [diceMode, view, phase, winner, thrown.length, dice.length, kept.length, newThrow])
+  }, [
+    diceMode,
+    view,
+    phase,
+    winner,
+    celebration,
+    handoff,
+    bustAnnounce,
+    thrown.length,
+    dice.length,
+    kept.length,
+    newThrow,
+  ])
 
   const handleBowlSelect = (selected: number[], remaining: number[]) => {
     buzz(6)
@@ -612,7 +645,7 @@ export function App() {
       { round, player: players[idx].name, playerId: players[idx].id, points: pot, bust: false },
     ]
     setTurns(nextTurns)
-    resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, Boolean(special))
+    resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, Boolean(special), false, pot, players[idx].name)
   }
 
   const handleBust = () => {
@@ -641,9 +674,7 @@ export function App() {
   }
 
   const acknowledgeBust = () => {
-    const nextName = bustAnnounce?.nextName ?? null
     setBustAnnounce(null)
-    if (nextName && getPrefs().handoff) setHandoff(nextName)
   }
 
   const current = players[idx]
@@ -754,27 +785,48 @@ export function App() {
 
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
 
-      {handoff && (
-        <button
-          type="button"
-          onClick={() => setHandoff(null)}
-          aria-label="Übergabe überspringen"
-          className="glass fixed inset-0 z-[55] flex items-center justify-center px-6 animate-pop"
+      {handoff && !celebration && (
+        <div
+          className="glass fixed inset-0 z-[55] flex items-center justify-center px-5 py-[max(env(safe-area-inset-top),1.25rem)] animate-pop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="turn-handoff-title"
         >
           <div
-            className="flex flex-col items-center gap-3 rounded-3xl border-2 px-12 py-9 text-center shadow-2xl shadow-black/50"
-            style={{ borderColor: `${playerColor(handoff)}80`, backgroundColor: `${playerColor(handoff)}14` }}
+            className="flex w-full max-w-sm flex-col items-center rounded-3xl border-2 bg-ink-900/95 px-6 py-7 text-center shadow-2xl shadow-black/60"
+            style={{ borderColor: `${playerColor(handoff.nextName)}80` }}
           >
-            <span className="h-4 w-4 rounded-full" style={{ backgroundColor: playerColor(handoff) }} />
-            <span className="font-display text-5xl font-black tracking-tight" style={{ color: playerColor(handoff) }}>
-              {handoff}
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-fog-500">
+              {handoff.scoredName} sichert
             </span>
-            <span className="text-lg font-bold uppercase tracking-[0.2em] text-fog-300">ist dran</span>
-            <span className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-fog-600">
-              Tippen zum Fortfahren
+            <span className="mt-2 font-mono text-6xl font-black tracking-tighter text-mint-400">
+              +{handoff.points.toLocaleString('de-DE')}
             </span>
+            <span className="mt-1 text-sm font-bold text-fog-400">
+              Gesamt {handoff.total.toLocaleString('de-DE')} Punkte
+            </span>
+
+            <div className="my-6 h-px w-full bg-ink-700" />
+
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: playerColor(handoff.nextName) }} />
+            <span
+              id="turn-handoff-title"
+              className="mt-2 max-w-full break-words font-display text-4xl font-black tracking-tight"
+              style={{ color: playerColor(handoff.nextName) }}
+            >
+              {handoff.nextName}
+            </span>
+            <span className="mt-1 text-sm font-bold uppercase tracking-[0.18em] text-fog-300">ist dran</span>
+
+            <button
+              type="button"
+              onClick={() => setHandoff(null)}
+              className="mt-6 w-full rounded-2xl bg-gradient-to-b from-gold-400 to-gold-500 py-3.5 font-black text-ink-950 shadow-lg transition-all active:scale-[0.98]"
+            >
+              Würfeln starten →
+            </button>
           </div>
-        </button>
+        </div>
       )}
 
       {bustAnnounce && (

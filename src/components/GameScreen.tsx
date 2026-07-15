@@ -442,11 +442,11 @@ export function GameScreen(p: Props) {
   )
 
   return (
-    <div className="relative mx-auto flex min-h-screen max-w-lg flex-col overflow-hidden border-x border-ink-800/60 safe-pb lg:landscape:h-screen lg:landscape:max-w-6xl">
+    <div className="relative mx-auto flex h-[100dvh] min-h-0 w-full max-w-lg flex-col overflow-hidden border-ink-800/60 safe-pb sm:border-x lg:landscape:max-w-6xl">
       {/* Kopfzeile */}
       <header
-        className={`flex items-center justify-between border-b px-4 pt-[max(env(safe-area-inset-top),0.75rem)] transition-colors ${
-          virtual ? 'pb-2' : 'pb-3'
+        className={`flex shrink-0 items-center justify-between border-b px-4 pt-[max(env(safe-area-inset-top),0.5rem)] transition-colors ${
+          virtual ? 'pb-1.5' : 'pb-2.5'
         } ${lastChance ? 'border-coral-500/30 bg-coral-500/10' : 'border-ink-800 bg-ink-900/80'}`}
       >
         <div className="flex items-center gap-3">
@@ -503,8 +503,8 @@ export function GameScreen(p: Props) {
 
       {/* Spieler-Leiste */}
       <div
-        className={`scrollbar-hide flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-ink-800 px-3 ${
-          virtual ? 'py-1.5' : 'py-3'
+        className={`scrollbar-hide flex shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-ink-800 px-3 ${
+          virtual ? 'py-1' : 'py-2.5'
         }`}
       >
         {players.map((pl, i) => {
@@ -622,8 +622,8 @@ export function GameScreen(p: Props) {
           und Aktionen als große Seitenleiste. Hochformat/Handy bleibt einspaltig,
           exakt wie zuvor. */}
       <div
-        className={`flex flex-1 flex-col px-4 lg:landscape:min-h-0 lg:landscape:flex-row lg:landscape:gap-5 lg:landscape:px-6 ${
-          virtual ? 'pb-2 pt-2' : 'pb-3 pt-3'
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden px-3 lg:landscape:flex-row lg:landscape:gap-5 lg:landscape:px-6 ${
+          virtual ? 'pb-1.5 pt-1.5' : 'pb-2 pt-2'
         } lg:landscape:pb-4 lg:landscape:pt-3`}
       >
         {/* Linke Spalte: immer sichtbar, wird im Querformat automatisch breiter
@@ -646,22 +646,29 @@ export function GameScreen(p: Props) {
             {/* Kompakte Kopfzeile: Punkte dieser Auswahl (links) · ausgelegte
                 Würfel als Mini-Würfel mit Augen (Mitte) · Zug-Gesamt (rechts).
                 Einzeilig, damit die Schale darunter maximal groß wird. */}
-            <div className="mb-1.5 flex items-center gap-2 rounded-2xl border border-ink-800 bg-ink-900/40 px-3 py-1.5">
-              <div className="flex shrink-0 flex-col leading-none">
-                <span className="mb-0.5 text-[8px] font-bold uppercase tracking-widest text-fog-500">
-                  Diese Würfel
-                </span>
+            <div className="mb-1.5 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-2xl border border-ink-800 bg-ink-900/40 px-3 py-1.5">
+              <div className="min-w-0">
+                <span className="block truncate text-[8px] font-bold uppercase tracking-widest text-fog-500">Auswahl</span>
+              </div>
+              <div className="flex flex-col items-center leading-none">
                 <span
                   key={result.score}
-                  className={`font-mono text-2xl font-black leading-none animate-pop ${
+                  className={`font-mono text-3xl font-black leading-none animate-pop ${
                     result.score > 0 ? (result.isValid ? 'text-mint-400' : 'text-coral-400') : 'text-fog-600'
                   }`}
                 >
                   +{fmt(result.score)}
                 </span>
+                <span className="mt-0.5 text-[8px] font-bold uppercase tracking-widest text-fog-500">Punkte</span>
               </div>
-              {/* Gruppiert nach Wert (gold = zählt, rot = ungültig, Pasch markiert). */}
-              <div className="flex min-h-[30px] flex-1 flex-wrap items-center justify-center gap-1">
+              <div className="flex min-w-0 flex-col items-end leading-none">
+                <span className="mb-0.5 text-[8px] font-bold uppercase tracking-widest text-fog-500">Zug gesamt</span>
+                <span className="font-mono text-lg font-black leading-none text-gold-400">{fmt(totalPotential)}</span>
+              </div>
+            </div>
+
+            {/* Ausgelegte Würfel separat und zentriert, damit die Punktzahl immer wirklich mittig bleibt. */}
+            <div className="mb-1 flex min-h-[30px] flex-wrap items-center justify-center gap-1">
                 {laidGroups.length === 0 ? (
                   <span className="text-[10px] italic text-fog-600">Noch nichts ausgelegt</span>
                 ) : (
@@ -692,17 +699,8 @@ export function GameScreen(p: Props) {
                   })
                 )}
               </div>
-              <div className="flex shrink-0 flex-col items-end leading-none">
-                <span className="mb-0.5 text-[8px] font-bold uppercase tracking-widest text-fog-500">
-                  Zug gesamt
-                </span>
-                <span className="font-mono text-xl font-black leading-none text-gold-400">
-                  {fmt(totalPotential)}
-                </span>
-              </div>
-            </div>
 
-            <div className="relative min-h-[200px] flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-ink-800 bg-ink-950/40">
               {thrown.length > 0 && (
                 <Suspense fallback={<DiceArenaFallback />}>
                   <DiceArena
@@ -814,9 +812,9 @@ export function GameScreen(p: Props) {
         {/* Hochformat/Handy: Risiko-Meter + Aktionsleiste bleiben unten in
             dieser einen Spalte, exakt wie zuvor. Im iPad-Querformat wandern sie
             stattdessen in die rechte Seitenleiste (siehe unten). */}
-        <div className="lg:landscape:hidden">
-          <div className={virtual ? 'mb-2' : 'mb-3'}>{renderRiskMeter(false)}</div>
-          <div className={`mt-auto ${virtual ? 'space-y-2' : 'space-y-3'}`}>
+        <div className="shrink-0 lg:landscape:hidden">
+          <div className={virtual ? 'mb-1.5' : 'mb-2.5'}>{renderRiskMeter(false)}</div>
+          <div className={`mt-auto ${virtual ? 'space-y-1.5' : 'space-y-2.5'}`}>
             {diceMode === 'real' && renderNumpad(false)}
             {renderActionBar(false)}
           </div>
