@@ -1,0 +1,55 @@
+name: Package O cloud gate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    if: github.head_ref == 'chatgpt/package-o-iphone-gameflow'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply cloud gate
+        run: node scripts/apply-package-o-cloud-gate.mjs
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Targeted iPhone and cloud-gate journeys
+        run: npx playwright test e2e/iphone-gameflow.spec.ts e2e/cloud-code-gate.spec.ts e2e/active-game-cloud.spec.ts
+
+      - name: Commit validated changes
+        run: |
+          rm scripts/apply-package-o-cloud-gate.mjs .github/workflows/package-o-cloud-gate.yml
+          git config user.name "Bodo"
+          git config user.email "47588175+Bodowin@users.noreply.github.com"
+          git add src/App.tsx src/lib/cliqueCode.ts e2e/cloud-code-gate.spec.ts
+          git add -u scripts .github/workflows/package-o-cloud-gate.yml
+          git commit -m "Require family code before active-game cloud sync"
+          git push origin HEAD:${{ github.head_ref }}
