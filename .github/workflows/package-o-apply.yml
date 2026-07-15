@@ -38,7 +38,23 @@ jobs:
         run: npm test
 
       - name: Production build
-        run: npm run build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee package-o-build.log
+
+      - name: Upload build diagnostics
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-o-build-diagnostics
+          path: package-o-build.log
+          retention-days: 3
+
+      - name: Stop after failed build
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
