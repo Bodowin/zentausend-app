@@ -61,7 +61,27 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: iPhone game-flow journey
-        run: npx playwright test e2e/iphone-gameflow.spec.ts
+        id: iphone_flow
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npx playwright test e2e/iphone-gameflow.spec.ts 2>&1 | tee package-o-e2e.log
+
+      - name: Upload iPhone flow diagnostics
+        if: steps.iphone_flow.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-o-e2e-diagnostics
+          path: |
+            package-o-e2e.log
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Stop after failed iPhone flow
+        if: steps.iphone_flow.outcome == 'failure'
+        run: exit 1
 
       - name: Commit validated product changes
         run: |
