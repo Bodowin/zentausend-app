@@ -75,14 +75,9 @@ fs.writeFileSync('e2e/setup-responsive.spec.ts', spec)
 
 const configPath = 'playwright.webkit.config.ts'
 let config = fs.readFileSync(configPath, 'utf8')
-const before = "  testMatch: /(production-hardening|iphone-gameflow)\\.spec\\.ts/,”
-const asciiBefore = "  testMatch: /(production-hardening|iphone-gameflow)\\.spec\\.ts/,”
-if (config.includes(asciiBefore)) {
-  config = config.replace(asciiBefore, "  testMatch: /(production-hardening|iphone-gameflow|setup-responsive)\\.spec\\.ts/,")
-} else {
-  const normalBefore = "  testMatch: /(production-hardening|iphone-gameflow)\\.spec\\.ts/,”.replace(',”', '/,')
-  if (!config.includes(normalBefore)) throw new Error('WebKit testMatch marker fehlt')
-  config = config.replace(normalBefore, "  testMatch: /(production-hardening|iphone-gameflow|setup-responsive)\\.spec\\.ts/,")
-}
+const before = "  testMatch: /(production-hardening|iphone-gameflow)\\.spec\\.ts/,"
+const after = "  testMatch: /(production-hardening|iphone-gameflow|setup-responsive)\\.spec\\.ts/,"
+if (!config.includes(before)) throw new Error('WebKit testMatch marker fehlt')
+config = config.replace(before, after)
 fs.writeFileSync(configPath, config)
 console.log('Paket P Tests angelegt')
