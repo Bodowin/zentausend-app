@@ -1,0 +1,57 @@
+name: Package P guarded apply
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    if: github.head_ref == 'chatgpt/package-p-responsive-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply responsive setup patch and tests
+        run: |
+          node scripts/apply-package-p.mjs
+          node scripts/create-package-p-tests.mjs
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Responsive setup journeys
+        run: npx playwright test e2e/setup-responsive.spec.ts
+
+      - name: Commit validated product changes
+        run: |
+          rm scripts/apply-package-p.mjs scripts/create-package-p-tests.mjs .github/workflows/package-p-apply.yml
+          git config user.name "Bodo"
+          git config user.email "47588175+Bodowin@users.noreply.github.com"
+          git add src/components/SetupScreen.tsx e2e/setup-responsive.spec.ts playwright.webkit.config.ts
+          git add -u scripts .github/workflows/package-p-apply.yml
+          git commit -m "Fix responsive setup screen across phone sizes"
+          git push origin HEAD:${{ github.head_ref }}
