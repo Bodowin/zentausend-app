@@ -16,7 +16,6 @@ for (const device of VIEWPORTS) {
       localStorage.clear()
       localStorage.setItem('10k_seen_intro', '1')
       localStorage.setItem('10k_code_dismissed', '1')
-      localStorage.setItem('10k_clique_code', 'E2E-SETUP-CODE')
       localStorage.setItem('10k_prefs_v1', JSON.stringify({
         sound: false,
         haptics: false,
