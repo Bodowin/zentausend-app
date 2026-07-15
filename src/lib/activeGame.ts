@@ -134,6 +134,17 @@ export function saveActiveGame(game: ActiveGame): void {
   }
 }
 
+/** Legt bewusst einen gültigen Wiederherstellungspunkt an, auch wenn der Hauptstand identisch ist. */
+export function createActiveGameCheckpoint(game: ActiveGame): void {
+  const raw = JSON.stringify(persistable(game))
+  try {
+    const backups = [raw, ...readRecoveryRaws().filter((candidate) => candidate !== raw)]
+    localStorage.setItem(RECOVERY_KEY, JSON.stringify(backups.slice(0, RECOVERY_LIMIT)))
+  } catch {
+    /* Best effort: Die Korrektur bleibt zusätzlich über den In-Memory-Undo geschützt. */
+  }
+}
+
 /**
  * Parst und validiert einen gespeicherten Spielstand. Als eigene pure Funktion
  * exportiert, damit beschädigte/alte Speicherstände ohne Browser getestet werden

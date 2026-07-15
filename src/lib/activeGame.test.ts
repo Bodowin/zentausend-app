@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearActiveGame, loadActiveGame, parseActiveGame, saveActiveGame } from './activeGame'
+import { clearActiveGame, createActiveGameCheckpoint, loadActiveGame, parseActiveGame, saveActiveGame } from './activeGame'
 
 const base = {
   sessionId: 'game-test-session',
@@ -83,6 +83,17 @@ describe('active game recovery', () => {
     const backups = JSON.parse(localStorage.getItem('10k_active_game_recovery_v1') || '[]') as string[]
     expect(backups).toHaveLength(3)
     expect(backups.map((raw) => JSON.parse(raw).round)).toEqual([4, 3, 2])
+  })
+
+  it('creates an explicit checkpoint before a correction even when the primary state is unchanged', () => {
+    saveActiveGame(base)
+    createActiveGameCheckpoint(base)
+    localStorage.setItem('10k_active_game', '{broken')
+
+    const restored = loadActiveGame()
+
+    expect(restored?.players[0].score).toBe(500)
+    expect(restored?.recoveredFromBackup).toBe(true)
   })
 
   it('restores the newest valid copy when the primary value is damaged', () => {

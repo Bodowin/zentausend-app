@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /(production-hardening|iphone-gameflow|setup-responsive)\.spec\.ts/,
+  testMatch: /(production-hardening|iphone-gameflow|setup-responsive|turn-corrections)\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
