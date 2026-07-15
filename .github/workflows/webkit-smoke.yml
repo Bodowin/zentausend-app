@@ -31,3 +31,13 @@ jobs:
 
       - name: Safari-like resilience journeys
         run: npx playwright test --config=playwright.webkit.config.ts
+
+      - name: Upload WebKit diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webkit-smoke-diagnostics
+          path: |
+            playwright-report-webkit
+            test-results
+          retention-days: 3
