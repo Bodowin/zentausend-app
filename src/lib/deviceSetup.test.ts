@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SyncResult } from './cloud'
 import type { GameRecord } from './types'
 import { buildFamilyShareText, prepareFamilyDevice } from './deviceSetup'
@@ -23,7 +23,22 @@ const baseSync: SyncResult = {
 }
 
 describe('family device setup', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    const values = new Map<string, string>()
+    const storage: Storage = {
+      get length() {
+        return values.size
+      },
+      clear: () => values.clear(),
+      getItem: (key) => values.get(key) ?? null,
+      key: (index) => [...values.keys()][index] ?? null,
+      removeItem: (key) => values.delete(key),
+      setItem: (key, value) => values.set(key, String(value)),
+    }
+    vi.stubGlobal('localStorage', storage)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
 
   it('builds a simple share message without an admin code', () => {
     const text = buildFamilyShareText(' FAMILIE-10000-26 ', 'https://zentausend-app.vercel.app/')
