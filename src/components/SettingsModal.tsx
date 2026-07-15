@@ -2,14 +2,36 @@ import { useState } from 'react'
 import { getCliqueCode, setCliqueCode } from '../lib/cliqueCode'
 import { getAdminCode, setAdminCode } from '../lib/adminCode'
 import { getPrefs, setPrefs, DICE_THEMES, type DiceTheme } from '../lib/prefs'
+import { buildFamilyShareText, prepareFamilyDevice, type DeviceSetupResult } from '../lib/deviceSetup'
 import { IconLock, IconX } from './Icons'
 
-/** Modal für Clique-Code (Schreiben/Sync) und optionalen Admin-Code (Löschen). */
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('copy failed')
+}
+
+/** Modal für Familien-Code, Gerätewechsel, Darstellung und optionalen Admin-Code. */
 export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => void; focusAdmin?: boolean }) {
   const [code, setCode] = useState(getCliqueCode())
   const [admin, setAdmin] = useState(getAdminCode())
   const [showAdmin, setShowAdmin] = useState(focusAdmin || getAdminCode().length > 0)
   const [saved, setSaved] = useState(false)
+  const [shareMessage, setShareMessage] = useState('')
+  const [deviceBusy, setDeviceBusy] = useState(false)
+  const [deviceResult, setDeviceResult] = useState<DeviceSetupResult | null>(null)
   // Darstellungs-Einstellungen werden sofort gespeichert (unabhängig vom Code).
   const [prefs, setLocalPrefs] = useState(getPrefs())
   const updatePrefs = (patch: Partial<ReturnType<typeof getPrefs>>) => setLocalPrefs(setPrefs(patch))
@@ -21,15 +43,75 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
     window.setTimeout(onClose, 600)
   }
 
+  const flashShare = (message: string) => {
+    setShareMessage(message)
+    window.setTimeout(() => setShareMessage((current) => (current === message ? '' : current)), 2600)
+  }
+
+  const shareCode = async () => {
+    const cleanCode = code.trim()
+    if (!cleanCode) {
+      flashShare('Bitte zuerst den Familien-Code eingeben.')
+      return
+    }
+
+    setCliqueCode(cleanCode)
+    const text = buildFamilyShareText(cleanCode, window.location.origin)
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: '10.000 – Familiengerät einrichten', text })
+        flashShare('Einrichtung geteilt ✓')
+      } else {
+        await copyText(text)
+        flashShare('Einrichtung kopiert ✓')
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      flashShare('Teilen war nicht möglich. Nutze „Code kopieren“.')
+    }
+  }
+
+  const copyCode = async () => {
+    const cleanCode = code.trim()
+    if (!cleanCode) {
+      flashShare('Bitte zuerst den Familien-Code eingeben.')
+      return
+    }
+    try {
+      setCliqueCode(cleanCode)
+      await copyText(cleanCode)
+      flashShare('Familien-Code kopiert ✓')
+    } catch {
+      flashShare('Kopieren war nicht möglich.')
+    }
+  }
+
+  const prepareDevice = async () => {
+    setDeviceBusy(true)
+    setDeviceResult(null)
+    try {
+      setDeviceResult(await prepareFamilyDevice(code))
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
+
+  const deviceResultClasses =
+    deviceResult?.state === 'ready'
+      ? 'border-mint-500/35 bg-mint-500/10'
+      : deviceResult?.state === 'denied'
+        ? 'border-coral-500/40 bg-coral-500/10'
+        : 'border-gold-500/35 bg-gold-500/10'
+
   return (
     <div className="glass fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-3xl border border-ink-700 bg-ink-850 p-6 shadow-2xl animate-rise safe-pb"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-3xl border border-ink-700 bg-ink-850 p-6 shadow-2xl animate-rise safe-pb"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-bold text-fog-100">
-            <IconLock className="h-5 w-5 text-gold-500" /> Clique-Code
+            <IconLock className="h-5 w-5 text-gold-500" /> Familien-Code & Geräte
           </h2>
           <button onClick={onClose} className="p-1.5 text-fog-500 hover:text-fog-200" aria-label="Schließen">
             <IconX />
@@ -37,20 +119,108 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
         </div>
 
         <p className="mb-4 text-sm leading-relaxed text-fog-400">
-          Das gemeinsame Kennwort eurer Clique. Nur damit lassen sich Spiele in die ewige Tabelle
-          <strong className="text-fog-200"> schreiben & synchronisieren</strong>. Lesen bleibt für alle
-          offen. Jedes Clique-Mitglied gibt ihn einmal pro Gerät ein.
+          Der Familien-Code verbindet eure Geräte. Jedes Familienmitglied gibt ihn einmal ein. Danach werden Spiele,
+          Statistiken und laufende Spielstände gemeinsam gesichert.
         </p>
 
+        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-fog-500" htmlFor="family-code">
+          Familien-Code
+        </label>
         <input
+          id="family-code"
           type="text"
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={(e) => {
+            setCode(e.target.value)
+            setDeviceResult(null)
+            setSaved(false)
+          }}
           onKeyDown={(e) => e.key === 'Enter' && save()}
-          placeholder="Clique-Code eingeben…"
+          placeholder="Familien-Code eingeben…"
           autoCapitalize="characters"
-          className="mb-4 w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 focus:border-gold-500/70 focus:outline-none"
+          autoCorrect="off"
+          spellCheck={false}
+          className="mb-4 w-full rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 font-mono text-fog-100 placeholder:font-sans placeholder:text-fog-600 focus:border-gold-500/70 focus:outline-none"
         />
+
+        <section className="mb-4 rounded-2xl border border-gold-500/30 bg-gold-500/5 p-4" aria-label="Neues Gerät einrichten">
+          <h3 className="text-sm font-black text-gold-300">Neues Gerät einrichten</h3>
+          <div className="mt-3 space-y-2 text-xs leading-relaxed text-fog-400">
+            <p><strong className="text-fog-200">1.</strong> Auf dem bisherigen Gerät den Code teilen oder kopieren.</p>
+            <p><strong className="text-fog-200">2.</strong> Auf dem neuen Gerät die App öffnen und den Code eingeben.</p>
+            <p><strong className="text-fog-200">3.</strong> „Code prüfen & Daten laden“ antippen.</p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => void shareCode()}
+              className="rounded-xl border border-gold-500/30 bg-gold-500/10 px-3 py-2.5 text-xs font-bold text-gold-300"
+            >
+              Code teilen
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyCode()}
+              className="rounded-xl border border-ink-700 bg-ink-900/70 px-3 py-2.5 text-xs font-bold text-fog-300"
+            >
+              Code kopieren
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void prepareDevice()}
+            disabled={deviceBusy}
+            className="mt-2 w-full rounded-xl bg-gradient-to-b from-gold-400 to-gold-500 px-3 py-3 text-sm font-black text-ink-950 shadow-lg disabled:opacity-60"
+          >
+            {deviceBusy ? 'Verbindung wird geprüft…' : 'Code prüfen & Daten laden'}
+          </button>
+
+          <p className="mt-2 text-center text-[10px] text-fog-600">Der Admin-Code wird niemals geteilt.</p>
+
+          {shareMessage && (
+            <div className="mt-3 rounded-xl border border-ink-700 bg-ink-900/70 px-3 py-2 text-center text-xs font-semibold text-fog-300" aria-live="polite">
+              {shareMessage}
+            </div>
+          )}
+
+          {deviceResult && (
+            <div className={`mt-3 rounded-xl border px-3 py-3 ${deviceResultClasses}`} aria-live="polite">
+              {deviceResult.state === 'ready' && (
+                <>
+                  <div className="font-black text-mint-300">Dieses Gerät ist bereit</div>
+                  <div className="mt-1 text-xs leading-relaxed text-fog-300">
+                    {deviceResult.localCount} {deviceResult.localCount === 1 ? 'Spiel ist' : 'Spiele sind'} auf diesem Gerät verfügbar
+                    {deviceResult.cloudCount !== null && <> · {deviceResult.cloudCount} in der Cloud</>}.
+                  </div>
+                </>
+              )}
+              {deviceResult.state === 'denied' && (
+                <>
+                  <div className="font-black text-coral-300">Code stimmt nicht</div>
+                  <div className="mt-1 text-xs leading-relaxed text-fog-300">
+                    Bitte Schreibweise prüfen oder den Code auf dem bisherigen Gerät erneut teilen.
+                  </div>
+                </>
+              )}
+              {deviceResult.state === 'offline' && (
+                <>
+                  <div className="font-black text-gold-300">Keine Internetverbindung</div>
+                  <div className="mt-1 text-xs leading-relaxed text-fog-300">
+                    Der Familien-Code ist auf diesem Gerät gespeichert. Tippe später erneut auf „Code prüfen & Daten laden“.
+                  </div>
+                </>
+              )}
+              {deviceResult.state === 'missing' && (
+                <>
+                  <div className="font-black text-gold-300">Familien-Code fehlt</div>
+                  <div className="mt-1 text-xs text-fog-300">Bitte den geteilten Code oben eingeben.</div>
+                </>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* Admin-Code: optional, nur für die Person, die löschen darf. */}
         {showAdmin ? (
@@ -130,7 +300,6 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             </span>
           </button>
 
-          {/* „X ist dran"-Übergabe */}
           <button
             type="button"
             role="switch"
@@ -139,7 +308,7 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             className="mt-4 flex w-full items-center justify-between"
           >
             <span className="flex flex-col text-left">
-              <span className="text-sm font-bold text-fog-200">„X ist dran"-Übergabe</span>
+              <span className="text-sm font-bold text-fog-200">„X ist dran“-Übergabe</span>
               <span className="text-[11px] text-fog-500">Kurze Einblendung beim Spielerwechsel</span>
             </span>
             <span className={`relative h-7 w-[52px] shrink-0 rounded-full transition-colors ${prefs.handoff ? 'bg-mint-500' : 'bg-ink-600'}`}>
@@ -147,7 +316,6 @@ export function SettingsModal({ onClose, focusAdmin = false }: { onClose: () => 
             </span>
           </button>
 
-          {/* Mini-Punktekurve */}
           <button
             type="button"
             role="switch"
