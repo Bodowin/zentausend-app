@@ -7,6 +7,7 @@ import { getPrefs } from '../lib/prefs'
 import { computeGameAnalysis } from '../lib/storage'
 import { PIPS } from '../lib/dicePips'
 import { diceThrowSeed } from '../lib/diceThrowSeed'
+import { TurnLogDialog } from './TurnLogDialog'
 import { GameChart } from './GameChart'
 import {
   IconCheck,
@@ -63,6 +64,7 @@ interface Props {
   onBank: () => void
   onBust: () => void
   onUndo: () => void
+  onCorrectTurn: (index: number, points: number, bust: boolean) => { ok: boolean; message: string }
   onExit: () => void
   onNewGame: () => void
   onRematch: () => void
@@ -100,6 +102,7 @@ export function GameScreen(p: Props) {
     canUndo,
   } = p
 
+  const [showTurnLog, setShowTurnLog] = useState(false)
   const [showRiskInfo, setShowRiskInfo] = useState(false)
   // Rundenanalyse direkt vom Sieg-Overlay aus öffnen, ohne über die Statistik
   // gehen zu müssen.
@@ -480,6 +483,14 @@ export function GameScreen(p: Props) {
           >
             <span className="text-base leading-none">{diceMode === 'virtual' ? '🎲' : '🎯'}</span>
             <span className="text-[8px] font-bold uppercase tracking-wide">{diceMode === 'virtual' ? 'Virtuell' : 'Echt'}</span>
+          </button>
+          <button
+            onClick={() => setShowTurnLog(true)}
+            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200"
+            aria-label="Rundenprotokoll öffnen"
+          >
+            <span className="text-sm leading-none">▤</span>
+            <span className="text-[8px] font-bold uppercase tracking-wide">Verlauf</span>
           </button>
           <button
             onClick={p.onUndo}
@@ -875,6 +886,14 @@ export function GameScreen(p: Props) {
             </button>
           </div>
         </div>
+      )}
+
+      {showTurnLog && (
+        <TurnLogDialog
+          turns={turns}
+          onCorrectTurn={p.onCorrectTurn}
+          onClose={() => setShowTurnLog(false)}
+        />
       )}
 
       {/* Sieg-Overlay – oder, umgeschaltet, die Runden-Analyse desselben Spiels. */}

@@ -13,4 +13,5 @@ dist-ssr
 
 # Browser test output
 playwright-report/
+playwright-report-webkit/
 test-results/

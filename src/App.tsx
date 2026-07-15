@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { DiceMode, GameState, Player, Turn } from './lib/types'
 import {
   clearActiveGame,
+  createActiveGameCheckpoint,
   createActiveGameSessionId,
   loadActiveGame,
   saveActiveGame,
@@ -14,6 +15,7 @@ import { buzz } from './lib/haptics'
 import { playerColor } from './lib/colors'
 import { getPrefs } from './lib/prefs'
 import { hasCliqueCode } from './lib/cliqueCode'
+import { replayCompletedTurns, TurnReplayError } from './lib/turnReplay'
 import { playerIdForName } from './lib/playerIdentity'
 import { SetupScreen } from './components/SetupScreen'
 import { IntroScreen } from './components/IntroScreen'
@@ -473,7 +475,15 @@ export function App() {
     }
 
     setUndoStack((stack) => stack.slice(0, -1))
-    showToast(`${snapshot.action === 'bank' ? 'Sichern' : snapshot.action === 'bust' ? 'Niete' : 'Zocken'} rückgängig`)
+    const actionLabel =
+      snapshot.action === 'bank'
+        ? 'Sichern'
+        : snapshot.action === 'bust'
+          ? 'Niete'
+          : snapshot.action === 'correction'
+            ? 'Korrektur'
+            : 'Zocken'
+    showToast(`${actionLabel} rückgängig`)
   }
 
   const resolveTurn = useCallback(
@@ -673,6 +683,78 @@ export function App() {
     resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, false, true)
   }
 
+  const handleCorrectTurn = (turnIndex: number, points: number, bust: boolean) => {
+    if (!Number.isInteger(turnIndex) || turnIndex < 0 || turnIndex >= turns.length) {
+      return { ok: false, message: 'Dieser Zug wurde nicht gefunden.' }
+    }
+
+    const correctedTurns = turns.map((turn, index) =>
+      index === turnIndex ? { ...turn, points: bust ? 0 : points, bust } : { ...turn },
+    )
+
+    let replay
+    try {
+      replay = replayCompletedTurns(
+        players.map(({ id, name }) => ({ id, name })),
+        correctedTurns,
+        goalScore,
+        entryMin,
+      )
+    } catch (error) {
+      const message = error instanceof TurnReplayError ? error.message : 'Korrektur konnte nicht berechnet werden.'
+      return { ok: false, message }
+    }
+
+    if (replay.phase === 'finished') {
+      return {
+        ok: false,
+        message: 'Diese Korrektur würde die Partie bereits beenden. Bitte korrigiere zuerst einen späteren Zug.',
+      }
+    }
+
+    createActiveGameCheckpoint({
+      sessionId,
+      players,
+      idx,
+      round,
+      phase,
+      target,
+      event,
+      testMode,
+      diceMode,
+      goalScore,
+      entryMin,
+      kept,
+      dice,
+      accumulated,
+      turns,
+      rolled,
+      thrown,
+      throwSeq,
+      savedAt: new Date().toISOString(),
+    })
+    takeSnapshot('correction')
+
+    setPlayers(replay.players)
+    setTurns(replay.turns)
+    setIdx(replay.idx)
+    setRound(replay.round)
+    setPhase(replay.phase)
+    setTarget(replay.target)
+    setWinner(null)
+    setAccumulated(0)
+    setKept([])
+    setDice([])
+    setRolled([])
+    setThrown([])
+    setThrowSeq((sequence) => sequence + 1)
+    setCelebration(null)
+    setHandoff(null)
+    setBustAnnounce(null)
+    showToast('Korrektur gespeichert')
+    return { ok: true, message: 'Korrektur gespeichert' }
+  }
+
   const acknowledgeBust = () => {
     setBustAnnounce(null)
   }
@@ -774,6 +856,7 @@ export function App() {
         onBank={handleBank}
         onBust={handleBust}
         onUndo={undo}
+        onCorrectTurn={handleCorrectTurn}
         onExit={exitToSetup}
         onNewGame={exitToSetup}
         onRematch={startRematch}
