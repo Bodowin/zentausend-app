@@ -32,6 +32,7 @@ jobs:
       - name: Apply product patch and tests
         run: |
           node scripts/apply-package-o.mjs
+          node scripts/fix-package-o-parameter.mjs
           node scripts/create-package-o-tests.mjs
 
       - name: Unit tests
@@ -64,7 +65,7 @@ jobs:
 
       - name: Commit validated product changes
         run: |
-          rm scripts/apply-package-o.mjs scripts/create-package-o-tests.mjs .github/workflows/package-o-apply.yml
+          rm scripts/apply-package-o.mjs scripts/fix-package-o-parameter.mjs scripts/create-package-o-tests.mjs .github/workflows/package-o-apply.yml
           git config user.name "Bodo"
           git config user.email "47588175+Bodowin@users.noreply.github.com"
           git add src/App.tsx src/components/GameScreen.tsx src/index.css e2e/iphone-gameflow.spec.ts playwright.webkit.config.ts
