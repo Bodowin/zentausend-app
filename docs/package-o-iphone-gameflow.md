@@ -14,6 +14,8 @@ Beim ersten längeren Spiel auf einem iPhone 17 Pro wurden unnötiges Seiten-Scr
 - Ein neuer virtueller Wurf wird erst vorbereitet, nachdem „Würfeln starten“ bestätigt wurde.
 - Spezialanimation und Spielerübergabe laufen nacheinander statt übereinander.
 - Eine Niete erzeugt nur noch eine Übergabeanzeige.
+- Laufende Cloud-Spielstände werden erst nach Eingabe des Familien-Codes gelesen oder geschrieben.
+- Wird der Familien-Code in den Einstellungen gespeichert, startet die Cloud-Prüfung sofort; lokale Spielstände bleiben ohne Code vollständig erhalten.
 
 ## Abnahme
 
@@ -23,3 +25,5 @@ Beim ersten längeren Spiel auf einem iPhone 17 Pro wurden unnötiges Seiten-Scr
 - WebKit-Smoke-Test im iPhone-Viewport
 - eigener Ablauf: fortsetzen → würfeln → auswählen → 100 Punkte sichern → Übergabe bestätigen → neuer Wurf
 - Prüfung auf vertikales und horizontales Dokument-Scrollen bei 393 × 852 Pixeln
+- kein Zugriff auf einen laufenden Cloud-Spielstand ohne Familien-Code
+- Geräteübernahme und Konfliktentscheidung mit Familien-Code
