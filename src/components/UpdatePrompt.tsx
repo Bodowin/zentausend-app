@@ -21,7 +21,7 @@ export default function UpdatePrompt() {
       setRegistration(nextRegistration ?? null)
     },
     onRegisterError() {
-      setUpdateFailed(true)
+      if (navigator.onLine !== false) setUpdateFailed(true)
     },
   })
 
@@ -32,10 +32,19 @@ export default function UpdatePrompt() {
   }, [offlineReady, setOfflineReady])
 
   useEffect(() => {
+    const onOffline = () => setUpdateFailed(false)
+    window.addEventListener('offline', onOffline)
+    return () => window.removeEventListener('offline', onOffline)
+  }, [])
+
+  useEffect(() => {
     if (!registration) return
 
     const check = () => {
-      if (navigator.onLine === false) return
+      if (navigator.onLine === false) {
+        setUpdateFailed(false)
+        return
+      }
       void registration.update().then(
         () => setUpdateFailed(false),
         () => setUpdateFailed(true),
@@ -66,7 +75,7 @@ export default function UpdatePrompt() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-[65] flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),1rem)]" aria-live="polite">
       <div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-gold-500/40 bg-ink-900/95 px-4 py-3 shadow-lg shadow-black/50 backdrop-blur animate-pop">
-        <div className="flex-1 leading-tight">
+        <div className="min-w-0 flex-1 leading-tight">
           {needRefresh ? (
             <>
               <div className="text-sm font-bold text-fog-100">Neue Version verfügbar</div>
@@ -90,7 +99,7 @@ export default function UpdatePrompt() {
             <button
               type="button"
               onClick={() => setNeedRefresh(false)}
-              className="rounded-full px-3 py-1.5 text-xs font-bold text-fog-500 transition-colors hover:text-fog-200"
+              className="shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-fog-500 transition-colors hover:text-fog-200"
             >
               Später
             </button>
@@ -100,7 +109,7 @@ export default function UpdatePrompt() {
                 setUpdateFailed(false)
                 void updateServiceWorker(true).catch(() => setUpdateFailed(true))
               }}
-              className="rounded-full bg-gold-500 px-4 py-1.5 text-xs font-black uppercase tracking-wide text-ink-950 transition-transform active:scale-95"
+              className="shrink-0 rounded-full bg-gold-500 px-4 py-1.5 text-xs font-black uppercase tracking-wide text-ink-950 transition-transform active:scale-95"
             >
               Update laden
             </button>
@@ -114,7 +123,7 @@ export default function UpdatePrompt() {
               setUpdateFailed(false)
               void registration?.update().catch(() => setUpdateFailed(true))
             }}
-            className="rounded-full border border-gold-500/30 px-3 py-1.5 text-xs font-bold text-gold-300"
+            className="shrink-0 rounded-full border border-gold-500/30 px-3 py-1.5 text-xs font-bold text-gold-300"
           >
             Neu prüfen
           </button>
