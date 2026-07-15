@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 async function openCleanApp(page: import('@playwright/test').Page) {
   await page.addInitScript(() => {
+    if (sessionStorage.getItem('10k_q_seeded') === '1') return
     localStorage.clear()
     localStorage.setItem('10k_seen_intro', '1')
     localStorage.setItem('10k_code_dismissed', '1')
@@ -18,6 +19,7 @@ async function openCleanApp(page: import('@playwright/test').Page) {
         lastEvent: '',
       }),
     )
+    sessionStorage.setItem('10k_q_seeded', '1')
   })
   await page.goto('/')
 }
