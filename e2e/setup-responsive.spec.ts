@@ -1,6 +1,4 @@
-import fs from 'node:fs'
-
-const spec = `import { expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 const VIEWPORTS = [
   { name: 'Android compact', width: 360, height: 640 },
@@ -12,7 +10,7 @@ const VIEWPORTS = [
 ]
 
 for (const device of VIEWPORTS) {
-  test(\`setup fits without scrolling on \${device.name} \${device.width}x\${device.height}\`, async ({ page }) => {
+  test(`setup fits without scrolling on ${device.name} ${device.width}x${device.height}`, async ({ page }) => {
     await page.setViewportSize({ width: device.width, height: device.height })
     await page.addInitScript(() => {
       localStorage.clear()
@@ -69,15 +67,3 @@ for (const device of VIEWPORTS) {
     expect(metrics.startBottom).toBeLessThanOrEqual(metrics.innerHeight + 1)
   })
 }
-`
-
-fs.writeFileSync('e2e/setup-responsive.spec.ts', spec)
-
-const configPath = 'playwright.webkit.config.ts'
-let config = fs.readFileSync(configPath, 'utf8')
-const before = "  testMatch: /(production-hardening|iphone-gameflow)\\.spec\\.ts/,"
-const after = "  testMatch: /(production-hardening|iphone-gameflow|setup-responsive)\\.spec\\.ts/,"
-if (!config.includes(before)) throw new Error('WebKit testMatch marker fehlt')
-config = config.replace(before, after)
-fs.writeFileSync(configPath, config)
-console.log('Paket P Tests angelegt')

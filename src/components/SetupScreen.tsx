@@ -148,18 +148,21 @@ const requestStart = () => {
 }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 pt-[max(env(safe-area-inset-top),1.25rem)]">
-      <header className="mb-7 mt-2 flex items-center justify-between animate-rise">
-        <div className="flex items-baseline gap-2.5">
-          <span className="font-display text-4xl font-black tracking-tighter text-gold-500">10.000</span>
-          <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-fog-500">Die Clique</span>
+    <div data-testid="setup-screen" className="mx-auto flex h-[100dvh] min-h-0 w-full max-w-md flex-col overflow-hidden px-3 pt-[max(env(safe-area-inset-top),0.65rem)] sm:px-4">
+      <header className="mb-2.5 flex shrink-0 items-center justify-between gap-2 animate-rise">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="font-display text-3xl font-black tracking-tighter text-gold-500 min-[390px]:text-4xl">10.000</span>
+          <span className="hidden text-[10px] font-bold uppercase tracking-[0.22em] text-fog-500 min-[350px]:inline">Die Clique</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onShowStats}
-            className="flex items-center gap-1.5 rounded-xl border border-ink-700 bg-ink-800/70 px-3 py-2 text-xs font-semibold text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
+            className="flex items-center gap-1 rounded-xl border border-ink-700 bg-ink-800/70 px-2.5 py-2 text-xs font-semibold text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
+            aria-label="Statistik"
           >
-            <IconChart className="h-4 w-4" /> Statistik
+            <IconChart className="h-4 w-4" />
+            <span className="hidden min-[380px]:inline">Statistik</span>
+            <span className="min-[380px]:hidden">Stats</span>
           </button>
           <button
             onClick={onShowHelp}
@@ -258,9 +261,10 @@ const requestStart = () => {
         </div>
       )}
 
+      <main data-testid="setup-scroll-area" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-1 scrollbar-hide">
       {/* Einmaliger Hinweis: Clique-Code eingeben, um die Cloud-Sync zu aktivieren. */}
       {needsCode && (
-        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
+        <div className="mb-3 flex items-center gap-2.5 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-3 animate-rise">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-500/20 text-gold-400">
             <IconLock className="h-5 w-5" />
           </span>
@@ -281,7 +285,7 @@ const requestStart = () => {
       )}
 
       {resumable && (
-        <div className="mb-5 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-4 animate-rise">
+        <div className="mb-3 rounded-2xl border border-gold-500/40 bg-gold-500/10 p-3 animate-rise">
           {resumable.recoveredFromBackup && (
             <div className="mb-3 rounded-xl border border-mint-500/30 bg-mint-500/10 px-3 py-2 text-xs font-bold text-mint-300">
               Sicherheitskopie wiederhergestellt
@@ -315,8 +319,8 @@ const requestStart = () => {
         </div>
       )}
 
-      <section className="mb-5 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-5 shadow-2xl shadow-black/40 animate-rise">
-        <div className="mb-4 flex items-center justify-between">
+      <section className="mb-3 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-3.5 shadow-2xl shadow-black/40 animate-rise">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 font-semibold text-fog-100">
             <IconUsers className="h-5 w-5 text-gold-500" /> Wer spielt mit?
           </h2>
@@ -378,7 +382,7 @@ const requestStart = () => {
           </div>
         ) : (
           <>
-            <div className="mb-4 grid grid-cols-2 gap-2.5">
+            <div className="mb-3 grid grid-cols-2 gap-2">
               {roster.map((name) => {
                 const i = players.findIndex((p) => p.name === name)
                 const active = i >= 0
@@ -386,7 +390,7 @@ const requestStart = () => {
                   <button
                     key={name}
                     onClick={() => (active ? removeAt(i) : add(name))}
-                    className={`rounded-2xl border-2 px-3 py-3.5 text-sm font-bold transition-all ${
+                    className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition-all ${
                       active
                         ? 'border-mint-400/60 bg-mint-500/15 text-mint-300'
                         : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600 hover:text-fog-200'
@@ -398,27 +402,27 @@ const requestStart = () => {
               })}
             </div>
 
-            <div className="mb-5 flex gap-2">
+            <div className="mb-3 flex gap-2">
               <input
                 type="text"
                 value={guest}
                 onChange={(e) => setGuest(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && add(guest)}
                 placeholder="Gast hinzufügen…"
-                className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-950/60 px-4 py-3 text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
+                className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-950/60 px-3 py-2.5 text-sm text-fog-100 placeholder:text-fog-600 transition-colors focus:border-gold-500/70 focus:outline-none"
               />
               <button
                 onClick={() => add(guest)}
-                className="grid w-12 place-items-center rounded-xl border border-ink-700 bg-ink-800 text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
+                className="grid w-11 place-items-center rounded-xl border border-ink-700 bg-ink-800 text-fog-300 transition-colors hover:border-ink-600 hover:text-fog-100"
                 aria-label="Gast hinzufügen"
               >
                 <IconUserPlus />
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {players.length === 0 ? (
-                <p className="py-3 text-center text-sm italic text-fog-600">Noch niemand ausgewählt…</p>
+                <p className="py-2 text-center text-sm italic text-fog-600">Noch niemand ausgewählt…</p>
               ) : (
                 <>
                   {players.length > 1 && (
@@ -429,7 +433,7 @@ const requestStart = () => {
                   {players.map((p, i) => (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-2 animate-pop"
+                      className="flex items-center justify-between rounded-xl border border-ink-700/70 bg-ink-900/60 px-3 py-1.5 animate-pop"
                     >
                       <div className="flex items-center gap-3">
                         <span
@@ -475,11 +479,11 @@ const requestStart = () => {
       </section>
 
       {/* Optionen (Anlass + Testspiel) eingeklappt → hält den Startbildschirm aufgeräumt. */}
-      <div className="mb-4">
+      <div className="mb-2">
         <button
           type="button"
           onClick={() => setOptsOpen((o) => !o)}
-          className="flex w-full items-center justify-between rounded-2xl border border-ink-700/80 bg-ink-850/60 px-4 py-3 text-left"
+          className="flex w-full items-center justify-between rounded-2xl border border-ink-700/80 bg-ink-850/60 px-4 py-2.5 text-left"
         >
           <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-fog-200">
             <IconTag className="h-4 w-4 shrink-0 text-gold-500" /> Optionen
@@ -585,9 +589,11 @@ const requestStart = () => {
         )}
       </div>
 
-      {/* Würfel-Modus + Start kleben unten → beides immer sichtbar, kein Scrollen nötig. */}
-      <div className="sticky bottom-0 z-20 -mx-4 mt-auto bg-gradient-to-t from-ink-900 via-ink-900 to-transparent px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-5">
-        <div className="mb-2.5 grid grid-cols-2 gap-2">
+      </main>
+
+      {/* Würfel-Modus + Start bleiben außerhalb des Inhaltsbereichs immer sichtbar. */}
+      <div data-testid="setup-actions" className="z-20 -mx-3 shrink-0 bg-gradient-to-t from-ink-900 via-ink-900 to-transparent px-3 pb-[max(env(safe-area-inset-bottom),0.55rem)] pt-2 sm:-mx-4 sm:px-4">
+        <div className="mb-2 grid grid-cols-2 gap-2">
           {(
             [
               { v: 'real', label: '🎯 Echte Würfel' },
@@ -601,7 +607,7 @@ const requestStart = () => {
                 setDiceMode(m.v)
                 setPrefs({ defaultDiceMode: m.v }) // Wahl merken
               }}
-              className={`rounded-xl border-2 py-2 text-sm font-bold transition-all ${
+              className={`rounded-xl border-2 py-1.5 text-sm font-bold transition-all ${
                 diceMode === m.v
                   ? 'border-gold-500/60 bg-gold-500/10 text-gold-400'
                   : 'border-ink-700 bg-ink-800 text-fog-400 hover:border-ink-600'
@@ -614,7 +620,7 @@ const requestStart = () => {
         <button
           onClick={requestStart}
           disabled={players.length < 2}
-          className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-4 text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
+          className="w-full rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3 text-base min-[390px]:py-3.5 min-[390px]:text-lg font-bold text-ink-950 shadow-lg shadow-mint-500/20 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:from-ink-700 disabled:to-ink-700 disabled:text-fog-600 disabled:shadow-none"
         >
           {players.length < 2
             ? 'Mind. 2 Spieler wählen'
