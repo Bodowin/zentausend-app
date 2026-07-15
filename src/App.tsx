@@ -13,6 +13,7 @@ import { saveGame } from './lib/storage'
 import { buzz } from './lib/haptics'
 import { playerColor } from './lib/colors'
 import { getPrefs } from './lib/prefs'
+import { hasCliqueCode } from './lib/cliqueCode'
 import { playerIdForName } from './lib/playerIdentity'
 import { SetupScreen } from './components/SetupScreen'
 import { IntroScreen } from './components/IntroScreen'
@@ -142,13 +143,24 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false
-    void inspectActiveGameCloud(initialResume.current).then((prompt) => {
-      if (!cancelled && prompt && dismissedCloudVersion.current !== prompt.snapshot.version) {
-        setCloudPrompt(prompt)
+
+    const inspectCloudGame = () => {
+      if (!hasCliqueCode()) {
+        setCloudPrompt(null)
+        return
       }
-    })
+      void inspectActiveGameCloud(initialResume.current).then((prompt) => {
+        if (!cancelled && prompt && dismissedCloudVersion.current !== prompt.snapshot.version) {
+          setCloudPrompt(prompt)
+        }
+      })
+    }
+
+    inspectCloudGame()
+    window.addEventListener('10k-clique-code-changed', inspectCloudGame)
     return () => {
       cancelled = true
+      window.removeEventListener('10k-clique-code-changed', inspectCloudGame)
     }
   }, [])
 
@@ -186,6 +198,7 @@ export function App() {
       savedAt: new Date().toISOString(),
     }
     saveActiveGame(snapshot)
+    if (!hasCliqueCode()) return
 
     const timer = window.setTimeout(() => {
       void syncActiveGameToCloud(snapshot).then((result) => {

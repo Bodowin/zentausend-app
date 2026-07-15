@@ -21,6 +21,7 @@ export function setCliqueCode(code: string): void {
   } catch {
     /* ignore */
   }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('10k-clique-code-changed'))
 }
 
 export function hasCliqueCode(): boolean {
