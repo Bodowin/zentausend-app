@@ -1,0 +1,25 @@
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* WebKit keeps flex headings at their min-content width unless explicitly
+   allowed to shrink. Long German modal titles must wrap inside the viewport. */
+.glass h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.glass h2 + button {
+  flex-shrink: 0;
+}
+
+@media (max-width: 420px) {
+  .glass h2 {
+    font-size: 1rem;
+    line-height: 1.25rem;
+  }
+}
