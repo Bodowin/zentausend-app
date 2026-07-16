@@ -56,6 +56,17 @@ jobs:
               '           <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? \'–\' : `${profile.avgRounds.toLocaleString(\'de-DE\')} Runden`} />\n',
           )
           profile_path.write_text(profile)
+
+          app_path = Path('src/App.tsx')
+          app = app_path.read_text()
+          app = app.replace(
+              '            turns: turns.map((turn) => ({ ...turn })),\n'
+              '            rolled: [...rolled],\n',
+              '             turns: turns.map((turn) => ({ ...turn })),\n'
+              '             rolled: [...rolled],\n',
+              1,
+          )
+          app_path.write_text(app)
           PY
           python3 scripts/apply-package-t.py > patch.log 2>&1
           status=$?
