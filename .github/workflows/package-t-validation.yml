@@ -36,6 +36,18 @@ jobs:
       - name: Apply risk-balance integration
         run: |
           set +e
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/components/PlayerProfileScreen.tsx')
+          text = path.read_text()
+          text = text.replace(
+              '          <ProfileRow label="Bester Einzelzug" value={profile.bestTurn ? fmt(profile.bestTurn.points) : \'–\'} />\n'
+              '          <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? \'–\' : `${profile.avgRounds.toLocaleString(\'de-DE\')} Runden`} />\n',
+              '           <ProfileRow label="Bester Einzelzug" value={profile.bestTurn ? fmt(profile.bestTurn.points) : \'–\'} />\n'
+              '           <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? \'–\' : `${profile.avgRounds.toLocaleString(\'de-DE\')} Runden`} />\n',
+          )
+          path.write_text(text)
+          PY
           python3 scripts/apply-package-t.py > patch.log 2>&1
           status=$?
           cat patch.log
