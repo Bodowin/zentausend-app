@@ -1,9 +1,9 @@
 name: Package R validation
 
 on:
-  push:
+  pull_request:
     branches:
-      - chatgpt/package-r-paused-games
+      - main
   workflow_dispatch:
 
 permissions:
