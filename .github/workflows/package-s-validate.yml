@@ -34,7 +34,7 @@ jobs:
         run: npm ci
 
       - name: Apply game-finale integration
-        run: python3 scripts/apply-package-s.py
+        run: python3 scripts/apply-package-s-v2.py
 
       - name: Unit tests
         run: npm test
@@ -55,7 +55,7 @@ jobs:
         run: |
           git config user.name "ChatGPT Package S"
           git config user.email "actions@github.com"
-          git add src/components/GameScreen.tsx src/lib/shareImage.ts playwright.config.ts playwright.webkit.config.ts
+          git add src/components/GameScreen.tsx
           git diff --cached --quiet && exit 0
           git commit -m "Commit validated package S product files"
           git push origin HEAD:agent/package-s-game-finale
