@@ -34,7 +34,12 @@ jobs:
         run: npm ci
 
       - name: Apply risk-balance integration
-        run: python3 scripts/apply-package-t.py
+        run: |
+          set +e
+          python3 scripts/apply-package-t.py > patch.log 2>&1
+          status=$?
+          cat patch.log
+          exit $status
 
       - name: Unit tests
         run: npm test
@@ -78,6 +83,7 @@ jobs:
         with:
           name: package-t-failure-diagnostics
           path: |
+            patch.log
             playwright-report
             playwright-report-webkit
             test-results
