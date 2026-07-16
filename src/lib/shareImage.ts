@@ -1,109 +1,253 @@
-import type { Player } from './types'
+import type { Player, Turn } from './types'
 import { playerColor } from './colors'
+import { computeGameAwards, gameAwardNames } from './gameAwards'
 import { shareResult } from './share'
 
-const FONT = '-apple-system, system-ui, "Segoe UI", Roboto, sans-serif'
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+const W = 1080
+const H = 1350
+
+export type ShareImageResult = 'shared' | 'downloaded' | 'cancelled' | 'text'
+
+function roundedPath(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + width - r, y)
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r)
+  ctx.lineTo(x + width, y + height - r)
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height)
+  ctx.lineTo(x + r, y + height)
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function fillRounded(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+  fill: string,
+  stroke?: string,
+) {
+  roundedPath(ctx, x, y, width, height, radius)
+  ctx.fillStyle = fill
+  ctx.fill()
+  if (stroke) {
+    ctx.strokeStyle = stroke
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+}
+
+function fitText(ctx: CanvasRenderingContext2D, value: string, maxWidth: number, startSize: number, weight = 800): number {
+  let size = startSize
+  while (size > 24) {
+    ctx.font = `${weight} ${size}px ${FONT}`
+    if (ctx.measureText(value).width <= maxWidth) return size
+    size -= 2
+  }
+  ctx.font = `${weight} ${size}px ${FONT}`
+  return size
+}
 
 /**
- * Rendert den Endstand als hübsche Bildkarte (Canvas, ohne Extra-Paket) und
- * teilt sie über die native Teilen-Funktion. Fällt auf Download bzw. Text zurück.
+ * Rendert ein 4:5-Ergebnisbild ohne Zusatzpaket. Native Dateifreigabe wird
+ * bevorzugt; Desktop und Browser ohne Web Share laden die PNG-Datei herunter.
  */
 export async function shareResultImage(
   winner: Player,
   players: Player[],
   event: string,
-): Promise<void> {
-  const W = 1080
-  const H = 1080
+  turns: Turn[] = [],
+): Promise<ShareImageResult> {
   const canvas = document.createElement('canvas')
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext('2d')
-  if (!ctx) return shareResult(winner, players, event)
+  if (!ctx) {
+    await shareResult(winner, players, event)
+    return 'text'
+  }
 
-  // Hintergrund
-  const grad = ctx.createLinearGradient(0, 0, W, H)
-  grad.addColorStop(0, '#0e1320')
-  grad.addColorStop(1, '#060910')
-  ctx.fillStyle = grad
+  const background = ctx.createLinearGradient(0, 0, W, H)
+  background.addColorStop(0, '#111827')
+  background.addColorStop(0.55, '#090e19')
+  background.addColorStop(1, '#05070c')
+  ctx.fillStyle = background
   ctx.fillRect(0, 0, W, H)
 
-  // Rahmen
-  ctx.strokeStyle = 'rgba(245,184,61,0.35)'
-  ctx.lineWidth = 4
-  ctx.strokeRect(40, 40, W - 80, H - 80)
+  const glow = ctx.createRadialGradient(840, 180, 10, 840, 180, 520)
+  glow.addColorStop(0, 'rgba(245,184,61,0.22)')
+  glow.addColorStop(1, 'rgba(245,184,61,0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 0, W, 700)
 
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#f5b83d'
+  ctx.font = `900 70px ${FONT}`
+  ctx.fillText('10.000', 72, 112)
+  ctx.fillStyle = '#75819d'
+  ctx.font = `800 23px ${FONT}`
+  ctx.fillText('D I E   C L I Q U E', 74, 150)
+
+  ctx.textAlign = 'right'
+  ctx.fillStyle = '#8d98b0'
+  ctx.font = `650 25px ${FONT}`
+  ctx.fillText(new Date().toLocaleDateString('de-DE'), W - 72, 108)
+  if (event) {
+    fitText(ctx, event, 430, 28, 700)
+    ctx.fillStyle = '#c5cde0'
+    ctx.fillText(event, W - 72, 148)
+  }
+
+  fillRounded(ctx, 72, 205, W - 144, 300, 42, 'rgba(18,25,40,0.92)', 'rgba(245,184,61,0.34)')
   ctx.textAlign = 'center'
-
-  // Kopf
+  ctx.fillStyle = '#8d98b0'
+  ctx.font = `850 24px ${FONT}`
+  ctx.fillText('CHAMPION DER CLIQUE', W / 2, 270)
   ctx.fillStyle = '#f5b83d'
-  ctx.font = `800 76px ${FONT}`
-  ctx.fillText('10.000', W / 2, 160)
-  ctx.fillStyle = '#66728f'
-  ctx.font = `700 30px ${FONT}`
-  ctx.fillText('D I E   C L I Q U E', W / 2, 210)
-
-  // Pokal + Sieger
-  ctx.font = '120px serif'
-  ctx.fillText('🏆', W / 2, 360)
-  ctx.fillStyle = '#eef2fb'
-  ctx.font = `800 58px ${FONT}`
-  ctx.fillText('SIEG', W / 2, 430)
+  ctx.beginPath()
+  ctx.arc(W / 2, 332, 38, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#111827'
+  ctx.font = `900 38px ${FONT}`
+  ctx.fillText('1', W / 2, 345)
+  fitText(ctx, winner.name, W - 280, 76, 900)
+  ctx.fillStyle = '#f2f5fb'
+  ctx.fillText(winner.name, W / 2, 425)
   ctx.fillStyle = '#f5b83d'
-  ctx.font = `800 72px ${FONT}`
-  ctx.fillText(winner.name, W / 2, 510)
+  ctx.font = `900 45px ${FONT}`
+  ctx.fillText(`${winner.score.toLocaleString('de-DE')} Punkte`, W / 2, 476)
 
-  // Rangliste
   const sorted = [...players].sort((a, b) => b.score - a.score)
-  const left = 200
-  const right = W - 200
-  let y = 620
-  for (let i = 0; i < sorted.length; i++) {
-    const p = sorted[i]
+  const rounds = new Set(turns.map((turn) => turn.round)).size
+  const margin = sorted.length > 1 ? Math.max(0, winner.score - sorted[1].score) : winner.score
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#75819d'
+  ctx.font = `800 22px ${FONT}`
+  ctx.fillText('ENDSTAND', 76, 572)
+  ctx.textAlign = 'right'
+  ctx.font = `650 20px ${FONT}`
+  const summary = [rounds ? `${rounds} Runden` : '', sorted.length > 1 ? `+${margin.toLocaleString('de-DE')} Vorsprung` : '']
+    .filter(Boolean)
+    .join('  ·  ')
+  ctx.fillText(summary, W - 76, 572)
+
+  const displayed = sorted.slice(0, 8)
+  const rowHeight = displayed.length <= 4 ? 74 : 58
+  let y = 602
+  for (let index = 0; index < displayed.length; index += 1) {
+    const player = displayed[index]
+    const highlight = index === 0
+    fillRounded(
+      ctx,
+      72,
+      y,
+      W - 144,
+      rowHeight - 8,
+      20,
+      highlight ? 'rgba(245,184,61,0.11)' : 'rgba(20,27,43,0.76)',
+      highlight ? 'rgba(245,184,61,0.28)' : 'rgba(102,114,143,0.16)',
+    )
+    ctx.textAlign = 'center'
+    ctx.fillStyle = highlight ? '#f5b83d' : '#303a50'
     ctx.beginPath()
-    ctx.fillStyle = playerColor(p.name)
-    ctx.arc(left - 36, y - 16, 13, 0, Math.PI * 2)
+    ctx.arc(112, y + (rowHeight - 8) / 2, 19, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = highlight ? '#111827' : '#c5cde0'
+    ctx.font = `900 21px ${FONT}`
+    ctx.fillText(String(index + 1), 112, y + (rowHeight - 8) / 2 + 7)
+
+    ctx.fillStyle = playerColor(player.name)
+    ctx.beginPath()
+    ctx.arc(160, y + (rowHeight - 8) / 2, 9, 0, Math.PI * 2)
     ctx.fill()
 
     ctx.textAlign = 'left'
-    ctx.fillStyle = i === 0 ? '#f5b83d' : '#c2cbe0'
-    ctx.font = `${i === 0 ? 800 : 600} 46px ${FONT}`
-    ctx.fillText(`${i + 1}. ${p.name}`, left, y)
+    fitText(ctx, player.name, 380, highlight ? 35 : 31, highlight ? 850 : 700)
+    ctx.fillStyle = highlight ? '#f5c75f' : '#d7ddec'
+    ctx.fillText(player.name, 188, y + (rowHeight - 8) / 2 + 9)
+    ctx.fillStyle = '#75819d'
+    ctx.font = `650 19px ${FONT}`
+    ctx.fillText(`${player.busts} N`, 590, y + (rowHeight - 8) / 2 + 7)
 
     ctx.textAlign = 'right'
-    ctx.font = `700 46px ${FONT}`
-    ctx.fillText(p.score.toLocaleString('de-DE'), right, y)
-
-    ctx.textAlign = 'center'
-    y += 86
+    ctx.fillStyle = highlight ? '#f5c75f' : '#d7ddec'
+    ctx.font = `850 31px ${FONT}`
+    ctx.fillText(player.score.toLocaleString('de-DE'), W - 102, y + (rowHeight - 8) / 2 + 9)
+    y += rowHeight
   }
 
-  // Fußzeile
-  ctx.fillStyle = '#66728f'
-  ctx.font = `500 30px ${FONT}`
-  const date = new Date().toLocaleDateString('de-DE')
-  ctx.fillText((event ? `${event} · ` : '') + date, W / 2, H - 90)
+  if (sorted.length > displayed.length) {
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#75819d'
+    ctx.font = `650 18px ${FONT}`
+    ctx.fillText(`+ ${sorted.length - displayed.length} weitere Spieler`, W / 2, y + 10)
+  }
+
+  const awards = computeGameAwards(players, turns).slice(0, 3)
+  if (awards.length > 0) {
+    const awardsY = 1080
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#75819d'
+    ctx.font = `800 22px ${FONT}`
+    ctx.fillText('AUSZEICHNUNGEN', 76, awardsY)
+    const gap = 16
+    const cardWidth = (W - 144 - gap * (awards.length - 1)) / awards.length
+    const tones = {
+      gold: ['rgba(245,184,61,0.12)', 'rgba(245,184,61,0.30)', '#f5c75f'],
+      mint: ['rgba(77,217,171,0.10)', 'rgba(77,217,171,0.26)', '#70e0ba'],
+      coral: ['rgba(255,111,97,0.10)', 'rgba(255,111,97,0.26)', '#ff8b80'],
+    } as const
+    awards.forEach((award, index) => {
+      const x = 72 + index * (cardWidth + gap)
+      const [fill, stroke, accent] = tones[award.tone]
+      fillRounded(ctx, x, awardsY + 22, cardWidth, 150, 22, fill, stroke)
+      ctx.textAlign = 'left'
+      ctx.fillStyle = accent
+      ctx.font = `850 19px ${FONT}`
+      ctx.fillText(award.title.toUpperCase(), x + 20, awardsY + 58)
+      fitText(ctx, gameAwardNames(award), cardWidth - 40, 28, 850)
+      ctx.fillStyle = '#eef2fb'
+      ctx.fillText(gameAwardNames(award), x + 20, awardsY + 98)
+      fitText(ctx, award.detail, cardWidth - 40, 19, 600)
+      ctx.fillStyle = '#8d98b0'
+      ctx.fillText(award.detail, x + 20, awardsY + 130)
+    })
+  }
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#56617a'
+  ctx.font = `650 20px ${FONT}`
+  ctx.fillText('Erstellt mit 10.000 – Die Clique', W / 2, H - 45)
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) return shareResult(winner, players, event)
-
-  const file = new File([blob], '10000-ergebnis.png', { type: 'image/png' })
-
-  try {
-    const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean }
-    if (nav.canShare?.({ files: [file] }) && navigator.share) {
-      await navigator.share({ files: [file], title: '10.000 – Die Clique' })
-      return
-    }
-  } catch {
-    return // Nutzer hat abgebrochen.
+  if (!blob) {
+    await shareResult(winner, players, event)
+    return 'text'
   }
 
-  // Fallback: Bild herunterladen.
+  const file = new File([blob], '10000-ergebnis.png', { type: 'image/png' })
+  try {
+    const nav = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean }
+    if (nav.canShare?.({ files: [file] }) && navigator.share) {
+      await navigator.share({ files: [file], title: '10.000 – Die Clique' })
+      return 'shared'
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+  }
+
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = '10000-ergebnis.png'
-  a.click()
-  URL.revokeObjectURL(url)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = '10000-ergebnis.png'
+  anchor.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  return 'downloaded'
 }
