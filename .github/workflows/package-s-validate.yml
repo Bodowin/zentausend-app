@@ -37,7 +37,12 @@ jobs:
         run: python3 scripts/apply-package-s-v2.py
 
       - name: Production build
-        run: npm run build
+        run: |
+          set +e
+          npm run build > build.log 2>&1
+          status=$?
+          cat build.log
+          exit $status
 
       - name: Unit tests
         run: npm test
@@ -66,6 +71,7 @@ jobs:
         with:
           name: package-s-failure-diagnostics
           path: |
+            build.log
             src/components/GameScreen.tsx
             playwright-report
             playwright-report-webkit
