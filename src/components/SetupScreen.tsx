@@ -20,6 +20,8 @@ import {
 import { SettingsModal } from './SettingsModal'
 import { playerColor } from '../lib/colors'
 import type { ActiveGame } from '../lib/activeGame'
+import type { PausedGameItem } from '../lib/pausedGames'
+import { PausedGamesPanel } from './PausedGamesPanel'
 
 const CODE_DISMISS_KEY = '10k_code_dismissed'
 
@@ -36,8 +38,13 @@ interface Props {
   onShowStats: () => void
   onShowHelp: () => void
   resumable: ActiveGame | null
+  pausedGames: PausedGameItem[]
+  archivedGames: PausedGameItem[]
   onResume: (g: ActiveGame) => void
+  onPauseResume: () => boolean
   onDiscardResume: () => void
+  onResumePaused: (sessionId: string) => void
+  onDeletePaused: (sessionId: string) => void
   /** Vorbelegung (z. B. Revanche): Kader, Anlass, Würfel-Modus, Ziel, Einstieg. */
   initialPlayers?: Player[]
   initialEvent?: string
@@ -66,8 +73,13 @@ export function SetupScreen({
   onShowStats,
   onShowHelp,
   resumable,
+  pausedGames,
+  archivedGames,
   onResume,
+  onPauseResume,
   onDiscardResume,
+  onResumePaused,
+  onDeletePaused,
   initialPlayers,
   initialEvent,
   initialDiceMode,
@@ -191,10 +203,10 @@ const requestStart = () => {
             aria-label="Laufendes Spiel ersetzen?"
             className="w-full max-w-sm rounded-3xl border border-gold-500/40 bg-ink-900 p-5 shadow-2xl"
           >
-            <h2 className="text-lg font-black text-fog-100">Laufendes Spiel ersetzen?</h2>
+            <h2 className="text-lg font-black text-fog-100">Laufendes Spiel pausieren?</h2>
             <p className="mt-2 text-sm leading-relaxed text-fog-400">
               Runde {resumable.round} mit {resumable.players.map((player) => player.name).join(', ')} ist noch gespeichert.
-              Ein neues Spiel ersetzt diesen Stand und seine Sicherheitskopien.
+              Das neue Spiel überschreibt nichts: Dieser Stand bleibt 14 Tage in der Pausenliste und danach im Archiv.
             </p>
             <button
               type="button"
@@ -209,13 +221,13 @@ const requestStart = () => {
             <button
               type="button"
               onClick={() => {
+                if (!onPauseResume()) return
                 setStartConflictOpen(false)
-                onDiscardResume()
                 startConfiguredGame()
               }}
-              className="mt-2 w-full rounded-xl border border-coral-500/40 bg-coral-500/10 px-4 py-3 font-bold text-coral-300"
+              className="mt-2 w-full rounded-xl border border-mint-500/40 bg-mint-500/10 px-4 py-3 font-bold text-mint-300"
             >
-              Neues Spiel starten
+              Spiel pausieren & neues starten
             </button>
             <button
               type="button"
@@ -318,6 +330,13 @@ const requestStart = () => {
           </div>
         </div>
       )}
+
+      <PausedGamesPanel
+        paused={pausedGames}
+        archived={archivedGames}
+        onResume={onResumePaused}
+        onDelete={onDeletePaused}
+      />
 
       <section className="mb-3 rounded-3xl border border-ink-700/80 bg-ink-850/80 p-3.5 shadow-2xl shadow-black/40 animate-rise">
         <div className="mb-3 flex items-center justify-between">

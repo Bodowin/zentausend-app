@@ -16,6 +16,16 @@ import { playerColor } from './lib/colors'
 import { getPrefs } from './lib/prefs'
 import { hasCliqueCode } from './lib/cliqueCode'
 import { replayCompletedTurns, TurnReplayError } from './lib/turnReplay'
+import {
+  consumePausedGame,
+  deletePausedGame,
+  listPausedGames,
+  loadPausedGameStore,
+  pauseActiveGame,
+  persistPausedGameStore,
+  type PausedGameStore,
+} from './lib/pausedGames'
+import { syncPausedGamesToCloud } from './lib/pausedGamesCloud'
 import { playerIdForName } from './lib/playerIdentity'
 import { SetupScreen } from './components/SetupScreen'
 import { IntroScreen } from './components/IntroScreen'
@@ -120,6 +130,9 @@ export function App() {
   const [bustAnnounce, setBustAnnounce] = useState<BustAnnounce | null>(null)
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const [resumable, setResumable] = useState<ActiveGame | null>(() => loadActiveGame())
+  const [pausedStore, setPausedStore] = useState<PausedGameStore>(() => loadPausedGameStore())
+  const pausedLists = useMemo(() => listPausedGames(pausedStore), [pausedStore])
+  const pausedSyncGeneration = useRef(0)
   const initialResume = useRef(resumable)
   const [cloudPrompt, setCloudPrompt] = useState<ActiveGameCloudPrompt | null>(null)
   const [cloudBusy, setCloudBusy] = useState(false)
@@ -239,6 +252,31 @@ export function App() {
     window.setTimeout(() => setToast((current) => (current === msg ? '' : current)), 1800)
   }, [])
 
+  const syncPausedLibrary = useCallback((source?: PausedGameStore) => {
+    const local = source ?? loadPausedGameStore()
+    const persisted = persistPausedGameStore(local) ?? local
+    setPausedStore(persisted)
+    if (!hasCliqueCode()) return
+
+    const generation = ++pausedSyncGeneration.current
+    void syncPausedGamesToCloud(persisted).then((result) => {
+      if (pausedSyncGeneration.current !== generation) return
+      const merged = persistPausedGameStore(result.store)
+      if (merged) setPausedStore(merged)
+    })
+  }, [])
+
+  useEffect(() => {
+    const sync = () => syncPausedLibrary()
+    sync()
+    window.addEventListener('10k-clique-code-changed', sync)
+    window.addEventListener('online', sync)
+    return () => {
+      window.removeEventListener('10k-clique-code-changed', sync)
+      window.removeEventListener('online', sync)
+    }
+  }, [syncPausedLibrary])
+
   const startGame = (
     chosen: Player[],
     evt: string,
@@ -304,12 +342,37 @@ export function App() {
     setView('setup')
   }
 
+  const pauseResume = () => {
+    const current = resumable ?? loadActiveGame()
+    if (!current) return true
+    const next = pauseActiveGame(current)
+    if (!next) {
+      showToast('Spiel konnte nicht pausiert werden')
+      return false
+    }
+    syncPausedLibrary(next)
+    cloudSyncGeneration.current += 1
+    clearActiveGame()
+    setResumable(null)
+    void clearCloudActiveGame(current.sessionId)
+    return true
+  }
+
   const discardResume = () => {
     const discardedSession = resumable?.sessionId ?? ''
     cloudSyncGeneration.current += 1
     clearActiveGame()
     setResumable(null)
     if (discardedSession) void clearCloudActiveGame(discardedSession)
+  }
+
+  const handleDeletePausedGame = (pausedSessionId: string) => {
+    const next = deletePausedGame(pausedSessionId)
+    if (!next) {
+      showToast('Pausiertes Spiel konnte nicht gelöscht werden')
+      return
+    }
+    syncPausedLibrary(next)
   }
 
   const resumeGame = (game: ActiveGame) => {
@@ -352,6 +415,31 @@ export function App() {
     setToast('')
     setView('game')
     if (mode === 'virtual' && reconstructedThrow.length) showToast('Wurf wiederhergestellt')
+  }
+
+  const resumePausedGame = async (pausedSessionId: string) => {
+    const current = resumable ?? loadActiveGame()
+    if (current && current.sessionId !== pausedSessionId) {
+      const paused = pauseActiveGame(current)
+      if (!paused) {
+        showToast('Aktuelles Spiel konnte nicht pausiert werden')
+        return
+      }
+      syncPausedLibrary(paused)
+      cloudSyncGeneration.current += 1
+      clearActiveGame()
+      setResumable(null)
+      await clearCloudActiveGame(current.sessionId)
+    }
+
+    const consumed = consumePausedGame(pausedSessionId)
+    if (!consumed) {
+      showToast('Pausiertes Spiel konnte nicht geöffnet werden')
+      return
+    }
+    syncPausedLibrary(consumed.store)
+    saveActiveGame(consumed.game)
+    resumeGame(consumed.game)
   }
 
   const useCloudGame = async () => {
@@ -801,8 +889,13 @@ export function App() {
           onShowStats={() => setView('stats')}
           onShowHelp={() => setShowIntro(true)}
           resumable={resumable}
+          pausedGames={pausedLists.paused}
+          archivedGames={pausedLists.archived}
           onResume={resumeGame}
+          onPauseResume={pauseResume}
           onDiscardResume={discardResume}
+          onResumePaused={resumePausedGame}
+          onDeletePaused={handleDeletePausedGame}
           initialPlayers={setupSeed?.players}
           initialEvent={setupSeed?.event}
           initialDiceMode={setupSeed?.diceMode}
