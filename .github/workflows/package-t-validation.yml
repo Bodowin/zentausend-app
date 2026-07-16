@@ -1,0 +1,80 @@
+name: Package T validation
+
+on:
+  push:
+    branches:
+      - agent/package-t-risk-balance
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.event_name != 'push' || github.event.head_commit.message != 'Commit validated package T product files'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: agent/package-t-risk-balance
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply risk-balance integration
+        run: python3 scripts/apply-package-t.py
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Chromium browser suite
+        run: npx playwright test
+
+      - name: WebKit browser suite
+        run: npx playwright test --config=playwright.webkit.config.ts
+
+      - name: Commit validated product files
+        run: |
+          git config user.name "ChatGPT Package T"
+          git config user.email "actions@github.com"
+          git add \
+            src/App.tsx \
+            src/lib/types.ts \
+            src/lib/activeGame.ts \
+            src/lib/gameRecordValidation.ts \
+            src/lib/gameAwards.ts \
+            src/lib/gameAwards.test.ts \
+            src/lib/storage.ts \
+            src/lib/playerProfiles.ts \
+            src/components/GameOverDialog.tsx \
+            src/components/AnalysisScreen.tsx \
+            src/components/PlayerProfileScreen.tsx \
+            e2e/game-finale.spec.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "Commit validated package T product files"
+          git push origin HEAD:agent/package-t-risk-balance
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-t-failure-diagnostics
+          path: |
+            playwright-report
+            playwright-report-webkit
+            test-results
+          if-no-files-found: ignore
