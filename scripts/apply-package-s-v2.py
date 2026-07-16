@@ -14,11 +14,11 @@ for unused in ["  IconRefresh,\n", "  IconShare,\n", "  IconTrophy,\n"]:
         text = text.replace(unused, '', 1)
 
 start_marker = "      {/* Sieg-Overlay – oder, umgeschaltet, die Runden-Analyse desselben Spiels. */}\n"
-end_marker = "    </div>\n  )\n}"
+end_marker = "    </div>\n  )\n}\n\nfunction DiceArenaFallback"
 
 if '<GameOverDialog' not in text:
     start = text.find(start_marker)
-    end = text.rfind(end_marker)
+    end = text.find(end_marker, start)
     if start < 0 or end < 0 or end <= start:
         raise SystemExit('GameScreen winner overlay anchors missing')
 
