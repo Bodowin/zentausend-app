@@ -67,6 +67,15 @@ jobs:
               1,
           )
           app_path.write_text(app)
+
+          finale_path = Path('e2e/game-finale.spec.ts')
+          finale = finale_path.read_text()
+          finale = finale.replace(
+              "  await expect(finale.getByText('High Roller')).toBeVisible()\n",
+              "    await expect(finale.getByText('High Roller')).toBeVisible()\n",
+              1,
+          )
+          finale_path.write_text(finale)
           PY
           python3 scripts/apply-package-t.py > patch.log 2>&1
           status=$?
