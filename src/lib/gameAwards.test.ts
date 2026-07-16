@@ -37,7 +37,7 @@ describe('computeGameAwards', () => {
 
     expect(awards[0].names).toEqual(['Gabi', 'Mabi'])
     expect(gameAwardNames(awards[0])).toBe('Gabi & Mabi')
-    expect(awards.at(-1)?.names).toEqual(['Gabi', 'Mabi', 'Bodo'])
+    expect(awards[awards.length - 1]?.names).toEqual(['Gabi', 'Mabi', 'Bodo'])
   })
 
   it('omits turn-based awards when no turn history exists', () => {
