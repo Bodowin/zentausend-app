@@ -36,11 +36,11 @@ jobs:
       - name: Apply game-finale integration
         run: python3 scripts/apply-package-s-v2.py
 
-      - name: Unit tests
-        run: npm test
-
       - name: Production build
         run: npm run build
+
+      - name: Unit tests
+        run: npm test
 
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
@@ -66,6 +66,7 @@ jobs:
         with:
           name: package-s-failure-diagnostics
           path: |
+            src/components/GameScreen.tsx
             playwright-report
             playwright-report-webkit
             test-results
