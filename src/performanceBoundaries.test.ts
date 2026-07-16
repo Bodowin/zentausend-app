@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import appSource from './App.tsx?raw'
 import gameScreenSource from './components/GameScreen.tsx?raw'
+import gameOverDialogSource from './components/GameOverDialog.tsx?raw'
 import diceArenaSource from './components/DiceArena.tsx?raw'
 
 describe('performance chunk boundaries', () => {
@@ -24,7 +25,8 @@ describe('performance chunk boundaries', () => {
 
   it('loads result sharing and analysis only on demand', () => {
     expect(gameScreenSource).not.toContain("from '../lib/shareImage'")
-    expect(gameScreenSource).toContain("import('../lib/shareImage')")
+    expect(gameOverDialogSource).not.toContain("from '../lib/shareImage'")
+    expect(gameOverDialogSource).toContain("import('../lib/shareImage')")
     expect(gameScreenSource).not.toContain("from './AnalysisScreen'")
     expect(gameScreenSource).toContain("import('./AnalysisScreen')")
   })
