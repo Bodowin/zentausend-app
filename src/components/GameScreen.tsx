@@ -8,13 +8,12 @@ import { computeGameAnalysis } from '../lib/storage'
 import { PIPS } from '../lib/dicePips'
 import { diceThrowSeed } from '../lib/diceThrowSeed'
 import { TurnLogDialog } from './TurnLogDialog'
+import { GameOverDialog } from './GameOverDialog'
 import { GameChart } from './GameChart'
 import {
   IconCheck,
-  IconChart,
   IconPause,
   IconRefresh,
-  IconShare,
   IconTrash,
   IconTrophy,
   IconUndo,
@@ -905,74 +904,15 @@ export function GameScreen(p: Props) {
         </div>
       ) : (
         winner && (
-          <div
-            className="glass absolute inset-0 z-50 flex flex-col items-center justify-center p-6 animate-pop"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Spiel beendet – ${winner.name} gewinnt`}
-          >
-            <div className="w-full max-w-sm rounded-3xl border border-gold-500/30 bg-ink-850 p-8 text-center shadow-2xl">
-              <IconTrophy className="mx-auto mb-3 h-12 w-12 text-gold-400" />
-              <h2 className="mb-1 font-display text-4xl font-black text-fog-100">Sieg!</h2>
-              <p className="mb-6 text-xl font-bold uppercase tracking-widest text-gold-400">{winner.name}</p>
-              <div className="mb-7 max-h-60 space-y-2 overflow-y-auto rounded-2xl border border-ink-800 bg-ink-950/50 p-5">
-                {[...players]
-                  .sort((a, b) => b.score - a.score)
-                  .map((pl, i) => (
-                    <div
-                      key={pl.id}
-                      className={`flex justify-between text-sm ${
-                        i === 0 ? 'font-bold text-gold-400' : 'text-fog-400'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="w-3 text-right text-fog-600">{i + 1}.</span>
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: playerColor(pl.name) }} />
-                        {pl.name}
-                        <span className="text-[10px] text-fog-600">{pl.busts} N</span>
-                      </span>
-                      <span className="font-mono">{fmt(pl.score)}</span>
-                    </div>
-                  ))}
-              </div>
-              <div className="space-y-3">
-                <button
-                  onClick={p.onRematch}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-mint-400 to-mint-500 py-3.5 font-bold text-ink-950 shadow-lg transition-all active:scale-[0.98]"
-                >
-                  <IconRefresh className="h-5 w-5" /> Revanche
-                </button>
-                <p className="-mt-1 text-[11px] text-fog-500">
-                  Gleiche Runde, {winner.name} beginnt – Reihenfolge vorm Start frei änderbar.
-                </p>
-                <button
-                  onClick={() => setShowAnalysis(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                >
-                  <IconChart className="h-4 w-4" /> Runden-Analyse
-                </button>
-                <div className="grid grid-cols-[1fr_auto] gap-3">
-                  <button
-                    onClick={p.onNewGame}
-                    className="rounded-2xl border border-ink-700 bg-ink-800 py-3 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                  >
-                    Zum Start
-                  </button>
-                  <button
-                    onClick={() => {
-                      void import('../lib/shareImage')
-                        .then(({ shareResultImage }) => shareResultImage(winner, players, event))
-                        .catch((error) => console.warn('Teilen-Modul konnte nicht geladen werden:', error))
-                    }}
-                    className="grid place-items-center rounded-2xl border border-ink-700 bg-ink-800 px-4 font-bold text-fog-200 transition-colors hover:text-fog-100"
-                    aria-label="Ergebnis als Bild teilen"
-                  >
-                    <IconShare className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <GameOverDialog
+            winner={winner}
+            players={players}
+            turns={turns}
+            event={event}
+            onRematch={p.onRematch}
+            onAnalysis={() => setShowAnalysis(true)}
+            onNewGame={p.onNewGame}
+          />
         )
       )}
     </div>
