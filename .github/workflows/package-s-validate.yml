@@ -1,0 +1,75 @@
+name: Package S validation
+
+on:
+  push:
+    branches:
+      - agent/package-s-game-finale
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: agent/package-s-game-finale
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply game-finale integration
+        run: python3 scripts/apply-package-s.py
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Chromium browser suite
+        run: npx playwright test
+
+      - name: WebKit browser suite
+        run: npx playwright test --config=playwright.webkit.config.ts
+
+      - name: Stage validated product files
+        if: success()
+        run: |
+          mkdir -p validated/src/components validated/src/lib
+          cp src/components/GameScreen.tsx validated/src/components/GameScreen.tsx
+          cp src/lib/shareImage.ts validated/src/lib/shareImage.ts
+          cp playwright.config.ts validated/playwright.config.ts
+          cp playwright.webkit.config.ts validated/playwright.webkit.config.ts
+
+      - name: Upload validated product files
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-s-validated-files
+          path: validated
+          if-no-files-found: error
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-s-failure-diagnostics
+          path: |
+            playwright-report
+            playwright-report-webkit
+            test-results
+          if-no-files-found: ignore
