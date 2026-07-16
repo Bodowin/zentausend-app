@@ -9,8 +9,9 @@ if "import { GameOverDialog } from './GameOverDialog'" not in text:
         raise SystemExit('GameScreen import anchor missing')
     text = text.replace(anchor, anchor + "import { GameOverDialog } from './GameOverDialog'\n", 1)
 
-if "  IconShare,\n" in text:
-    text = text.replace("  IconShare,\n", '', 1)
+for unused in ["  IconChart,\n", "  IconShare,\n"]:
+    if unused in text:
+        text = text.replace(unused, '', 1)
 
 start_marker = "      {/* Sieg-Overlay – oder, umgeschaltet, die Runden-Analyse desselben Spiels. */}\n"
 end_marker = "    </div>\n  )\n}\n\nfunction DiceArenaFallback"
