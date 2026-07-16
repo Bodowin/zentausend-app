@@ -120,13 +120,24 @@ export function PlayerProfileScreen({
         <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">Spielweise</h2>
         <div className="overflow-hidden rounded-2xl border border-ink-700/80 bg-ink-850/70">
           <ProfileRow label="Ø erfolgreicher Zug" value={profile.avgSuccessfulTurn === null ? '–' : fmt(profile.avgSuccessfulTurn)} />
-          <ProfileRow label="Bester Einzelzug" value={profile.bestTurn ? fmt(profile.bestTurn.points) : '–'} />
-          <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? '–' : `${profile.avgRounds.toLocaleString('de-DE')} Runden`} />
+           <ProfileRow label="Bester Einzelzug" value={profile.bestTurn ? fmt(profile.bestTurn.points) : '–'} />
+           <ProfileRow
+             label="Risiko-Bilanz"
+             value={
+               profile.riskAttempts
+                 ? `${profile.riskBalance >= 0 ? '+' : ''}${profile.riskBalance.toLocaleString('de-DE', { maximumFractionDigits: 1 })} Würfe`
+                 : '–'
+             }
+           />
+           <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? '–' : `${profile.avgRounds.toLocaleString('de-DE')} Runden`} />
           <ProfileRow label="Schnellster Sieg" value={profile.fastestWinRounds === null ? '–' : `${profile.fastestWinRounds} Runden`} />
         </div>
         <div className="mt-2 rounded-xl border border-ink-700/60 bg-ink-900/40 px-3 py-2 text-[10px] leading-relaxed text-fog-500">
           Zugdaten vorhanden für {profile.gamesWithTurnData} von {profile.games} Spielen ({pct(turnCoverage)}).
           {profile.gamesWithTurnData < profile.games && ' Ältere Spiele bleiben in Endstand, Siegen und Nieten enthalten.'}
+          {profile.riskAttempts > 0 && (
+            <> Risiko: {profile.riskSuccesses}/{profile.riskAttempts} geschafft, {profile.riskExpectedSuccesses.toLocaleString('de-DE', { maximumFractionDigits: 1 })} erwartet ({profile.gamesWithRiskData} Spiele).</>
+          )}
         </div>
       </section>
 

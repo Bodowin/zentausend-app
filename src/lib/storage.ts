@@ -1,4 +1,5 @@
 import type { GameRecord, Player, PlayerStats, Turn } from './types'
+import { computeProbabilityPerformance, findStatisticsDefiers } from './probabilityPerformance'
 import {
   validateGameRecordArray,
   type GameRecordSource,
@@ -310,16 +311,22 @@ export interface GamePlayerStat {
   avg: number
   busts: number
   best: number
+  riskAttempts: number
+  riskSuccesses: number
+  riskExpected: number
+  riskBalance: number
 }
 
 export interface GameAnalysis {
   hasTurns: boolean
+  hasRiskData: boolean
   players: GamePlayerStat[]
   roundNumbers: number[]
   /** round -> spielername -> in dieser Runde gesicherte Punkte */
   roundPoints: Record<number, Record<string, number>>
   bestTurn: { name: string; points: number; round: number } | null
   mostBusts: { name: string; count: number } | null
+  statisticsDefier: { name: string; balance: number; successes: number; attempts: number; expected: number } | null
   roundsCount: number
 }
 
@@ -329,6 +336,15 @@ export function computeGameAnalysis(game: GameRecord): GameAnalysis {
   const finalByName = new Map(game.players.map((p) => [p.name, p]))
   const turns: Turn[] = game.turns ?? []
   const hasTurns = turns.length > 0
+  const probabilityPlayers: Player[] = game.players.map((player) => ({
+    id: player.playerId ?? player.name,
+    name: player.name,
+    score: player.score,
+    busts: player.busts,
+  }))
+  const probability = computeProbabilityPerformance(probabilityPlayers, turns)
+  const probabilityByName = new Map(probability.map((entry) => [entry.name, entry]))
+  const defier = findStatisticsDefiers(probabilityPlayers, turns)[0] ?? null
 
   const players: GamePlayerStat[] = names
     .map((name) => {
@@ -338,7 +354,19 @@ export function computeGameAnalysis(game: GameRecord): GameAnalysis {
       const turnsCount = ts.length
       const busts = final?.busts ?? ts.filter((t) => t.bust).length
       const best = ts.reduce((m, t) => Math.max(m, t.points), 0)
-      return { name, total, turns: turnsCount, avg: turnsCount ? Math.round(total / turnsCount) : 0, busts, best }
+      const risk = probabilityByName.get(name)
+      return {
+        name,
+        total,
+        turns: turnsCount,
+        avg: turnsCount ? Math.round(total / turnsCount) : 0,
+        busts,
+        best,
+        riskAttempts: risk?.attempts ?? 0,
+        riskSuccesses: risk?.successes ?? 0,
+        riskExpected: risk?.expectedSuccesses ?? 0,
+        riskBalance: risk?.balance ?? 0,
+      }
     })
     .sort((a, b) => b.total - a.total)
 
@@ -360,11 +388,21 @@ export function computeGameAnalysis(game: GameRecord): GameAnalysis {
 
   return {
     hasTurns,
+    hasRiskData: probability.length > 0,
     players,
     roundNumbers,
     roundPoints,
     bestTurn,
     mostBusts: mostBusts && mostBusts.busts > 0 ? { name: mostBusts.name, count: mostBusts.busts } : null,
+    statisticsDefier: defier
+      ? {
+          name: defier.name,
+          balance: defier.balance,
+          successes: defier.successes,
+          attempts: defier.attempts,
+          expected: defier.expectedSuccesses,
+        }
+      : null,
     roundsCount: roundNumbers.length,
   }
 }

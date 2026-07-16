@@ -1,7 +1,8 @@
 import type { Player, Turn } from './types'
+import { findStatisticsDefiers } from './probabilityPerformance'
 
 export type GameAwardTone = 'gold' | 'mint' | 'coral'
-export type GameAwardId = 'high-roller' | 'efficiency' | 'pechvogel'
+export type GameAwardId = 'high-roller' | 'statistik-trotzer' | 'efficiency' | 'pechvogel'
 
 export interface GameAward {
   id: GameAwardId
@@ -48,6 +49,20 @@ export function computeGameAwards(players: Player[], turns: Turn[]): GameAward[]
       names,
       detail: `${fmt(bestTurn)} Punkte in einem Zug`,
       tone: 'gold',
+    })
+  }
+
+  const defiers = findStatisticsDefiers(players, completedTurns)
+  if (defiers.length > 0) {
+    const best = defiers[0]
+    const expected = best.expectedSuccesses.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    const balance = best.balance.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    awards.push({
+      id: 'statistik-trotzer',
+      title: 'Statistik-Trotzer',
+      names: orderedNames(defiers.map((entry) => entry.name), players),
+      detail: `${best.successes}/${best.attempts} geschafft · ${expected} erwartet (+${balance})`,
+      tone: 'mint',
     })
   }
 

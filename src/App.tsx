@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DiceMode, GameState, Player, Turn } from './lib/types'
+import type { DiceMode, GameState, PendingRiskAttempt, Player, RiskAttempt, Turn } from './lib/types'
 import {
   clearActiveGame,
   createActiveGameCheckpoint,
@@ -63,6 +63,8 @@ interface Snapshot {
   dice: number[]
   accumulated: number
   turns: Turn[]
+  currentRiskAttempts: RiskAttempt[]
+  pendingRiskAttempt: PendingRiskAttempt | null
   rolled: number[]
   thrown: number[]
   throwSeq: number
@@ -121,6 +123,8 @@ export function App() {
   const [dice, setDice] = useState<number[]>([])
   const [accumulated, setAccumulated] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
+  const [currentRiskAttempts, setCurrentRiskAttempts] = useState<RiskAttempt[]>([])
+  const [pendingRiskAttempt, setPendingRiskAttempt] = useState<PendingRiskAttempt | null>(null)
   const [rolled, setRolled] = useState<number[]>([])
   const [thrown, setThrown] = useState<number[]>([])
   const [throwSeq, setThrowSeq] = useState(0)
@@ -207,6 +211,8 @@ export function App() {
       dice,
       accumulated,
       turns,
+      currentRiskAttempts,
+      pendingRiskAttempt,
       rolled,
       thrown,
       throwSeq,
@@ -242,6 +248,8 @@ export function App() {
     dice,
     accumulated,
     turns,
+    currentRiskAttempts,
+    pendingRiskAttempt,
     rolled,
     thrown,
     throwSeq,
@@ -301,6 +309,8 @@ export function App() {
     setDice([])
     setAccumulated(0)
     setTurns([])
+    setCurrentRiskAttempts([])
+    setPendingRiskAttempt(null)
     setRolled([])
     setThrown([])
     setThrowSeq(0)
@@ -397,6 +407,8 @@ export function App() {
     setKept(game.kept ?? [])
     setAccumulated(game.accumulated)
     setTurns(game.turns ?? [])
+    setCurrentRiskAttempts(game.currentRiskAttempts ?? [])
+    setPendingRiskAttempt(game.pendingRiskAttempt ?? null)
     setDiceMode(mode)
 
     // Im virtuellen Modus wird derselbe Wurf noch einmal dargestellt, die frühere
@@ -506,6 +518,11 @@ export function App() {
   const removeDie = (index: number) => setDice((current) => current.filter((_, i) => i !== index))
   const clearDice = () => setDice([])
 
+  const settlePendingRisk = (success: boolean): RiskAttempt[] =>
+    pendingRiskAttempt
+      ? [...currentRiskAttempts, { ...pendingRiskAttempt, success }]
+      : [...currentRiskAttempts]
+
   const takeSnapshot = useCallback(
     (action: string) => {
       setUndoStack((stack) =>
@@ -520,8 +537,13 @@ export function App() {
             kept: [...kept],
             dice: [...dice],
             accumulated,
-            turns: turns.map((turn) => ({ ...turn })),
-            rolled: [...rolled],
+             turns: turns.map((turn) => ({
+               ...turn,
+               riskAttempts: turn.riskAttempts?.map((attempt) => ({ ...attempt })),
+             })),
+             currentRiskAttempts: currentRiskAttempts.map((attempt) => ({ ...attempt })),
+             pendingRiskAttempt: pendingRiskAttempt ? { ...pendingRiskAttempt } : null,
+             rolled: [...rolled],
             thrown: [...thrown],
             throwSeq,
             action,
@@ -529,7 +551,7 @@ export function App() {
         ].slice(-UNDO_LIMIT),
       )
     },
-    [players, idx, round, phase, target, kept, dice, accumulated, turns, rolled, thrown, throwSeq],
+    [players, idx, round, phase, target, kept, dice, accumulated, turns, currentRiskAttempts, pendingRiskAttempt, rolled, thrown, throwSeq],
   )
 
   const undo = () => {
@@ -544,6 +566,8 @@ export function App() {
     setKept(snapshot.kept)
     setAccumulated(snapshot.accumulated)
     setTurns(snapshot.turns)
+    setCurrentRiskAttempts(snapshot.currentRiskAttempts)
+    setPendingRiskAttempt(snapshot.pendingRiskAttempt)
     setWinner(null)
     setCelebration(null)
     setHandoff(null)
@@ -653,6 +677,19 @@ export function App() {
     const special = celebrationFor(combined, newKept.length === 6)
     if (special) setCelebration(special)
 
+    const completedAttempts = settlePendingRisk(true)
+    setCurrentRiskAttempts(completedAttempts)
+    setPendingRiskAttempt(
+      risk
+        ? {
+            successPct: risk.pct,
+            dice: risk.dice,
+            scenarioB: risk.scenarioB,
+            pot: totalPotential,
+          }
+        : null,
+    )
+
     if (newKept.length === 6) {
       setAccumulated((current) => current + calculateScore(newKept).score)
       setKept([])
@@ -738,10 +775,20 @@ export function App() {
     const nextPlayers = players.map((player, index) =>
       index === idx ? { ...player, score: player.score + pot } : player,
     )
+    const turnRiskAttempts = dice.length > 0 ? settlePendingRisk(true) : [...currentRiskAttempts]
     const nextTurns = [
       ...turns,
-      { round, player: players[idx].name, playerId: players[idx].id, points: pot, bust: false },
+      {
+        round,
+        player: players[idx].name,
+        playerId: players[idx].id,
+        points: pot,
+        bust: false,
+        ...(turnRiskAttempts.length > 0 ? { riskAttempts: turnRiskAttempts } : {}),
+      },
     ]
+    setCurrentRiskAttempts([])
+    setPendingRiskAttempt(null)
     setTurns(nextTurns)
     resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, Boolean(special), false, pot, players[idx].name)
   }
@@ -756,9 +803,17 @@ export function App() {
     const nextPlayers = players.map((player, index) =>
       index === idx ? { ...player, busts: player.busts + 1 } : player,
     )
+    const turnRiskAttempts = settlePendingRisk(false)
     const nextTurns = [
       ...turns,
-      { round, player: bustedName, playerId: players[idx].id, points: 0, bust: true },
+      {
+        round,
+        player: bustedName,
+        playerId: players[idx].id,
+        points: 0,
+        bust: true,
+        ...(turnRiskAttempts.length > 0 ? { riskAttempts: turnRiskAttempts } : {}),
+      },
     ]
     const finishes = phase === 'lastChance' && idx === players.length - 1
     const nextIndex = phase === 'lastChance' ? idx + 1 : (idx + 1) % players.length
@@ -767,6 +822,8 @@ export function App() {
     // Die Niete wird SOFORT fachlich verbucht. Das Banner ist nur noch eine
     // blockierende Übergabe – ein Reload kann die Niete nicht mehr zurücknehmen.
     setBustAnnounce({ name: bustedName, lost, nextName })
+    setCurrentRiskAttempts([])
+    setPendingRiskAttempt(null)
     setTurns(nextTurns)
     resolveTurn(nextPlayers, nextPlayers[idx].score, nextTurns, false, true)
   }
@@ -776,9 +833,16 @@ export function App() {
       return { ok: false, message: 'Dieser Zug wurde nicht gefunden.' }
     }
 
-    const correctedTurns = turns.map((turn, index) =>
-      index === turnIndex ? { ...turn, points: bust ? 0 : points, bust } : { ...turn },
-    )
+    const correctedTurns = turns.map((turn, index) => {
+      const copiedRiskAttempts = turn.riskAttempts?.map((attempt, attemptIndex, all) =>
+        index === turnIndex && turn.bust !== bust && attemptIndex === all.length - 1
+          ? { ...attempt, success: !bust }
+          : { ...attempt },
+      )
+      return index === turnIndex
+        ? { ...turn, points: bust ? 0 : points, bust, ...(copiedRiskAttempts ? { riskAttempts: copiedRiskAttempts } : {}) }
+        : { ...turn, ...(copiedRiskAttempts ? { riskAttempts: copiedRiskAttempts } : {}) }
+    })
 
     let replay
     try {
@@ -816,6 +880,8 @@ export function App() {
       dice,
       accumulated,
       turns,
+      currentRiskAttempts,
+      pendingRiskAttempt,
       rolled,
       thrown,
       throwSeq,
@@ -825,6 +891,8 @@ export function App() {
 
     setPlayers(replay.players)
     setTurns(replay.turns)
+    setCurrentRiskAttempts([])
+    setPendingRiskAttempt(null)
     setIdx(replay.idx)
     setRound(replay.round)
     setPhase(replay.phase)

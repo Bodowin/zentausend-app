@@ -6,6 +6,7 @@ import {
   turnIdentityKey,
   winnerIdentityKey,
 } from './playerIdentity'
+import { summarizeRiskAttempts } from './probabilityPerformance'
 
 export interface PlayerProfileResult {
   gameId: number
@@ -39,6 +40,11 @@ export interface PlayerProfile {
   longestWinStreak: number
   currentWinStreak: number
   gamesWithTurnData: number
+  gamesWithRiskData: number
+  riskAttempts: number
+  riskSuccesses: number
+  riskExpectedSuccesses: number
+  riskBalance: number
   successfulTurns: number
   bustTurns: number
   avgSuccessfulTurn: number | null
@@ -95,6 +101,10 @@ export function computePlayerProfile(
   let currentRun = 0
   let longestWinStreak = 0
   let gamesWithTurnData = 0
+  let gamesWithRiskData = 0
+  let riskAttempts = 0
+  let riskSuccesses = 0
+  let riskExpectedSuccesses = 0
   let successfulTurns = 0
   let successfulTurnPoints = 0
   let bustTurns = 0
@@ -139,6 +149,16 @@ export function computePlayerProfile(
     gamesWithTurnData += 1
     const rounds = Math.max(...turns.map((turn) => turn.round))
     roundsTotal += rounds
+    const gameRiskAttempts = turns
+      .filter((turn) => turnIdentityKey(turn, game) === id)
+      .flatMap((turn) => turn.riskAttempts ?? [])
+    const riskSummary = summarizeRiskAttempts(names.get(id) ?? selector, gameRiskAttempts)
+    if (riskSummary) {
+      gamesWithRiskData += 1
+      riskAttempts += riskSummary.attempts
+      riskSuccesses += riskSummary.successes
+      riskExpectedSuccesses += riskSummary.expectedSuccesses
+    }
     if (won && (fastestWinRounds === null || rounds < fastestWinRounds)) fastestWinRounds = rounds
 
     for (const turn of turns) {
@@ -217,6 +237,11 @@ export function computePlayerProfile(
     longestWinStreak,
     currentWinStreak,
     gamesWithTurnData,
+    gamesWithRiskData,
+    riskAttempts,
+    riskSuccesses,
+    riskExpectedSuccesses,
+    riskBalance: riskSuccesses - riskExpectedSuccesses,
     successfulTurns,
     bustTurns,
     avgSuccessfulTurn: successfulTurns ? Math.round(successfulTurnPoints / successfulTurns) : null,
