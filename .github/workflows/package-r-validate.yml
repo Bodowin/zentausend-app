@@ -1,0 +1,60 @@
+name: Package R validation
+
+on:
+  push:
+    branches:
+      - chatgpt/package-r-paused-games
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/package-r-paused-games
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply paused-game integration
+        run: python3 scripts/apply-package-r.py
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Targeted paused-game journey in Chromium
+        run: npx playwright test e2e/paused-games.spec.ts
+
+      - name: Targeted paused-game journey in WebKit
+        run: npx playwright test --config=playwright.webkit.config.ts e2e/paused-games.spec.ts
+
+      - name: Stage validated files
+        run: |
+          mkdir -p validated/src/components
+          cp src/App.tsx validated/src/App.tsx
+          cp src/components/SetupScreen.tsx validated/src/components/SetupScreen.tsx
+          cp playwright.webkit.config.ts validated/playwright.webkit.config.ts
+
+      - name: Upload validated files
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-r-validated-files
+          path: validated
+          if-no-files-found: error
