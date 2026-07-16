@@ -1,0 +1,61 @@
+name: Package R guarded apply
+
+on:
+  push:
+    branches:
+      - chatgpt/package-r-paused-library
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/package-r-paused-library
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply paused games patch
+        run: python3 scripts/apply-package-r.py
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Targeted paused-game journey in Chromium
+        run: npx playwright test e2e/paused-games.spec.ts --reporter=line
+
+      - name: Targeted paused-game journey in WebKit
+        run: npx playwright test e2e/paused-games.spec.ts --config=playwright.webkit.config.ts --reporter=line
+
+      - name: Commit validated product changes
+        run: |
+          rm -f scripts/apply-package-r.py
+          rm -f .github/workflows/package-r-guarded.yml
+          rm -f docs/.package-r-anchor
+          rm -f docs/package-r-implementation-note.md
+          git config user.name "ChatGPT Package R"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Add synced paused games library and archive"
+          git push origin HEAD:chatgpt/package-r-paused-library
