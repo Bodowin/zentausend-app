@@ -45,7 +45,12 @@ jobs:
           exit $status
 
       - name: Unit tests
-        run: npm test
+        run: |
+          set +e
+          npm test > test.log 2>&1
+          status=$?
+          cat test.log
+          exit $status
 
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
@@ -72,6 +77,7 @@ jobs:
           name: package-s-failure-diagnostics
           path: |
             build.log
+            test.log
             src/components/GameScreen.tsx
             playwright-report
             playwright-report-webkit
