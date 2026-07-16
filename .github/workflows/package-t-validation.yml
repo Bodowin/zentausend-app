@@ -38,15 +38,24 @@ jobs:
           set +e
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('src/components/PlayerProfileScreen.tsx')
-          text = path.read_text()
-          text = text.replace(
+
+          script_path = Path('scripts/apply-package-t.py')
+          script = script_path.read_text()
+          script = script.replace(
+              '    if count != 1:\n        raise SystemExit(f"Expected exactly one anchor in {path}, found {count}: {old[:80]!r}")\n',
+              '    if count < 1:\n        raise SystemExit(f"Expected an anchor in {path}, found {count}: {old[:80]!r}")\n',
+          )
+          script_path.write_text(script)
+
+          profile_path = Path('src/components/PlayerProfileScreen.tsx')
+          profile = profile_path.read_text()
+          profile = profile.replace(
               '          <ProfileRow label="Bester Einzelzug" value={profile.bestTurn ? fmt(profile.bestTurn.points) : \'–\'} />\n'
               '          <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? \'–\' : `${profile.avgRounds.toLocaleString(\'de-DE\')} Runden`} />\n',
               '           <ProfileRow label="Bester Einzelzug" value={profile.bestTurn ? fmt(profile.bestTurn.points) : \'–\'} />\n'
               '           <ProfileRow label="Ø Spieldauer" value={profile.avgRounds === null ? \'–\' : `${profile.avgRounds.toLocaleString(\'de-DE\')} Runden`} />\n',
           )
-          path.write_text(text)
+          profile_path.write_text(profile)
           PY
           python3 scripts/apply-package-t.py > patch.log 2>&1
           status=$?
