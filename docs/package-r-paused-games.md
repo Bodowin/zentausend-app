@@ -35,3 +35,4 @@
 - Lösch-Tombstone verhindert Wiederauftauchen auf einem anderen Gerät
 - Reload und lokale Persistenz
 - Unit-Tests, Production-Build, Chromium und WebKit
+- finaler Produktstand ohne Patch-, Workflow- oder Diagnoseartefakte geprüft
