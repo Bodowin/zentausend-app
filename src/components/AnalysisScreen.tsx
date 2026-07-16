@@ -37,7 +37,7 @@ export function AnalysisScreen({ game, onBack }: { game: GameRecord; onBack: () 
 
       {/* Highlights */}
       {a.hasTurns && (
-        <div className="mb-5 grid grid-cols-3 gap-2.5">
+        <div className="mb-5 grid grid-cols-2 gap-2.5">
           <Card emoji="💥" title="Bester Zug">
             {a.bestTurn ? (
               <>
@@ -62,6 +62,18 @@ export function AnalysisScreen({ game, onBack }: { game: GameRecord; onBack: () 
           </Card>
           <Card emoji="🔁" title="Runden">
             <div className="text-xl font-black text-fog-100">{a.roundsCount}</div>
+          </Card>
+          <Card emoji="📈" title="Statistik">
+            {a.statisticsDefier ? (
+              <>
+                <div className="truncate font-bold text-fog-100">{a.statisticsDefier.name}</div>
+                <div className="text-xs text-mint-400">
+                  +{a.statisticsDefier.balance.toLocaleString('de-DE', { maximumFractionDigits: 1 })} Würfe
+                </div>
+              </>
+            ) : (
+              <div className="text-fog-600">im Soll</div>
+            )}
           </Card>
         </div>
       )}
@@ -98,6 +110,35 @@ export function AnalysisScreen({ game, onBack }: { game: GameRecord; onBack: () 
           ))}
         </div>
       </section>
+
+      {a.hasRiskData && (
+        <section className="mb-5">
+          <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-fog-500">Risiko-Bilanz</h2>
+          <div className="overflow-hidden rounded-2xl border border-ink-700/80 bg-ink-850/80">
+            {a.players
+              .filter((player) => player.riskAttempts > 0)
+              .map((player) => (
+                <div key={player.name} className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-ink-800/60 px-4 py-3 last:border-0">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 font-bold text-fog-100">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: playerColor(player.name) }} />
+                      <span className="truncate">{player.name}</span>
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-fog-500">
+                      {player.riskSuccesses}/{player.riskAttempts} geschafft · {player.riskExpected.toLocaleString('de-DE', { maximumFractionDigits: 1 })} erwartet
+                    </div>
+                  </div>
+                  <div className={`font-mono text-lg font-black ${player.riskBalance >= 0 ? 'text-mint-400' : 'text-coral-400'}`}>
+                    {player.riskBalance >= 0 ? '+' : ''}{player.riskBalance.toLocaleString('de-DE', { maximumFractionDigits: 1 })}
+                  </div>
+                </div>
+              ))}
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-fog-600">
+            Tatsächlich überstandene Weiterwürfe minus Summe ihrer jeweiligen Erfolgswahrscheinlichkeiten. +1,8 heißt: 1,8 Würfe mehr geschafft als statistisch erwartet.
+          </p>
+        </section>
+      )}
 
       {/* Runde × Spieler */}
       {a.hasTurns && (

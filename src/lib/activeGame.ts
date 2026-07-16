@@ -1,4 +1,4 @@
-import type { DiceMode, GameState, Player, Turn } from './types'
+import type { DiceMode, GameState, PendingRiskAttempt, Player, RiskAttempt, Turn } from './types'
 
 const KEY = '10k_active_game'
 const RECOVERY_KEY = '10k_active_game_recovery_v1'
@@ -24,6 +24,10 @@ export interface ActiveGame {
   dice: number[]
   accumulated: number
   turns: Turn[]
+  /** Bereits ausgewertete Risiko-Würfe des aktuell offenen Zugs. */
+  currentRiskAttempts?: RiskAttempt[]
+  /** Weiterwurf wurde gewählt; das Ergebnis des nächsten Wurfs steht noch aus. */
+  pendingRiskAttempt?: PendingRiskAttempt | null
   /** Im virtuellen Modus: noch nicht ausgewählte Würfel des aktuellen Wurfs. */
   rolled: number[]
   /** Unveränderliches Ergebnis des aktuellen virtuellen Wurfs. */
@@ -72,6 +76,27 @@ function isPlayer(p: unknown): p is Player {
   )
 }
 
+function isRiskAttemptBase(value: unknown): value is PendingRiskAttempt {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Partial<PendingRiskAttempt>
+  return (
+    typeof v.successPct === 'number' &&
+    Number.isFinite(v.successPct) &&
+    v.successPct >= 0 &&
+    v.successPct <= 100 &&
+    isPositiveInt(v.dice) &&
+    v.dice <= 6 &&
+    typeof v.scenarioB === 'boolean' &&
+    typeof v.pot === 'number' &&
+    Number.isFinite(v.pot) &&
+    v.pot >= 0
+  )
+}
+
+function isRiskAttempt(value: unknown): value is RiskAttempt {
+  return isRiskAttemptBase(value) && typeof (value as Partial<RiskAttempt>).success === 'boolean'
+}
+
 function isTurn(t: unknown): t is Turn {
   if (!t || typeof t !== 'object') return false
   const v = t as Partial<Turn>
@@ -82,7 +107,8 @@ function isTurn(t: unknown): t is Turn {
     typeof v.points === 'number' &&
     Number.isFinite(v.points) &&
     v.points >= 0 &&
-    typeof v.bust === 'boolean'
+    typeof v.bust === 'boolean' &&
+    (v.riskAttempts === undefined || (Array.isArray(v.riskAttempts) && v.riskAttempts.every(isRiskAttempt)))
   )
 }
 
@@ -183,6 +209,10 @@ export function parseActiveGame(raw: string | null): ActiveGame | null {
 
     const turns = Array.isArray(value.turns) ? value.turns : []
     if (!turns.every(isTurn)) return null
+    const currentRiskAttempts = Array.isArray(value.currentRiskAttempts) ? value.currentRiskAttempts : []
+    if (!currentRiskAttempts.every(isRiskAttempt)) return null
+    const pendingRiskAttempt = value.pendingRiskAttempt ?? null
+    if (pendingRiskAttempt !== null && !isRiskAttemptBase(pendingRiskAttempt)) return null
     if (value.goalScore !== undefined && (!isPositiveInt(value.goalScore) || value.goalScore > 1_000_000)) return null
     if (value.entryMin !== undefined && (!isNonNegativeInt(value.entryMin) || value.entryMin > 100_000)) return null
 
@@ -205,6 +235,8 @@ export function parseActiveGame(raw: string | null): ActiveGame | null {
       dice,
       accumulated: value.accumulated,
       turns,
+      currentRiskAttempts,
+      pendingRiskAttempt,
       rolled,
       thrown,
       throwSeq: isNonNegativeInt(value.throwSeq) ? value.throwSeq : 0,

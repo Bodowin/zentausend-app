@@ -1,4 +1,4 @@
-import type { GameRecord, Turn } from './types'
+import type { GameRecord, RiskAttempt, Turn } from './types'
 
 export type GameRecordSource = 'local' | 'backup' | 'cloud'
 
@@ -45,6 +45,33 @@ function textValue(value: unknown): string | null {
   return trimmed ? trimmed : null
 }
 
+function normalizeRiskAttempt(value: unknown, path: string): { attempt: RiskAttempt | null; repairs: string[] } {
+  if (!isObject(value)) return { attempt: null, repairs: [`${path} war kein Objekt und wurde ausgelassen`] }
+  const successPct = value.successPct
+  const dice = integerValue(value.dice, 1)
+  const pot = integerValue(value.pot, 0)
+  if (
+    typeof successPct !== 'number' ||
+    !Number.isFinite(successPct) ||
+    successPct < 0 ||
+    successPct > 100 ||
+    dice.value === null ||
+    dice.value > 6 ||
+    pot.value === null ||
+    typeof value.scenarioB !== 'boolean' ||
+    typeof value.success !== 'boolean'
+  ) {
+    return { attempt: null, repairs: [`${path} war ungültig und wurde ausgelassen`] }
+  }
+  const repairs: string[] = []
+  if (dice.repaired) repairs.push(`${path}.dice wurde normalisiert`)
+  if (pot.repaired) repairs.push(`${path}.pot wurde normalisiert`)
+  return {
+    attempt: { successPct, dice: dice.value, scenarioB: value.scenarioB, pot: pot.value, success: value.success },
+    repairs,
+  }
+}
+
 function normalizeTurn(value: unknown, players: string[], index: number): { turn: Turn | null; repairs: string[] } {
   const repairs: string[] = []
   if (!isObject(value)) return { turn: null, repairs: [`turns[${index}] ist kein Objekt`] }
@@ -73,8 +100,29 @@ function normalizeTurn(value: unknown, players: string[], index: number): { turn
   if (points.repaired) repairs.push(`turns[${index}].points wurde normalisiert`)
   if (matchedPlayer !== playerInput) repairs.push(`turns[${index}].player wurde vereinheitlicht`)
 
+  let riskAttempts: RiskAttempt[] | undefined
+  if (value.riskAttempts !== undefined && value.riskAttempts !== null) {
+    if (!Array.isArray(value.riskAttempts)) {
+      repairs.push(`turns[${index}].riskAttempts war kein Array und wurde ausgelassen`)
+    } else {
+      riskAttempts = []
+      value.riskAttempts.forEach((candidate, riskIndex) => {
+        const normalized = normalizeRiskAttempt(candidate, `turns[${index}].riskAttempts[${riskIndex}]`)
+        repairs.push(...normalized.repairs)
+        if (normalized.attempt) riskAttempts?.push(normalized.attempt)
+      })
+    }
+  }
+
   return {
-    turn: { round: round.value, player: matchedPlayer, ...(playerId ? { playerId } : {}), points: points.value, bust },
+    turn: {
+      round: round.value,
+      player: matchedPlayer,
+      ...(playerId ? { playerId } : {}),
+      points: points.value,
+      bust,
+      ...(riskAttempts ? { riskAttempts } : {}),
+    },
     repairs,
   }
 }

@@ -27,6 +27,29 @@ describe('computeGameAwards', () => {
     expect(awards[2]).toMatchObject({ names: ['Mabi'], detail: '3 Nieten' })
   })
 
+  it('adds Statistik-Trotzer only after repeated material outperformance', () => {
+    const riskTurns: Turn[] = [
+      {
+        round: 1,
+        player: 'Gabi',
+        playerId: 'a',
+        points: 1_000,
+        bust: false,
+        riskAttempts: [
+          { successPct: 33.33, dice: 1, scenarioB: false, pot: 400, success: true },
+          { successPct: 55.56, dice: 2, scenarioB: false, pot: 600, success: true },
+          { successPct: 33.33, dice: 1, scenarioB: false, pot: 800, success: true },
+        ],
+      },
+    ]
+    const awards = computeGameAwards(players, riskTurns)
+    expect(awards.map((award) => award.id)).toContain('statistik-trotzer')
+    expect(awards.find((award) => award.id === 'statistik-trotzer')).toMatchObject({
+      names: ['Gabi'],
+      detail: '3/3 geschafft · 1,2 erwartet (+1,8)',
+    })
+  })
+
   it('keeps ties visible instead of choosing an arbitrary player', () => {
     const tiedTurns: Turn[] = [
       { round: 1, player: 'Gabi', points: 1_000, bust: false },

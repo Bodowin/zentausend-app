@@ -43,6 +43,11 @@ async function openFinalTurn(page: Page) {
           { round: 2, player: 'Gabi', playerId: 'player:gabi', points: 500, bust: false },
           { round: 2, player: 'Mabi', playerId: 'player:mabi', points: 1_500, bust: false },
         ],
+        currentRiskAttempts: [
+          { successPct: 33.33, dice: 1, scenarioB: false, pot: 500, success: true },
+          { successPct: 55.56, dice: 2, scenarioB: false, pot: 700, success: true },
+        ],
+        pendingRiskAttempt: { successPct: 33.33, dice: 1, scenarioB: false, pot: 900 },
         rolled: [],
         thrown: [],
         throwSeq: 4,
@@ -64,7 +69,9 @@ test('shows the podium, awards and creates a shareable result image', async ({ p
   await expect(finale.getByText('Champion der Clique')).toBeVisible()
   await expect(finale.getByText('Mabi', { exact: true }).first()).toBeVisible()
   await expect(finale.getByText('Auszeichnungen')).toBeVisible()
-  await expect(finale.getByText('High Roller')).toBeVisible()
+    await expect(finale.getByText('High Roller')).toBeVisible()
+    await expect(finale.getByText('Statistik-Trotzer')).toBeVisible()
+    await expect(finale.getByText('3/3 geschafft · 1,2 erwartet (+1,8)')).toBeVisible()
   await expect(finale.getByRole('button', { name: 'Revanche' })).toBeVisible()
   await expect(finale.getByRole('button', { name: 'Runden-Analyse' })).toBeVisible()
 

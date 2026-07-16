@@ -26,6 +26,7 @@ const awardTone: Record<GameAwardTone, string> = {
 
 const awardSymbol = {
   'high-roller': '◆',
+  'statistik-trotzer': '↗',
   efficiency: '◎',
   pechvogel: '×',
 } as const
@@ -119,7 +120,7 @@ export function GameOverDialog({ winner, players, turns, event, onRematch, onAna
           {awards.length > 0 && (
             <div className="relative px-4 py-4 sm:px-6">
               <h3 className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.22em] text-fog-500">Auszeichnungen</h3>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {awards.map((award) => (
                   <div key={award.id} className={`rounded-2xl border p-3 text-left ${awardTone[award.tone]}`}>
                     <div className="flex items-center gap-2">

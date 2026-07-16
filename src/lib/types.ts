@@ -30,6 +30,22 @@ export interface ScoreResult {
   hasJokerTriple: boolean
 }
 
+/** Ein bewusst eingegangenes Weiterwurf-Risiko und sein tatsächliches Ergebnis. */
+export interface RiskAttempt {
+  /** Exakte Erfolgswahrscheinlichkeit des nächsten Wurfs in Prozent. */
+  successPct: number
+  /** Anzahl der Würfel im Risiko-Wurf. */
+  dice: number
+  /** Aktive zusätzliche Pasch-Rettungszahl? */
+  scenarioB: boolean
+  /** Punkte, die beim Eingehen des Risikos im Zug standen. */
+  pot: number
+  /** true = mindestens ein wertbarer Würfel; false = Niete. */
+  success: boolean
+}
+
+export type PendingRiskAttempt = Omit<RiskAttempt, 'success'>
+
 /** Ein einzelner abgeschlossener Zug (für die Runden-Analyse). */
 export interface Turn {
   /** Spielrunde, in der der Zug stattfand. */
@@ -40,6 +56,8 @@ export interface Turn {
   /** Gesicherte Punkte dieses Zugs (0 bei Niete). */
   points: number
   bust: boolean
+  /** Bewusste Weiterwürfe dieses Zugs; ältere Spiele haben dieses Feld nicht. */
+  riskAttempts?: RiskAttempt[]
 }
 
 /** Ein gespeichertes Spiel-Ergebnis (localStorage-Schema v3). */
