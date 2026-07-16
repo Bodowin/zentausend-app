@@ -7,16 +7,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch head
         uses: actions/checkout@v4
         with:
           ref: chatgpt/package-r-paused-games
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -28,23 +30,7 @@ jobs:
         run: npm ci
 
       - name: Apply paused-game integration
-        id: patch
-        continue-on-error: true
-        run: python3 scripts/run-package-r.py > package-r-patch.log 2>&1
-
-      - name: Upload patch diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-r-patch-diagnostics
-          path: package-r-patch.log
-          if-no-files-found: error
-
-      - name: Stop after patch error
-        if: steps.patch.outcome == 'failure'
-        run: |
-          cat package-r-patch.log
-          exit 1
+        run: python3 scripts/run-package-r.py
 
       - name: Unit tests
         run: npm test
@@ -61,16 +47,11 @@ jobs:
       - name: Targeted paused-game journey in WebKit
         run: npx playwright test --config=playwright.webkit.config.ts e2e/paused-games.spec.ts
 
-      - name: Stage validated files
+      - name: Commit validated product state
         run: |
-          mkdir -p validated/src/components
-          cp src/App.tsx validated/src/App.tsx
-          cp src/components/SetupScreen.tsx validated/src/components/SetupScreen.tsx
-          cp playwright.webkit.config.ts validated/playwright.webkit.config.ts
-
-      - name: Upload validated files
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-r-validated-files
-          path: validated
-          if-no-files-found: error
+          git config user.name "ChatGPT Package R"
+          git config user.email "actions@github.com"
+          git add src/App.tsx src/components/SetupScreen.tsx playwright.webkit.config.ts
+          git rm -f .github/workflows/package-r-validate.yml scripts/apply-package-r.py scripts/run-package-r.py docs/package-r-implementation-note.md || true
+          git commit -m "Add multiple paused games and 14-day archive"
+          git push origin HEAD:chatgpt/package-r-paused-games
