@@ -32,27 +32,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Separate chart label integration
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-package-w.py')
-          text = path.read_text()
-          start_marker = "replace_once(\n    'src/components/GameChart.tsx',\n    \"                   {directLabels"
-          next_marker = "replace_once(\n    'src/components/GameScreen.tsx'"
-          start = text.find(start_marker)
-          next_start = text.find(next_marker, start + 1)
-          if start < 0 or next_start < 0:
-              raise SystemExit(f'Could not isolate direct-label replacement: start={start}, next={next_start}')
-          path.write_text(text[:start] + text[next_start:])
-          PY
-
       - name: Apply package W integration
         shell: bash
         run: |
           set -o pipefail
-          python3 scripts/apply-package-w.py 2>&1 | tee package-w-patch-output.txt
+          : > package-w-patch-output.txt
           python3 scripts/apply-package-w-chart-labels.py 2>&1 | tee -a package-w-patch-output.txt
+          python3 scripts/apply-package-w-game-screen.py 2>&1 | tee -a package-w-patch-output.txt
+          python3 scripts/apply-package-w-app.py 2>&1 | tee -a package-w-patch-output.txt
 
       - name: Unit tests
         run: npm test
