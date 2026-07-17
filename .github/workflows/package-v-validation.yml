@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/package-v-event-cup
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -48,6 +51,7 @@ jobs:
         run: npx playwright test --config=playwright.webkit.config.ts
 
       - name: Commit validated product integration
+        if: github.event_name == 'push'
         run: |
           git config user.name "ChatGPT Package V"
           git config user.email "actions@github.com"
