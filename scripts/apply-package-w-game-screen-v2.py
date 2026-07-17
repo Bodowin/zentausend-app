@@ -81,7 +81,7 @@ if 'Zum Überholen: {fmt(minimumWinningScore)} Gesamtpunkte' not in text:
          <div className="border-b border-coral-500/40 bg-gradient-to-r from-coral-500/10 via-gold-500/10 to-coral-500/10 px-4 py-3 text-center animate-pop">
            <div className="flex items-center justify-center gap-2">
              <IconTrophy className="h-5 w-5 text-gold-400" />
-             <span className="text-xs font-black uppercase tracking-[0.18em] text-coral-300">Letzte Chance!</span>
+             <span className="text-xs font-black uppercase tracking-[0.18em] text-coral-300">Finale – alles oder nichts</span>
              <span className="text-xs font-bold text-fog-400">{leader.name} · {fmt(leader.score)}</span>
            </div>
            <div className="mt-1 font-display text-lg font-black text-fog-100">
