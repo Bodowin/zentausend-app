@@ -69,7 +69,7 @@ export interface EventCupSummary {
   hasRiskData: boolean
 }
 
-interface MutableStanding extends Omit<EventCupStanding, 'rank' | 'averagePlacement' | 'bustRate'> {
+interface MutableStanding extends Omit<EventCupStanding, 'rank' | 'winRate' | 'averagePlacement' | 'bustRate'> {
   placementTotal: number
 }
 

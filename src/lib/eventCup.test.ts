@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { computeEventCup } from './eventCup'
 import type { GameRecord, RiskAttempt } from './types'
 
@@ -34,7 +34,6 @@ function game(
   }
 }
 
-beforeEach(() => localStorage.clear())
 
 describe('computeEventCup', () => {
   it('ranks by wins, win rate, average placement and then direct comparison', () => {
@@ -70,7 +69,7 @@ describe('computeEventCup', () => {
   it('does not reward raw point sums across different target scores', () => {
     const history: GameRecord[] = [
       game(1, '2026-08-01T18:00:00.000Z', 'Cup', 'Anna', [player('a', 'Anna', 5_050), player('b', 'Bodo', 4_900)]),
-      game(2, '2026-08-02T18:00:00.000Z', 'Cup', 'Bodo', [player('a', 'Anna', 14_900), player('b', 'Bodo', 15_050)]),
+      game(2, '2026-08-02T18:00:00.000Z', 'Cup', 'Bodo', [player('a', 'Anna', 14_000), player('b', 'Bodo', 20_050)]),
       game(3, '2026-08-03T18:00:00.000Z', 'Cup', 'Anna', [player('a', 'Anna', 10_100), player('b', 'Bodo', 9_900)]),
     ]
 
