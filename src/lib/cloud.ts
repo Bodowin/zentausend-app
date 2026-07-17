@@ -76,6 +76,23 @@ function clearEventEdit(clientId: string): void {
   writePendingEventEdits(edits)
 }
 
+function queueEventEdits(clientIds: string[], event: string): void {
+  const edits = readPendingEventEdits()
+  for (const clientId of clientIds) edits[clientId] = event.trim()
+  writePendingEventEdits(edits)
+}
+
+function clearEventEdits(clientIds: string[]): void {
+  const edits = readPendingEventEdits()
+  let changed = false
+  for (const clientId of clientIds) {
+    if (!(clientId in edits)) continue
+    delete edits[clientId]
+    changed = true
+  }
+  if (changed) writePendingEventEdits(edits)
+}
+
 export function pendingEventEditCount(): number {
   return (
     Object.keys(readPendingEventEdits()).length +
@@ -260,6 +277,60 @@ async function updateCloudEvent(clientId: string, event: string): Promise<EditRe
   }
 }
 
+interface BulkEventUpdateResult {
+  result: EditResult
+  confirmed: string[]
+}
+
+async function updateCloudEvents(clientIds: string[], event: string): Promise<BulkEventUpdateResult> {
+  const uniqueIds = [...new Set(clientIds)]
+  if (uniqueIds.length === 0) return { result: 'ok', confirmed: [] }
+  const supabase = getSupabase()
+  if (!supabase || isOffline()) return { result: 'offline', confirmed: [] }
+
+  const updateController = new AbortController()
+  const updateTimer = window.setTimeout(() => updateController.abort(), CLOUD_TIMEOUT_MS)
+  let confirmed: string[] = []
+  try {
+    const { data: updated, error } = await supabase
+      .from('games')
+      .update({ event: event.trim() })
+      .in('client_id', uniqueIds)
+      .select('client_id')
+      .abortSignal(updateController.signal)
+    if (error) {
+      console.warn('Cloud-Sammelupdate fehlgeschlagen:', error.message)
+      return { result: 'offline', confirmed }
+    }
+    confirmed = (updated ?? []).map((row) => row.client_id)
+    if (confirmed.length === uniqueIds.length) return { result: 'ok', confirmed }
+  } catch (error) {
+    console.warn('Cloud-Sammelupdate abgebrochen (Timeout/offline):', error)
+    return { result: 'offline', confirmed }
+  } finally {
+    window.clearTimeout(updateTimer)
+  }
+
+  const confirmedSet = new Set(confirmed)
+  const unresolved = uniqueIds.filter((clientId) => !confirmedSet.has(clientId))
+  const checkController = new AbortController()
+  const checkTimer = window.setTimeout(() => checkController.abort(), CLOUD_TIMEOUT_MS)
+  try {
+    const { data: existing, error } = await supabase
+      .from('games')
+      .select('client_id')
+      .in('client_id', unresolved)
+      .abortSignal(checkController.signal)
+    if (error) return { result: 'offline', confirmed }
+    return { result: existing && existing.length > 0 ? 'denied' : 'offline', confirmed }
+  } catch (error) {
+    console.warn('Cloud-Sammelupdate-Prüfung abgebrochen:', error)
+    return { result: 'offline', confirmed }
+  } finally {
+    window.clearTimeout(checkTimer)
+  }
+}
+
 /**
  * Speichert den Anlass sofort lokal und merkt ihn als ausstehend, bis die Cloud
  * die Änderung bestätigt. Damit überlebt die Änderung Offline-Starts und wird
@@ -274,6 +345,23 @@ export async function editGameEvent(game: GameRecord, event: string): Promise<Ed
   const result = await updateCloudEvent(clientId, trimmed)
   if (result === 'ok') clearEventEdit(clientId)
   return result
+}
+
+/**
+ * Ordnet mehrere Spiele offline-first einem gemeinsamen Anlass zu. Lokal und in
+ * der Retry-Queue wird atomar pro Liste vorbereitet; die Cloud erhält ein einziges
+ * Sammelupdate. Bereits bestätigte Zeilen werden auch bei Teilerfolg aus der Queue entfernt.
+ */
+export async function editGameEvents(games: GameRecord[], event: string): Promise<EditResult> {
+  const trimmed = event.trim()
+  const byId = new Map(games.map((game) => [key(game), game]))
+  const clientIds = [...byId.keys()]
+  for (const game of byId.values()) setGameEvent(game.id, trimmed)
+  queueEventEdits(clientIds, trimmed)
+
+  const update = await updateCloudEvents(clientIds, trimmed)
+  clearEventEdits(update.confirmed)
+  return update.result
 }
 
 export interface SyncResult {
