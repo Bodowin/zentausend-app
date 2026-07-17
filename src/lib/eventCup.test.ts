@@ -42,7 +42,6 @@ describe('computeEventCup', () => {
       game(1, '2026-08-01T18:00:00.000Z', 'Sommerurlaub', 'Anna', [
         player('a', 'Anna', 5_100),
         player('b', 'Bodo', 4_500),
-        player('c', 'Clara', 3_000),
       ]),
       game(2, '2026-08-02T18:00:00.000Z', 'Sommerurlaub', 'Clara', [
         player('c', 'Clara', 10_100),
@@ -58,12 +57,13 @@ describe('computeEventCup', () => {
 
     const cup = computeEventCup(history, 'Sommerurlaub')
     expect(cup).not.toBeNull()
-    expect(cup!.standings.map((entry) => entry.name)).toEqual(['Anna', 'Clara', 'Bodo'])
+    expect(cup!.standings.map((entry) => entry.name)).toEqual(['Clara', 'Anna', 'Bodo'])
     expect(cup!.standings.map((entry) => entry.wins)).toEqual([1, 1, 1])
-    expect(cup!.standings[0].averagePlacement).toBe(2)
+    expect(cup!.standings[0].winRate).toBe(0.5)
     expect(cup!.standings[1].averagePlacement).toBe(2)
-    expect(cup!.standings[0].headToHeadPoints).toBe(2)
-    expect(cup!.standings[1].headToHeadPoints).toBe(1)
+    expect(cup!.standings[2].averagePlacement).toBe(2)
+    expect(cup!.standings[1].headToHeadPoints).toBe(2)
+    expect(cup!.standings[2].headToHeadPoints).toBe(1)
     expect(cup!.standings[2].bestScore).toBe(15_050)
   })
 
