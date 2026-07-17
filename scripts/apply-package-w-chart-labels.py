@@ -1,19 +1,46 @@
 from pathlib import Path
 import re
 
+
 path = Path('src/components/GameChart.tsx')
 text = path.read_text()
-if 'paintOrder="stroke"' in text:
-    raise SystemExit(0)
 
-pattern = re.compile(
-    r'''\{directLabels\s*&&\s*\(\s*'''
-    r'''<text\s+x=\{x\(steps\)\s*\+\s*7\}\s+y=\{y\(lastV\)\s*\+\s*3\}\s+fontSize=\{9\}\s+fontWeight=\{700\}\s+fill="#aab3c7">\s*'''
-    r'''\{s\.name\.length\s*>\s*6\s*\?\s*`\$\{s\.name\.slice\(0,\s*6\)\}…`\s*:\s*s\.name\}\s*'''
-    r'''</text>\s*\)\}''',
-    re.DOTALL,
-)
-replacement = '''{directLabels && (
+
+def replace_once(old: str, new: str) -> None:
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f'Expected one GameChart match, found {count}: {old[:100]!r}')
+    text = text.replace(old, new, 1)
+
+
+if "import { spreadChartLabels } from '../lib/chartLabelLayout'" not in text:
+    replace_once(
+        "import { playerColor } from '../lib/colors'\n",
+        "import { playerColor } from '../lib/colors'\nimport { spreadChartLabels } from '../lib/chartLabelLayout'\n",
+    )
+
+if 'const endLabels = new Map(' not in text:
+    replace_once(
+        "const y = (v: number) => PAD.t + ih - (v / yMax) * ih\n\n  const fmtShort",
+        "const y = (v: number) => PAD.t + ih - (v / yMax) * ih\n  const endLabels = new Map(\n    directLabels\n      ? spreadChartLabels(\n          series.map((entry) => ({\n            id: entry.name,\n            y: y(entry.pts[entry.pts.length - 1]),\n          })),\n          PAD.t + 6,\n          PAD.t + ih - 6,\n          12,\n        ).map((entry) => [entry.id, entry.labelY] as const)\n      : [],\n  )\n\n  const fmtShort",
+    )
+
+if 'const labelY = endLabels.get(s.name)' not in text:
+    replace_once(
+        "const lastV = s.pts[s.pts.length - 1]\n              return (",
+        "const lastV = s.pts[s.pts.length - 1]\n              const lineY = y(lastV)\n              const labelY = endLabels.get(s.name) ?? lineY\n              return (",
+    )
+
+if 'paintOrder="stroke"' not in text:
+    pattern = re.compile(
+        r'''\{directLabels\s*&&\s*\(\s*'''
+        r'''<text\s+x=\{x\(steps\)\s*\+\s*7\}\s+y=\{y\(lastV\)\s*\+\s*3\}\s+fontSize=\{9\}\s+fontWeight=\{700\}\s+fill="#aab3c7">\s*'''
+        r'''\{s\.name\.length\s*>\s*6\s*\?\s*`\$\{s\.name\.slice\(0,\s*6\)\}…`\s*:\s*s\.name\}\s*'''
+        r'''</text>\s*\)\}''',
+        re.DOTALL,
+    )
+    replacement = '''{directLabels && (
                      <>
                        {Math.abs(labelY - lineY) > 1 && (
                          <line
@@ -40,7 +67,8 @@ replacement = '''{directLabels && (
                        </text>
                      </>
                    )}'''
-next_text, count = pattern.subn(replacement, text, count=1)
-if count != 1:
-    raise RuntimeError(f'Expected one direct-label SVG block, found {count}')
-path.write_text(next_text)
+    text, count = pattern.subn(replacement, text, count=1)
+    if count != 1:
+        raise RuntimeError(f'Expected one direct-label SVG block, found {count}')
+
+path.write_text(text)
