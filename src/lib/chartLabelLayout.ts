@@ -28,28 +28,22 @@ export function spreadChartLabels(
   const range = upper - lower
   const gap = points.length <= 1 ? 0 : Math.min(Math.max(0, preferredGap), range / (points.length - 1))
   const sorted = points
-    .map((point, originalIndex) => ({ ...point, originalIndex, labelY: clamp(point.y, lower, upper) }))
+    .map((point, originalIndex) => ({ ...point, originalIndex, labelY: point.y }))
     .sort((a, b) => a.y - b.y || a.originalIndex - b.originalIndex)
 
-  for (let index = 1; index < sorted.length; index += 1) {
-    sorted[index].labelY = Math.max(sorted[index].labelY, sorted[index - 1].labelY + gap)
-  }
-
-  const overflow = sorted[sorted.length - 1].labelY - upper
-  if (overflow > 0) {
-    for (const point of sorted) point.labelY -= overflow
-  }
-
-  for (let index = sorted.length - 2; index >= 0; index -= 1) {
-    sorted[index].labelY = Math.min(sorted[index].labelY, sorted[index + 1].labelY - gap)
-  }
-
-  const underflow = lower - sorted[0].labelY
-  if (underflow > 0) {
-    for (const point of sorted) point.labelY += underflow
+  // Jeder Rang erhält einen noch verfügbaren Korridor. Dadurch bleibt selbst
+  // bei gleichzeitig dicht belegter Ober- und Unterkante genug Platz für alle
+  // folgenden Labels; ein abschließendes Clamping kann keine Kollision erzeugen.
+  for (let index = 0; index < sorted.length; index += 1) {
+    const minAllowed = lower + index * gap
+    const maxAllowed = upper - (sorted.length - 1 - index) * gap
+    sorted[index].labelY = clamp(sorted[index].y, minAllowed, maxAllowed)
+    if (index > 0) {
+      sorted[index].labelY = Math.max(sorted[index].labelY, sorted[index - 1].labelY + gap)
+    }
   }
 
   return sorted
     .sort((a, b) => a.originalIndex - b.originalIndex)
-    .map(({ originalIndex: _originalIndex, ...point }) => ({ ...point, labelY: clamp(point.labelY, lower, upper) }))
+    .map(({ originalIndex: _originalIndex, ...point }) => point)
 }
