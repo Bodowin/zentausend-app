@@ -120,6 +120,11 @@ test.describe('10.000 browser journeys', () => {
     await page.getByRole('button', { name: /Spiel fortsetzen/ }).click()
     await addDice(page, 1, 1)
     await page.getByRole('button', { name: '100 Punkte sichern' }).click()
+
+    const endgameDialog = page.getByRole('dialog', { name: 'Endphase – Gabi erreicht 5.000' })
+    await expect(endgameDialog).toBeVisible()
+    await endgameDialog.getByRole('button', { name: 'Mabi: letzte Chance starten' }).click()
+
     await expect(page.getByText('Letzte Chance!', { exact: true })).toBeVisible()
     await expect(page.locator('[aria-current="true"]')).toContainText('Mabi')
 
