@@ -38,7 +38,7 @@ jobs:
           set -o pipefail
           : > package-w-patch-output.txt
           python3 scripts/apply-package-w-chart-labels.py 2>&1 | tee -a package-w-patch-output.txt
-          python3 scripts/apply-package-w-game-screen.py 2>&1 | tee -a package-w-patch-output.txt
+          python3 scripts/apply-package-w-game-screen-v2.py 2>&1 | tee -a package-w-patch-output.txt
           python3 scripts/apply-package-w-app.py 2>&1 | tee -a package-w-patch-output.txt
 
       - name: Unit tests
