@@ -10,7 +10,7 @@ import {
   getHistory,
   getHistoryIntegrityReport,
 } from '../lib/storage'
-import { deleteGame, editGameEvent, pendingEventEditCount, syncAndMerge } from '../lib/cloud'
+import { deleteGame, editGameEvent, editGameEvents, pendingEventEditCount, syncAndMerge } from '../lib/cloud'
 import { exportBackup, exportIntegrityReport, importBackup } from '../lib/backup'
 import { cloudEnabled } from '../lib/supabase'
 import type { GameRecord, PlayerStats } from '../lib/types'
@@ -20,6 +20,7 @@ import { SettingsModal } from './SettingsModal'
 import { AnalysisScreen } from './AnalysisScreen'
 import { PlayerManager } from './PlayerManager'
 import { PlayerProfileScreen } from './PlayerProfileScreen'
+import { BulkEventAssignmentDialog } from './BulkEventAssignmentDialog'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
 
@@ -46,6 +47,8 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   // eigentlichen Spiel-Objekt, bis gespeichert wird.
   const [editingGame, setEditingGame] = useState<GameRecord | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
+  const [bulkAssignBusy, setBulkAssignBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -155,6 +158,27 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
     })
   }
 
+  const handleBulkAssign = (selectedGames: GameRecord[], event: string) => {
+    const trimmed = event.trim()
+    if (!trimmed || selectedGames.length === 0 || bulkAssignBusy) return
+    const selectedIds = new Set(selectedGames.map((game) => game.id))
+    setGames((previous) =>
+      previous.map((game) => (selectedIds.has(game.id) ? { ...game, event: trimmed } : game)),
+    )
+    setBulkAssignBusy(true)
+    const sync = editGameEvents(selectedGames, trimmed)
+    setPendingSync(pendingEventEditCount())
+    flash(`${selectedGames.length} ${selectedGames.length === 1 ? 'Spiel' : 'Spiele'} lokal zugeordnet · Sync läuft…`)
+    void sync.then((result) => {
+      setBulkAssignBusy(false)
+      setBulkAssignOpen(false)
+      setPendingSync(pendingEventEditCount())
+      if (result === 'ok') flash(`${selectedGames.length} ${selectedGames.length === 1 ? 'Spiel' : 'Spiele'} synchronisiert.`)
+      else if (result === 'denied') flash('Lokal zugeordnet · Clique-Code prüfen.')
+      else flash('Lokal zugeordnet · wird später synchronisiert.')
+    })
+  }
+
   if (profileId) {
     return (
       <PlayerProfileScreen
@@ -193,6 +217,18 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             flash(message)
             void reload()
           }}
+        />
+      )}
+
+      {bulkAssignOpen && (
+        <BulkEventAssignmentDialog
+          games={games}
+          events={events}
+          busy={bulkAssignBusy}
+          onClose={() => {
+            if (!bulkAssignBusy) setBulkAssignOpen(false)
+          }}
+          onApply={handleBulkAssign}
         />
       )}
 
@@ -295,6 +331,14 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
           className="col-span-2 rounded-xl border border-gold-500/30 bg-gold-500/10 px-3 py-2.5 text-xs font-bold text-gold-300 transition-colors disabled:opacity-40"
         >
           👥 Spielerprofile verwalten
+        </button>
+        <button
+          type="button"
+          onClick={() => setBulkAssignOpen(true)}
+          disabled={games.length === 0}
+          className="col-span-2 rounded-xl border border-mint-500/30 bg-mint-500/10 px-3 py-2.5 text-xs font-bold text-mint-300 transition-colors disabled:opacity-40"
+        >
+          🗓️ Mehrere Spiele einem Anlass zuordnen
         </button>
       </div>
 
