@@ -38,10 +38,12 @@ const history = [
 
 test('assigns several vacation games to one event and keeps it after reload', async ({ page }) => {
   await page.addInitScript(({ storedHistory }) => {
+    if (sessionStorage.getItem('bulk-event-assignment-seeded')) return
     localStorage.clear()
     localStorage.setItem('10k_seen_intro', '1')
     localStorage.setItem('10k_code_dismissed', '1')
     localStorage.setItem('10k_history_v3', JSON.stringify(storedHistory))
+    sessionStorage.setItem('bulk-event-assignment-seeded', '1')
   }, { storedHistory: history })
 
   await page.goto('/')
