@@ -33,10 +33,10 @@ jobs:
         run: python3 scripts/apply-package-v.py
 
       - name: Unit tests
-        run: npm test
+        run: npm test 2>&1 | tee package-v-test-output.txt
 
       - name: Production build
-        run: npm run build
+        run: npm run build 2>&1 | tee package-v-build-output.txt
 
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
@@ -62,6 +62,8 @@ jobs:
         with:
           name: package-v-failure-diagnostics
           path: |
+            package-v-test-output.txt
+            package-v-build-output.txt
             playwright-report
             playwright-report-webkit
             test-results
