@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { GameAnalysis } from '../lib/storage'
 import { playerColor } from '../lib/colors'
+import { spreadChartLabels } from '../lib/chartLabelLayout'
 
 /**
  * Spielverlaufs-Kurve: kumulierte Punkte pro Runde, eine Linie je Spieler.
@@ -39,6 +40,19 @@ export function GameChart({ analysis }: { analysis: GameAnalysis }) {
   const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b
   const x = (i: number) => PAD.l + (steps === 0 ? 0 : (i / steps) * iw)
   const y = (v: number) => PAD.t + ih - (v / yMax) * ih
+  const endLabels = new Map(
+    directLabels
+      ? spreadChartLabels(
+          series.map((entry) => ({
+            id: entry.name,
+            y: y(entry.pts[entry.pts.length - 1]),
+          })),
+          PAD.t + 6,
+          PAD.t + ih - 6,
+          12,
+        ).map((entry) => [entry.id, entry.labelY] as const)
+      : [],
+  )
 
   const fmtShort = (v: number) => (v >= 1000 ? `${(v / 1000).toLocaleString('de-DE')}k` : `${v}`)
   const grid = [0.25, 0.5, 0.75, 1].map((f) => Math.round(yMax * f))
@@ -107,16 +121,40 @@ export function GameChart({ analysis }: { analysis: GameAnalysis }) {
               const d = s.pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
               const c = playerColor(s.name)
               const lastV = s.pts[s.pts.length - 1]
+              const lineY = y(lastV)
+              const labelY = endLabels.get(s.name) ?? lineY
               return (
                 <g key={s.name}>
                   <path d={d} fill="none" stroke={c} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
                   {/* Endpunkt mit Surface-Ring (hebt Überlappungen ab) */}
                   <circle cx={x(steps)} cy={y(lastV)} r={3.5} fill={c} stroke="#0e1320" strokeWidth={2} />
                   {directLabels && (
-                    <text x={x(steps) + 7} y={y(lastV) + 3} fontSize={9} fontWeight={700} fill="#aab3c7">
-                      {s.name.length > 6 ? `${s.name.slice(0, 6)}…` : s.name}
-                    </text>
-                  )}
+                     <>
+                       {Math.abs(labelY - lineY) > 1 && (
+                         <line
+                           x1={x(steps) + 3}
+                           x2={x(steps) + 7}
+                           y1={lineY}
+                           y2={labelY}
+                           stroke={c}
+                           strokeWidth={1}
+                           opacity={0.65}
+                         />
+                       )}
+                       <text
+                         x={x(steps) + 8}
+                         y={labelY + 3}
+                         fontSize={9}
+                         fontWeight={700}
+                         fill="#c4ccdc"
+                         stroke="#0e1320"
+                         strokeWidth={3}
+                         paintOrder="stroke"
+                       >
+                         {s.name.length > 6 ? `${s.name.slice(0, 6)}…` : s.name}
+                       </text>
+                     </>
+                   )}
                   {/* Hover-Marker */}
                   {hover !== null && (
                     <circle cx={x(hover)} cy={y(s.pts[hover] ?? 0)} r={3} fill={c} stroke="#0e1320" strokeWidth={2} />

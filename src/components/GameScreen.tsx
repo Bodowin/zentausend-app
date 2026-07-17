@@ -7,6 +7,7 @@ import { getPrefs } from '../lib/prefs'
 import { computeGameAnalysis } from '../lib/storage'
 import { PIPS } from '../lib/dicePips'
 import { diceThrowSeed } from '../lib/diceThrowSeed'
+import { nextPlayableScoreAbove } from '../lib/scoreSteps'
 import { TurnLogDialog } from './TurnLogDialog'
 import { GameOverDialog } from './GameOverDialog'
 import { GameChart } from './GameChart'
@@ -103,6 +104,7 @@ export function GameScreen(p: Props) {
 
   const [showTurnLog, setShowTurnLog] = useState(false)
   const [showRiskInfo, setShowRiskInfo] = useState(false)
+  const [bankWarningOpen, setBankWarningOpen] = useState(false)
   // Rundenanalyse direkt vom Sieg-Overlay aus öffnen, ohne über die Statistik
   // gehen zu müssen.
   const [showAnalysis, setShowAnalysis] = useState(false)
@@ -130,6 +132,18 @@ export function GameScreen(p: Props) {
   // Letzte Chance: Anführer (höchster Score) und die zu schlagende Marke.
   const leader = lastChance ? [...players].sort((a, b) => b.score - a.score)[0] : null
   const beatScore = effectiveTarget - 1
+  const minimumWinningScore = lastChance ? nextPlayableScoreAbove(beatScore) : goalScore
+  const projectedScore = players[idx].score + totalPotential
+  const bankWins = canBank && projectedScore >= effectiveTarget
+  const bankFallsShort = lastChance && canBank && projectedScore < effectiveTarget
+  const projectedRank = 1 + players.filter((player, index) => index !== idx && player.score > projectedScore).length
+  const requestBank = () => {
+    if (bankFallsShort) {
+      setBankWarningOpen(true)
+      return
+    }
+    p.onBank()
+  }
 
   // Risiko schon WÄHREND des virtuellen Wurfs zeigen (Würfel drehen/fallen, noch
   // nichts ausgewählt) → man kann sich rechtzeitig fürs Sichern entscheiden.
@@ -360,7 +374,7 @@ export function GameScreen(p: Props) {
           {canBankIdle ? (
             /* Umentschieden: schon Ausgelegtes doch sichern, ohne neu zu werfen. */
             <button
-              onClick={p.onBank}
+              onClick={requestBank}
               aria-label={`${fmt(totalPotential)} Punkte sichern`}
               className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-mint-400 to-mint-500 font-bold text-ink-950 shadow-[0_4px_0_var(--color-mint-600)] transition-all active:translate-y-1 active:shadow-none ${
                 big ? 'text-lg' : ''
@@ -368,8 +382,10 @@ export function GameScreen(p: Props) {
             >
               <IconCheck className={big ? 'h-7 w-7' : 'h-5 w-5'} />
               <div className="flex flex-col items-start leading-none">
-                <span>Doch sichern</span>
-                <span className="mt-0.5 text-[10px] font-normal opacity-80">{fmt(totalPotential)}</span>
+                <span>{bankWins ? 'Sieg sichern' : 'Doch sichern'}</span>
+                <span className="mt-0.5 text-[10px] font-normal opacity-80">
+                   {bankWins ? `+${fmt(totalPotential)} · gewinnt` : fmt(totalPotential)}
+                 </span>
               </div>
             </button>
           ) : (
@@ -400,7 +416,7 @@ export function GameScreen(p: Props) {
       ) : (
         <div className="grid h-full grid-cols-2 gap-3">
           <button
-            onClick={p.onBank}
+            onClick={requestBank}
             aria-label={`${fmt(totalPotential)} Punkte sichern`}
             disabled={!canBank}
             className={`flex items-center justify-center gap-2 rounded-xl font-bold transition-all ${
@@ -411,10 +427,18 @@ export function GameScreen(p: Props) {
           >
             <IconCheck className={big ? 'h-8 w-8' : 'h-6 w-6'} />
             <div className="flex flex-col items-start leading-none">
-              <span>{fmt(totalPotential)}</span>
-              {entryShort && (
-                <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {entryMin}</span>
-              )}
+              <span>{bankWins ? 'Sieg sichern' : fmt(totalPotential)}</span>
+               {bankWins ? (
+                 <span className="mt-0.5 text-[10px] font-normal opacity-80">
+                   +{fmt(totalPotential)} · {fmt(projectedScore)} gesamt
+                 </span>
+               ) : entryShort ? (
+                 <span className="mt-0.5 text-[10px] font-normal opacity-80">Einstieg ab {entryMin}</span>
+               ) : bankFallsShort ? (
+                 <span className="mt-0.5 text-[10px] font-normal opacity-80">
+                   Platz {projectedRank} sichern · kein Sieg
+                 </span>
+               ) : null}
             </div>
           </button>
           <button
@@ -573,20 +597,28 @@ export function GameScreen(p: Props) {
         })}
       </div>
 
-      {/* Letzte-Chance-Banner: macht klar, dass jemand 10.000 hat */}
-      {lastChance && leader && (
-        <div className="flex items-center justify-center gap-2 border-b border-coral-500/30 bg-coral-500/10 px-4 py-2 text-center text-xs font-bold animate-pop">
-          <IconTrophy className="h-4 w-4 text-gold-400" />
-          <span className="text-fog-100">{leader.name} führt mit {fmt(leader.score)}!</span>
-          <span className="text-coral-300">{fmt(beatScore)} muss überboten werden</span>
-        </div>
-      )}
+      {/* Letzte-Chance-Banner: klare spielbare Marke statt arithmetischer +1-Differenz. */}
+       {lastChance && leader && (
+         <div className="border-b border-coral-500/40 bg-gradient-to-r from-coral-500/10 via-gold-500/10 to-coral-500/10 px-4 py-3 text-center animate-pop">
+           <div className="flex items-center justify-center gap-2">
+             <IconTrophy className="h-5 w-5 text-gold-400" />
+             <span className="text-xs font-black uppercase tracking-[0.18em] text-coral-300">Finale – alles oder nichts</span>
+             <span className="text-xs font-bold text-fog-400">{leader.name} · {fmt(leader.score)}</span>
+           </div>
+           <div className="mt-1 font-display text-lg font-black text-fog-100">
+             {players[idx].name} braucht mindestens {fmt(neededForWin)} Punkte
+           </div>
+           <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-gold-300">
+             Zum Überholen: {fmt(minimumWinningScore)} Gesamtpunkte
+           </div>
+         </div>
+       )}
 
       {/* Status-Zeile: virtuell einzeilig, damit die Schale mehr Platz bekommt. */}
       {virtual ? (
         <div className="flex items-center justify-between gap-4 border-b border-ink-800 bg-ink-900/40 px-4 py-1.5 font-mono text-xs">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-fog-600">Bis zum Sieg</span>
+            <span className="text-fog-600">{lastChance ? 'Zum Überholen' : 'Bis zum Sieg'}</span>
             <span className="font-bold text-fog-100">
               {neededForWin > 0 ? fmt(neededForWin) : 'Ziel erreicht'}
             </span>
@@ -595,7 +627,7 @@ export function GameScreen(p: Props) {
             <span className="text-fog-600">Nach Sichern</span>
             {totalPotential > 0 ? (
               <span className={`font-bold ${neededAfterBank <= 0 ? 'text-mint-400' : 'text-fog-300'}`}>
-                {neededAfterBank <= 0 ? 'Sieg möglich!' : `${fmt(neededAfterBank)} fehlen`}
+                {neededAfterBank <= 0 ? 'Sieg sichern!' : `${fmt(neededAfterBank)} fehlen`}
               </span>
             ) : (
               <span className="text-fog-600">–</span>
@@ -605,7 +637,7 @@ export function GameScreen(p: Props) {
       ) : (
         <div className="grid grid-cols-2 gap-4 border-b border-ink-800 bg-ink-900/40 px-4 py-2.5 font-mono text-xs">
           <div>
-            <div className="mb-0.5 text-fog-600">Bis zum Sieg</div>
+            <div className="mb-0.5 text-fog-600">{lastChance ? 'Zum Überholen' : 'Bis zum Sieg'}</div>
             <div className="text-base font-bold leading-none text-fog-100">
               {neededForWin > 0 ? fmt(neededForWin) : 'Ziel erreicht'}
             </div>
@@ -618,7 +650,7 @@ export function GameScreen(p: Props) {
                   neededAfterBank <= 0 ? 'text-mint-400' : 'text-fog-300'
                 }`}
               >
-                {neededAfterBank <= 0 ? 'Sieg möglich!' : `${fmt(neededAfterBank)} fehlen`}
+                {neededAfterBank <= 0 ? 'Sieg sichern!' : `${fmt(neededAfterBank)} fehlen`}
               </div>
             ) : (
               <div className="text-fog-600">–</div>
@@ -850,7 +882,51 @@ export function GameScreen(p: Props) {
         </div>
       </div>
 
-      {/* Risiko-Erklärung (optionaler Info-Knopf) */}
+      {bankWarningOpen && (
+         <div
+           className="glass absolute inset-0 z-[54] flex items-center justify-center p-5 animate-pop"
+           role="dialog"
+           aria-modal="true"
+           aria-labelledby="bank-warning-title"
+           onClick={() => setBankWarningOpen(false)}
+         >
+           <div
+             className="w-full max-w-sm rounded-3xl border-2 border-amber-400/60 bg-ink-900 p-6 text-center shadow-2xl shadow-black/60"
+             onClick={(event) => event.stopPropagation()}
+           >
+             <span className="text-4xl">⚠️</span>
+             <h3 id="bank-warning-title" className="mt-2 font-display text-2xl font-black text-fog-100">
+               Damit kannst du nicht gewinnen
+             </h3>
+             <p className="mt-3 text-sm font-semibold text-fog-300">
+               Mit +{fmt(totalPotential)} landest du bei {fmt(projectedScore)} Punkten.
+             </p>
+             <p className="mt-1 text-sm font-bold text-coral-300">
+               Zum Überholen fehlen danach noch {fmt(neededAfterBank)} Punkte.
+             </p>
+             <div className="mt-4 rounded-2xl border border-ink-700 bg-ink-950/50 px-4 py-3 text-xs leading-relaxed text-fog-400">
+               Wenn du jetzt sicherst, endet deine letzte Chance. Du kannst damit bewusst Platz {projectedRank} festhalten – oder weiterwürfeln und noch auf den Sieg gehen.
+             </div>
+             <div className="mt-5 grid grid-cols-2 gap-3">
+               <button type="button" onClick={() => setBankWarningOpen(false)} className="rounded-2xl bg-gradient-to-b from-amber-400 to-amber-500 py-3 font-black text-ink-950 shadow-lg">
+                 Weiterwürfeln
+               </button>
+               <button
+                 type="button"
+                 onClick={() => {
+                   setBankWarningOpen(false)
+                   p.onBank()
+                 }}
+                 className="rounded-2xl border border-ink-600 bg-ink-800 py-3 font-bold text-fog-200"
+               >
+                 Trotzdem sichern
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Risiko-Erklärung (optionaler Info-Knopf) */}
       {showRiskInfo && meterRisk && (
         <div
           className="glass absolute inset-0 z-50 flex items-center justify-center p-6 animate-pop"

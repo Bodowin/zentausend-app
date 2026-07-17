@@ -9,6 +9,7 @@ import {
   type ActiveGame,
 } from './lib/activeGame'
 import { calculateScore, ENTRY_MIN, WINNING_SCORE } from './lib/scoring'
+import { nextPlayableScoreAbove, playablePointsNeeded } from './lib/scoreSteps'
 import { computeRisk } from './lib/risk'
 import { saveGame } from './lib/storage'
 import { buzz } from './lib/haptics'
@@ -84,6 +85,12 @@ interface TurnHandoff {
   nextName: string
 }
 
+interface EndgameAnnounce {
+  leaderName: string
+  leaderScore: number
+  nextName: string
+}
+
 const sortDice = (values: number[]) => [...values].sort((a, b) => a - b)
 
 function ScreenFallback({ label }: { label: string }) {
@@ -131,6 +138,7 @@ export function App() {
   const [toast, setToast] = useState('')
   const [celebration, setCelebration] = useState<CelebrationData | null>(null)
   const [handoff, setHandoff] = useState<TurnHandoff | null>(null)
+  const [endgameAnnounce, setEndgameAnnounce] = useState<EndgameAnnounce | null>(null)
   const [bustAnnounce, setBustAnnounce] = useState<BustAnnounce | null>(null)
   const [undoStack, setUndoStack] = useState<Snapshot[]>([])
   const [resumable, setResumable] = useState<ActiveGame | null>(() => loadActiveGame())
@@ -317,6 +325,7 @@ export function App() {
     setToast('')
     setCelebration(null)
     setHandoff(null)
+    setEndgameAnnounce(null)
     setBustAnnounce(null)
     setUndoStack([])
     setResumable(null)
@@ -328,6 +337,7 @@ export function App() {
     setWinner(null)
     setCelebration(null)
     setHandoff(null)
+    setEndgameAnnounce(null)
     setBustAnnounce(null)
     setSetupSeed(null)
     setResumable(loadActiveGame())
@@ -421,6 +431,7 @@ export function App() {
     setWinner(null)
     setCelebration(null)
     setHandoff(null)
+    setEndgameAnnounce(null)
     setBustAnnounce(null)
     setUndoStack([])
     setResumable(null)
@@ -571,6 +582,7 @@ export function App() {
     setWinner(null)
     setCelebration(null)
     setHandoff(null)
+    setEndgameAnnounce(null)
     setBustAnnounce(null)
 
     if (diceMode === 'virtual') {
@@ -615,6 +627,7 @@ export function App() {
         const win = [...nextPlayers].sort((a, b) => b.score - a.score)[0]
         setPlayers(nextPlayers)
         setWinner(win)
+        setEndgameAnnounce(null)
         setPhase('finished')
         if (!testMode) {
           const record = saveGame(win, nextPlayers, event, nextTurns)
@@ -628,7 +641,7 @@ export function App() {
         buzz([12, 40, 12, 40, 60])
       }
 
-      const advance = (nextIdx: number, nextPhase: GameState, nextRound: number, nextTarget: number) => {
+      const advance = (nextIdx: number, nextPhase: GameState, nextRound: number, nextTarget: number, skipHandoff = false) => {
         setPlayers(nextPlayers)
         setIdx(nextIdx)
         setPhase(nextPhase)
@@ -639,7 +652,7 @@ export function App() {
         setDice([])
         setRolled([])
         setThrown([])
-        if (!suppressHandoff && getPrefs().handoff) {
+        if (!suppressHandoff && !skipHandoff && getPrefs().handoff) {
           setHandoff({
             scoredName,
             points: turnPoints,
@@ -657,10 +670,14 @@ export function App() {
       }
 
       if (justScored >= goalScore) {
-        if (idx === last) return finish()
-        showToast('Letzte Runde!')
-        return advance(idx + 1, 'lastChance', round, justScored)
-      }
+         if (idx === last) return finish()
+         setEndgameAnnounce({
+           leaderName: nextPlayers[idx].name,
+           leaderScore: justScored,
+           nextName: nextPlayers[idx + 1].name,
+         })
+         return advance(idx + 1, 'lastChance', round, justScored, true)
+       }
 
       const nextIdx = (idx + 1) % count
       const nextRound = nextIdx === 0 ? round + 1 : round
@@ -732,6 +749,7 @@ export function App() {
       !winner &&
       !celebration &&
       !handoff &&
+      !endgameAnnounce &&
       !bustAnnounce &&
       thrown.length === 0 &&
       dice.length === 0 &&
@@ -746,6 +764,7 @@ export function App() {
     winner,
     celebration,
     handoff,
+    endgameAnnounce,
     bustAnnounce,
     thrown.length,
     dice.length,
@@ -906,6 +925,7 @@ export function App() {
     setThrowSeq((sequence) => sequence + 1)
     setCelebration(null)
     setHandoff(null)
+    setEndgameAnnounce(null)
     setBustAnnounce(null)
     showToast('Korrektur gespeichert')
     return { ok: true, message: 'Korrektur gespeichert' }
@@ -917,7 +937,7 @@ export function App() {
 
   const current = players[idx]
   const effectiveTarget = phase === 'lastChance' ? target + 1 : goalScore
-  const neededForWin = current ? Math.max(0, effectiveTarget - current.score) : 0
+  const neededForWin = current ? playablePointsNeeded(effectiveTarget - current.score) : 0
   const totalPotential = accumulated + (result.isValid ? result.score : 0)
 
   const risk = useMemo(() => {
@@ -1029,7 +1049,37 @@ export function App() {
 
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
 
-      {handoff && !celebration && (
+       {endgameAnnounce && !celebration && (
+         <div
+           className="glass fixed inset-0 z-[56] flex items-center justify-center px-5 py-[max(env(safe-area-inset-top),1.25rem)] animate-pop"
+           role="dialog"
+           aria-modal="true"
+           aria-label={`Endphase – ${endgameAnnounce.leaderName} erreicht ${endgameAnnounce.leaderScore.toLocaleString('de-DE')}`}
+         >
+           <div className="flex w-full max-w-sm flex-col items-center rounded-3xl border-2 border-gold-400/70 bg-gradient-to-b from-gold-500/20 to-ink-900 px-6 py-8 text-center shadow-2xl shadow-black/70">
+             <span className="text-xs font-black uppercase tracking-[0.28em] text-coral-300">Endphase gestartet</span>
+             <span className="mt-3 text-5xl">🏆</span>
+             <h2 className="mt-3 font-display text-3xl font-black tracking-tight text-fog-100">
+               {endgameAnnounce.leaderName} hat {endgameAnnounce.leaderScore.toLocaleString('de-DE')} erreicht!
+             </h2>
+             <p className="mt-3 text-sm font-bold text-gold-300">
+               Zum Überholen sind mindestens {nextPlayableScoreAbove(endgameAnnounce.leaderScore).toLocaleString('de-DE')} Punkte nötig.
+             </p>
+             <p className="mt-3 text-sm leading-relaxed text-fog-400">
+               Alle verbleibenden Spieler bekommen jetzt genau eine letzte Chance. Die höchste Punktzahl gewinnt.
+             </p>
+             <button
+               type="button"
+               onClick={() => setEndgameAnnounce(null)}
+               className="mt-6 w-full rounded-2xl bg-gradient-to-b from-gold-400 to-gold-500 py-3.5 font-black text-ink-950 shadow-lg transition-all active:scale-[0.98]"
+             >
+               {endgameAnnounce.nextName}: letzte Chance starten
+             </button>
+           </div>
+         </div>
+       )}
+
+       {handoff && !celebration && !endgameAnnounce && (
         <div
           className="glass fixed inset-0 z-[55] flex items-center justify-center px-5 py-[max(env(safe-area-inset-top),1.25rem)] animate-pop"
           role="dialog"
