@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { buzz } from '../lib/haptics'
+import './Celebration.css'
 
 export type CelebrationTier = 'legend' | 'epic' | 'strong' | 'nice' | 'mini' | 'hot'
 
