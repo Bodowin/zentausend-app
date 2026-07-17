@@ -64,6 +64,6 @@ test('assigns several vacation games to one event and keeps it after reload', as
 
   await page.reload()
   await page.getByRole('button', { name: 'Statistik' }).click()
-  await expect(page.getByRole('button', { name: 'Sommerurlaub 2026' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sommerurlaub 2026', exact: true })).toBeVisible()
   await expect(page.getByText('· Sommerurlaub 2026')).toHaveCount(2)
 })
