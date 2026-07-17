@@ -36,10 +36,14 @@ jobs:
         run: python3 scripts/apply-package-v.py
 
       - name: Unit tests
-        run: npm test 2>&1 | tee package-v-test-output.txt
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee package-v-test-output.txt
 
       - name: Production build
-        run: npm run build 2>&1 | tee package-v-build-output.txt
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee package-v-build-output.txt
 
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
@@ -55,7 +59,10 @@ jobs:
         run: |
           git config user.name "ChatGPT Package V"
           git config user.email "actions@github.com"
-          git add src/components/StatsScreen.tsx
+          git add \
+            src/components/StatsScreen.tsx \
+            src/lib/eventCup.ts \
+            src/lib/eventCup.test.ts
           git diff --cached --quiet && exit 0
           git commit -m "Commit validated package V integration"
           git push origin HEAD:agent/package-v-event-cup
