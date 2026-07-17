@@ -54,3 +54,9 @@ replace_once(
     "\n",
     required=False,
 )
+replace_once(
+    'src/lib/eventCup.test.ts',
+    "player('a', 'Anna', 14_900), player('b', 'Bodo', 15_050)",
+    "player('a', 'Anna', 14_000), player('b', 'Bodo', 20_050)",
+    required=False,
+)
