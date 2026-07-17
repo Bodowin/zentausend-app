@@ -42,10 +42,16 @@ jobs:
           python3 scripts/apply-package-w-app.py 2>&1 | tee -a package-w-patch-output.txt
 
       - name: Unit tests
-        run: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee package-w-test-output.txt
 
       - name: Production build
-        run: npm run build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee package-w-build-output.txt
 
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
@@ -73,6 +79,8 @@ jobs:
           name: package-w-failure-diagnostics
           path: |
             package-w-patch-output.txt
+            package-w-test-output.txt
+            package-w-build-output.txt
             playwright-report
             playwright-report-webkit
             test-results
