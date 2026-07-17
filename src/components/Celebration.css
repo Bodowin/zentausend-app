@@ -1,0 +1,190 @@
+/*
+ * Celebration motion is intentionally isolated from the generic pop animation:
+ * long score strings need their own responsive layout and a very short exit,
+ * otherwise the previous result looks like a dark ghost over the next turn.
+ */
+.celebr {
+  box-sizing: border-box;
+  overflow: hidden;
+  isolation: isolate;
+  pointer-events: auto;
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  animation: celebr-lifecycle var(--celebr-duration, 1600ms) linear both;
+}
+
+.celebr-scrim,
+.celebr-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.celebr-scrim {
+  z-index: 0;
+  background: rgba(6, 9, 16, 0.38);
+}
+
+.celebr-glow {
+  z-index: 0;
+}
+
+.celebr .confetti {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.celebr-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: min(100%, 42rem);
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  animation: celebr-content-lifecycle var(--celebr-duration, 1600ms)
+    cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.celebr-title {
+  position: relative;
+  max-width: 100%;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: calc(clamp(1.85rem, 10vw, 4.2rem) * var(--celebr-scale, 1));
+  font-weight: 900;
+  line-height: 0.96;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-wrap: balance;
+  color: #fff;
+  text-shadow: 0 4px 28px var(--celebr-shadow), 0 2px 6px rgba(0, 0, 0, 0.65);
+  animation: none;
+}
+
+.celebr-title--support {
+  font-size: calc(clamp(1.45rem, 7.8vw, 2.8rem) * var(--celebr-scale, 1));
+  line-height: 1;
+}
+
+.celebr-sub {
+  position: relative;
+  max-width: min(100%, 36rem);
+  margin-top: 0.65rem;
+  padding-inline: 0.25rem;
+  font-size: clamp(0.78rem, 3.6vw, 1rem);
+  font-weight: 850;
+  line-height: 1.25;
+  letter-spacing: 0.14em;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-transform: uppercase;
+  text-wrap: balance;
+  color: var(--celebr-accent);
+  text-shadow: 0 3px 18px var(--celebr-shadow);
+  animation: none;
+}
+
+.celebr-score {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0.75rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--celebr-accent);
+  text-align: center;
+  text-shadow: 0 4px 24px var(--celebr-shadow), 0 2px 6px rgba(0, 0, 0, 0.65);
+}
+
+.celebr-score-value {
+  display: block;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: calc(clamp(3.25rem, 18vw, 6.75rem) * var(--celebr-scale, 1));
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: -0.055em;
+  line-height: 0.86;
+  white-space: nowrap;
+}
+
+.celebr-score-label {
+  display: block;
+  max-width: 100%;
+  margin-top: 0.7rem;
+  font-size: clamp(0.72rem, 3.5vw, 1rem);
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  line-height: 1.15;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+@keyframes celebr-lifecycle {
+  0% {
+    opacity: 0;
+  }
+  5%,
+  91% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes celebr-content-lifecycle {
+  0% {
+    transform: translateY(12px) scale(0.72);
+    opacity: 0;
+  }
+  12% {
+    transform: translateY(0) scale(1.06);
+    opacity: 1;
+  }
+  21%,
+  91% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-6px) scale(0.96);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .celebr-score-value {
+    font-size: calc(clamp(3rem, 17vw, 5.5rem) * var(--celebr-scale, 1));
+  }
+
+  .celebr-score-label {
+    letter-spacing: 0.14em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop,
+  .animate-rise,
+  .animate-pulse {
+    animation: none !important;
+  }
+
+  .celebr,
+  .celebr-content {
+    animation: none !important;
+  }
+
+  .celebr .confetti {
+    display: none !important;
+  }
+}
