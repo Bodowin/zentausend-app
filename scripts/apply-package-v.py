@@ -29,8 +29,8 @@ if "import { EventCupScreen } from './EventCupScreen'" not in stats_text:
             "  if (analysisGame) {\n    return <AnalysisScreen game={analysisGame} onBack={() => setAnalysisGame(null)} />\n  }\n\n  if (eventCup) {\n    return (\n      <EventCupScreen\n        event={eventCup}\n        games={games}\n        onBack={() => setEventCup(null)}\n        onOpenGame={setAnalysisGame}\n        onAssignUnassigned={() => {\n          setEventCup(null)\n          setBulkAssignOpen(true)\n        }}\n      />\n    )\n  }\n\n  return (\n",
         ),
         (
-            "            <Chip key={e} active={filter === e} onClick={() => setFilter(e)}>\n              {e}\n            </Chip>\n",
-            "            <Chip\n              key={e}\n              active={filter === e}\n              onClick={() => {\n                setFilter(e)\n                setEventCup(e)\n              }}\n            >\n              {e}\n            </Chip>\n",
+            "          {filter !== '' && stats.length > 0 && <EventPodium event={filter} top={stats.slice(0, 3)} />}\n",
+            "          {filter !== '' && stats.length > 0 && (\n            <>\n              <EventPodium event={filter} top={stats.slice(0, 3)} />\n              <button\n                type=\"button\"\n                onClick={() => setEventCup(filter)}\n                className=\"mb-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-gold-500/35 bg-gold-500/10 px-4 py-3 text-sm font-black text-gold-300 transition-colors hover:bg-gold-500/15\"\n              >\n                <IconTrophy className=\"h-5 w-5\" /> Urlaubs-Cup öffnen\n              </button>\n            </>\n          )}\n",
         ),
     ]
     for old, new in replacements:
