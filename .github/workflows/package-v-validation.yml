@@ -1,0 +1,68 @@
+name: Package V validation
+
+on:
+  push:
+    branches:
+      - agent/package-v-event-cup
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.event_name != 'push' || github.event.head_commit.message != 'Commit validated package V integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: agent/package-v-event-cup
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply event cup integration
+        run: python3 scripts/apply-package-v.py
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Chromium browser suite
+        run: npx playwright test
+
+      - name: WebKit browser suite
+        run: npx playwright test --config=playwright.webkit.config.ts
+
+      - name: Commit validated product integration
+        run: |
+          git config user.name "ChatGPT Package V"
+          git config user.email "actions@github.com"
+          git add src/components/StatsScreen.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Commit validated package V integration"
+          git push origin HEAD:agent/package-v-event-cup
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-v-failure-diagnostics
+          path: |
+            playwright-report
+            playwright-report-webkit
+            test-results
+          if-no-files-found: ignore
