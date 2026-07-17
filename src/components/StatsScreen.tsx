@@ -21,6 +21,7 @@ import { AnalysisScreen } from './AnalysisScreen'
 import { PlayerManager } from './PlayerManager'
 import { PlayerProfileScreen } from './PlayerProfileScreen'
 import { BulkEventAssignmentDialog } from './BulkEventAssignmentDialog'
+import { EventCupScreen } from './EventCupScreen'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
 
@@ -42,6 +43,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const [focusAdmin, setFocusAdmin] = useState(false)
   const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null)
   const [profileId, setProfileId] = useState<string | null>(null)
+  const [eventCup, setEventCup] = useState<string | null>(null)
   // Nachträglich den Anlass eines Spiels bearbeiten (z. B. vergessen zu setzen
   // oder Tippfehler korrigieren) – hält Spiel + Eingabefeld-Wert getrennt vom
   // eigentlichen Spiel-Objekt, bis gespeichert wird.
@@ -192,6 +194,21 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
 
   if (analysisGame) {
     return <AnalysisScreen game={analysisGame} onBack={() => setAnalysisGame(null)} />
+  }
+
+  if (eventCup) {
+    return (
+      <EventCupScreen
+        event={eventCup}
+        games={games}
+        onBack={() => setEventCup(null)}
+        onOpenGame={setAnalysisGame}
+        onAssignUnassigned={() => {
+          setEventCup(null)
+          setBulkAssignOpen(true)
+        }}
+      />
+    )
   }
 
   return (
@@ -490,7 +507,18 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       ) : (
         <>
           {/* Event-Podest: nur wenn ein Anlass gefiltert ist */}
-          {filter !== '' && stats.length > 0 && <EventPodium event={filter} top={stats.slice(0, 3)} />}
+          {filter !== '' && stats.length > 0 && (
+            <>
+              <EventPodium event={filter} top={stats.slice(0, 3)} />
+              <button
+                type="button"
+                onClick={() => setEventCup(filter)}
+                className="mb-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-gold-500/35 bg-gold-500/10 px-4 py-3 text-sm font-black text-gold-300 transition-colors hover:bg-gold-500/15"
+              >
+                <IconTrophy className="h-5 w-5" /> Urlaubs-Cup öffnen
+              </button>
+            </>
+          )}
 
           {/* Awards & Rekorde */}
           {awards.length > 0 && (
