@@ -6,6 +6,7 @@ on:
       - package-y1-audit-fixes
     paths:
       - tools/apply-package-y1.py
+      - tools/package-y1-trigger.txt
 
 permissions:
   contents: write
