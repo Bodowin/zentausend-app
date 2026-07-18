@@ -7,7 +7,9 @@ import supabaseSource from './lib/supabase.ts?raw'
 describe('cloud player identity wiring', () => {
   it('syncs identities as part of the normal cloud merge', () => {
     expect(cloudSource).toContain("import { syncPlayerIdentityState } from './playerIdentityCloud'")
-    expect(cloudSource).toContain('const identity = await syncPlayerIdentityState()')
+    expect(cloudSource).toContain('export async function syncCloudPrerequisites')
+    expect(cloudSource).toContain('Promise.all([identityTask(), gamesTask()])')
+    expect(cloudSource).toContain('const { identity, fetched } = await syncCloudPrerequisites()')
     expect(cloudSource).toContain('codeDenied: identity.denied')
   })
 

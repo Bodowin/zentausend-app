@@ -24,13 +24,15 @@ import { BulkEventAssignmentDialog } from './BulkEventAssignmentDialog'
 import { EventCupScreen } from './EventCupScreen'
 
 const fmt = (n: number) => n.toLocaleString('de-DE')
+const shouldProbeCloud = () =>
+  cloudEnabled && (typeof navigator === 'undefined' || navigator.onLine !== false)
 
 export function StatsScreen({ onBack }: { onBack: () => void }) {
   // Lokale Spiele sofort zeigen (offline-first): Die Cloud-Synchronisation läuft
   // im Hintergrund und ersetzt die Liste nur, wenn sie erfolgreich war. So sieht
   // man auf See (kein/schwaches Netz) seine Tabelle ohne Wartezeit.
   const [games, setGames] = useState<GameRecord[]>(() => getHistory())
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(shouldProbeCloud)
   const [online, setOnline] = useState(false)
   const [codeDenied, setCodeDenied] = useState(false)
   const [pendingSync, setPendingSync] = useState(() => pendingEventEditCount())
@@ -55,7 +57,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const reload = () => {
-    setLoading(true)
+    setLoading(shouldProbeCloud())
     return syncAndMerge().then((res) => {
       setGames(res.games)
       setOnline(res.online)
@@ -72,7 +74,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
+    setLoading(shouldProbeCloud())
     syncAndMerge().then((res) => {
       if (!alive) return
       setGames(res.games)
@@ -430,7 +432,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
               />
               <span className="font-bold text-fog-100">
                 {loading
-                  ? 'Sicherung läuft…'
+                  ? 'Cloud wird geprüft…'
                   : codeDenied
                     ? 'Crew-Code prüfen'
                     : pendingSync > 0
@@ -448,7 +450,7 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
             </div>
             <div className="mt-1 text-[11px] leading-relaxed text-fog-500">
               {loading
-                ? 'Lokale und gemeinsame Spielstände werden abgeglichen.'
+                ? 'Deine lokalen Spiele sind bereits verfügbar. Cloud und Spieler-Zuordnungen werden abgeglichen.'
                 : codeDenied
                   ? 'Der gespeicherte Crew-Code stimmt nicht. Deine lokalen Spiele bleiben erhalten.'
                   : pendingSync > 0

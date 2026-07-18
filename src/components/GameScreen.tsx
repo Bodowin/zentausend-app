@@ -276,7 +276,7 @@ export function GameScreen(p: Props) {
           </tbody>
           <tfoot>
             <tr className="border-t border-ink-700 bg-ink-900/60 font-bold">
-              <td className="px-2.5 py-1.5 text-[9px] uppercase text-fog-500">Σ</td>
+              <td className="px-2.5 py-1.5 text-[9px] uppercase text-fog-500">Endstand</td>
               {liveAnalysis.players.map((pl) => (
                 <td key={pl.name} className="px-2 py-1.5 text-right font-mono text-gold-400">
                   {fmt(pl.total)}
@@ -471,66 +471,72 @@ export function GameScreen(p: Props) {
     <div className="relative mx-auto flex h-[100dvh] min-h-0 w-full max-w-lg flex-col overflow-hidden border-ink-800/60 safe-pb sm:border-x lg:landscape:max-w-6xl">
       {/* Kopfzeile */}
       <header
-        className={`flex shrink-0 items-center justify-between border-b px-4 pt-[max(env(safe-area-inset-top),0.5rem)] transition-colors ${
+        className={`grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b px-2 pt-[max(env(safe-area-inset-top),0.5rem)] transition-colors min-[360px]:px-3 sm:px-4 ${
           virtual ? 'pb-1.5' : 'pb-2.5'
         } ${lastChance ? 'border-coral-500/30 bg-coral-500/10' : 'border-ink-800 bg-ink-900/80'}`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 min-[360px]:gap-2 min-[430px]:gap-3">
           <button
             onClick={p.onExit}
-            className="font-display text-2xl font-black tracking-tighter text-gold-500 transition-opacity hover:opacity-80"
+            className="shrink-0 font-display text-xl font-black tracking-tighter text-gold-500 transition-opacity hover:opacity-80 min-[360px]:text-2xl"
             aria-label="Pausieren und zum Startbildschirm"
           >
-            10.000
+            <span className="min-[360px]:hidden">10k</span>
+            <span className="hidden min-[360px]:inline">10.000</span>
           </button>
-          <div className="h-6 w-px bg-ink-700" />
-          <div className="flex flex-col leading-tight">
+          <div className="h-6 w-px shrink-0 bg-ink-700" />
+          <div data-testid="game-header-info" className="flex min-w-0 flex-col leading-tight">
             {lastChance ? (
-              <span className="text-xs font-bold uppercase tracking-wider text-coral-400">Letzte Chance!</span>
+              <span className="truncate text-xs font-bold uppercase tracking-wider text-coral-400">Letzte Chance!</span>
             ) : (
-              <span className="text-xs font-bold uppercase tracking-wider text-fog-400">Runde {round}</span>
+              <span className="truncate text-xs font-bold uppercase tracking-wider text-fog-400">Runde {round}</span>
             )}
-            <span className="text-[10px] text-fog-600">
+            <span className="block max-w-full truncate text-[10px] text-fog-600">
               Ziel {fmt(effectiveTarget)}
               {event ? ` · ${event}` : ''}
               {testMode ? ' · TEST' : ''}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div
+          data-testid="game-header-actions"
+          className="grid shrink-0 grid-cols-4 items-stretch gap-0 min-[430px]:gap-1.5"
+        >
           <button
             onClick={p.onToggleDiceMode}
             disabled={dice.length > 0 || (diceMode === 'virtual' && bowlPhase !== 'ready')}
-            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30"
+            className="flex h-11 w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-0 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30 min-[430px]:w-auto min-[430px]:px-2"
             aria-label="Würfel-Modus wechseln"
           >
             <span className="text-base leading-none">{diceMode === 'virtual' ? '🎲' : '🎯'}</span>
-            <span className="text-[8px] font-bold uppercase tracking-wide">{diceMode === 'virtual' ? 'Virtuell' : 'Echt'}</span>
+            <span className="hidden text-[8px] font-bold uppercase tracking-wide min-[430px]:block">
+              {diceMode === 'virtual' ? 'Virtuell' : 'Echt'}
+            </span>
           </button>
           <button
             onClick={() => setShowTurnLog(true)}
-            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200"
+            className="flex h-11 w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-0 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 min-[430px]:w-auto min-[430px]:px-2"
             aria-label="Rundenprotokoll öffnen"
           >
             <span className="text-sm leading-none">▤</span>
-            <span className="text-[8px] font-bold uppercase tracking-wide">Verlauf</span>
+            <span className="hidden text-[8px] font-bold uppercase tracking-wide min-[430px]:block">Verlauf</span>
           </button>
           <button
             onClick={p.onUndo}
             disabled={!canUndo}
-            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30"
+            className="flex h-11 w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-0 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 disabled:opacity-30 min-[430px]:w-auto min-[430px]:px-2"
             aria-label="Letzte Aktion rückgängig"
           >
             <IconUndo className="h-4 w-4" />
-            <span className="text-[8px] font-bold uppercase tracking-wide">Zurück</span>
+            <span className="hidden text-[8px] font-bold uppercase tracking-wide min-[430px]:block">Zurück</span>
           </button>
           <button
             onClick={p.onExit}
-            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200"
+            className="flex h-11 w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-0 text-fog-400 transition-colors hover:bg-ink-800 hover:text-fog-200 min-[430px]:w-auto min-[430px]:px-2"
             aria-label="Spiel pausieren"
           >
             <IconPause className="h-4 w-4" />
-            <span className="text-[8px] font-bold uppercase tracking-wide">Pause</span>
+            <span className="hidden text-[8px] font-bold uppercase tracking-wide min-[430px]:block">Pause</span>
           </button>
         </div>
       </header>

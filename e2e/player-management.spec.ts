@@ -29,6 +29,9 @@ const history = [
 
 test('merges two player profiles and restores them with undo', async ({ page }) => {
   await page.addInitScript((games) => {
+    // This journey validates local profile merge/undo only. Keep shared cloud
+    // history out so real family data cannot create duplicate names.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
     localStorage.clear()
     localStorage.setItem('10k_seen_intro', '1')
     localStorage.setItem('10k_code_dismissed', '1')

@@ -83,6 +83,7 @@ interface TurnHandoff {
   points: number
   total: number
   nextName: string
+  notice?: string
 }
 
 interface EndgameAnnounce {
@@ -641,7 +642,14 @@ export function App() {
         buzz([12, 40, 12, 40, 60])
       }
 
-      const advance = (nextIdx: number, nextPhase: GameState, nextRound: number, nextTarget: number, skipHandoff = false) => {
+      const advance = (
+        nextIdx: number,
+        nextPhase: GameState,
+        nextRound: number,
+        nextTarget: number,
+        skipHandoff = false,
+        notice?: string,
+      ) => {
         setPlayers(nextPlayers)
         setIdx(nextIdx)
         setPhase(nextPhase)
@@ -653,20 +661,26 @@ export function App() {
         setRolled([])
         setThrown([])
         if (!suppressHandoff && !skipHandoff && getPrefs().handoff) {
+          // A blocking handoff must own important transition information. Clear
+          // any field toast so it cannot remain hidden behind this dialog.
+          setToast('')
           setHandoff({
             scoredName,
             points: turnPoints,
             total: justScored,
             nextName: nextPlayers[nextIdx].name,
+            notice,
           })
+        } else if (notice) {
+          showToast(notice)
         }
       }
 
       if (phase === 'lastChance') {
         const nextTarget = Math.max(target, justScored)
         if (idx === last) return finish()
-        if (justScored > target) showToast('Führung!')
-        return advance(idx + 1, 'lastChance', round, nextTarget)
+        const notice = justScored > target ? 'Neue Führung!' : undefined
+        return advance(idx + 1, 'lastChance', round, nextTarget, false, notice)
       }
 
       if (justScored >= goalScore) {
@@ -1111,6 +1125,11 @@ export function App() {
               {handoff.nextName}
             </span>
             <span className="mt-1 text-sm font-bold uppercase tracking-[0.18em] text-fog-300">ist dran</span>
+            {handoff.notice && (
+              <div role="status" className="mt-4 w-full rounded-2xl border border-gold-500/35 bg-gold-500/10 px-4 py-2.5 text-sm font-black text-gold-300">
+                {handoff.notice}
+              </div>
+            )}
 
             <button
               type="button"

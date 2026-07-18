@@ -364,6 +364,21 @@ export async function editGameEvents(games: GameRecord[], event: string): Promis
   return update.result
 }
 
+type IdentitySyncResult = Awaited<ReturnType<typeof syncPlayerIdentityState>>
+type CloudGamesResult = Awaited<ReturnType<typeof fetchCloudGames>>
+
+/**
+ * Starts the two independent cloud reads together. Dependency injection keeps
+ * the concurrency guarantee directly testable without a network connection.
+ */
+export async function syncCloudPrerequisites(
+  identityTask: () => Promise<IdentitySyncResult> = syncPlayerIdentityState,
+  gamesTask: () => Promise<CloudGamesResult> = fetchCloudGames,
+): Promise<{ identity: IdentitySyncResult; fetched: CloudGamesResult }> {
+  const [identity, fetched] = await Promise.all([identityTask(), gamesTask()])
+  return { identity, fetched }
+}
+
 export interface SyncResult {
   games: GameRecord[]
   online: boolean
@@ -394,8 +409,7 @@ export async function syncAndMerge(): Promise<SyncResult> {
     }
   }
 
-  const identity = await syncPlayerIdentityState()
-  const fetched = await fetchCloudGames()
+  const { identity, fetched } = await syncCloudPrerequisites()
   if (!fetched.ok) {
     return {
       games: local,
