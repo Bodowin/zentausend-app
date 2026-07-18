@@ -1,0 +1,62 @@
+name: Apply package Y1 audit fixes
+
+on:
+  push:
+    branches:
+      - package-y1-audit-fixes
+    paths:
+      - tools/apply-package-y1.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: package-y1-audit-fixes
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply audited changes
+        run: python3 tools/apply-package-y1.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit validated product changes
+        run: |
+          git config user.name "ChatGPT Package Y1"
+          git config user.email "actions@github.com"
+          git add \
+            src/App.tsx \
+            src/components/AnalysisScreen.tsx \
+            src/components/DiceArena.tsx \
+            src/components/GameScreen.tsx \
+            src/components/StatsScreen.tsx \
+            src/lib/cloud.ts \
+            src/lib/cloud.parallel.test.ts \
+            e2e/audit-fixes.spec.ts
+          if git diff --cached --quiet; then
+            echo "No product changes to commit"
+            exit 0
+          fi
+          git commit -m "Apply package Y1 audit fixes"
+          git push origin HEAD:package-y1-audit-fixes
