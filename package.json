@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run --reporter=dot --silent",
+    "test": "sh -c 'vitest run --reporter=dot --silent > /tmp/y1-vitest.log 2>&1 || { tail -n 100 /tmp/y1-vitest.log; exit 1; }'",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
