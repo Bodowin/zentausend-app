@@ -43,6 +43,7 @@ jobs:
             src/lib/cloud.ts
             src/lib/cloud.parallel.test.ts
             e2e/audit-fixes.spec.ts
+            e2e/player-management.spec.ts
           if-no-files-found: error
 
       - name: Production build
