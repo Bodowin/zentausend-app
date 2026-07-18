@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// Regression coverage for the independently audited Paket Y1 fixes.
+// Deterministic regression coverage for the independently audited Paket Y1 fixes.
 const BASE_PREFS = {
   sound: false,
   haptics: false,
