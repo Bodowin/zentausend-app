@@ -29,13 +29,21 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: Upload package Y1 diagnostics
-        if: always()
+      - name: Upload validated package Y1 files
         uses: actions/upload-artifact@v4
         with:
-          name: package-y1-vitest
-          path: /tmp/y1-vitest.log
-          if-no-files-found: ignore
+          name: package-y1-validated-files
+          path: |
+            src/App.tsx
+            src/cloudIdentityWiring.test.ts
+            src/components/AnalysisScreen.tsx
+            src/components/DiceArena.tsx
+            src/components/GameScreen.tsx
+            src/components/StatsScreen.tsx
+            src/lib/cloud.ts
+            src/lib/cloud.parallel.test.ts
+            e2e/audit-fixes.spec.ts
+          if-no-files-found: error
 
       - name: Production build
         run: npm run build
