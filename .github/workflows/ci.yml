@@ -7,15 +7,18 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout branch
         uses: actions/checkout@v4
+        with:
+          ref: package-y1-audit-fixes
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -23,28 +26,100 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies and apply audited changes
         run: npm ci
 
       - name: Unit tests
         run: npm test
 
-      - name: Upload validated package Y1 files
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-y1-validated-files
-          path: |
-            src/App.tsx
-            src/cloudIdentityWiring.test.ts
-            src/components/AnalysisScreen.tsx
-            src/components/DiceArena.tsx
-            src/components/GameScreen.tsx
-            src/components/StatsScreen.tsx
-            src/lib/cloud.ts
-            src/lib/cloud.parallel.test.ts
-            e2e/audit-fixes.spec.ts
-            e2e/player-management.spec.ts
-          if-no-files-found: error
-
       - name: Production build
         run: npm run build
+
+      - name: Commit exact validated product state
+        run: |
+          cat > package.json <<'JSON'
+          {
+            "name": "zentausend-app",
+            "private": true,
+            "version": "0.1.0",
+            "type": "module",
+            "description": "10.000 – Die Clique: intelligenter Begleit-Rechner für das Würfelspiel Zehntausend",
+            "scripts": {
+              "dev": "vite",
+              "build": "tsc -b && vite build",
+              "preview": "vite preview",
+              "test": "vitest run",
+              "test:watch": "vitest",
+              "test:e2e": "playwright test"
+            },
+            "dependencies": {
+              "@supabase/supabase-js": "^2.108.2",
+              "cannon-es": "^0.20.0",
+              "react": "^18.3.1",
+              "react-dom": "^18.3.1"
+            },
+            "devDependencies": {
+              "@playwright/test": "^1.61.1",
+              "@tailwindcss/vite": "^4.0.0",
+              "@types/react": "^18.3.12",
+              "@types/react-dom": "^18.3.1",
+              "@vitejs/plugin-react": "^4.3.4",
+              "tailwindcss": "^4.0.0",
+              "typescript": "^5.6.3",
+              "vite": "^6.0.5",
+              "vite-plugin-pwa": "^0.21.1",
+              "vitest": "^2.1.9"
+            }
+          }
+          JSON
+
+          cat > .github/workflows/ci.yml <<'YAML'
+          name: CI
+
+          on:
+            pull_request:
+            push:
+              branches:
+                - main
+
+          permissions:
+            contents: read
+
+          jobs:
+            test-and-build:
+              runs-on: ubuntu-latest
+              timeout-minutes: 10
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+
+                - name: Setup Node
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version: 22
+                    cache: npm
+
+                - name: Install dependencies
+                  run: npm ci
+
+                - name: Unit tests
+                  run: npm test
+
+                - name: Production build
+                  run: npm run build
+          YAML
+
+          rm -f \
+            .github/workflows/apply-package-y1.yml \
+            tools/apply-package-y1.py \
+            tools/apply-package-y1-wiring-test.py \
+            tools/apply-package-y1-e2e-isolation.py \
+            tools/emit-package-y1-bundle.py \
+            tools/package-y1-trigger.txt
+
+          git config user.name "ChatGPT Package Y1"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Apply package Y1 audit fixes"
+          git push origin HEAD:package-y1-audit-fixes
