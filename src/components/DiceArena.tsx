@@ -316,6 +316,9 @@ export default function DiceArena({
   const [phase, setPhase] = useState<Phase>('ready')
   // Welche gelandeten Würfel sind ausgewählt (ausgelegt)?
   const [sel, setSel] = useState<boolean[]>([])
+  // Synchronous mirror: rapid taps derive from the latest selection without
+  // invoking the parent callback from inside React's state updater.
+  const selRef = useRef<boolean[]>([])
 
   // Hilfsfunktion: Würfel + Schatten setzen.
   const writeDie = (d: ArenaData, i: number, p: V, q: Q, pop = 0) => {
@@ -349,7 +352,9 @@ export default function DiceArena({
     const vals = values.map((v) => clamp(Math.round(v), 1, 6))
     const n = vals.length
     if (n === 0) { onSettleRef.current?.(); return }
-    setSel(new Array(n).fill(false))
+    const emptySelection = new Array<boolean>(n).fill(false)
+    selRef.current = emptySelection
+    setSel(emptySelection)
 
     const W = root.clientWidth || 320, H = root.clientHeight || 360, minD = Math.min(W, H)
     const h = 0.44
@@ -558,16 +563,17 @@ export default function DiceArena({
       void el.offsetWidth // Reflow → Animation startet erneut
       el.classList.add('flash')
     }
-    setSel((prev) => {
-      const next = [...prev]
-      next[i] = !next[i]
-      const vals = values.map((v) => clamp(Math.round(v), 1, 6))
-      const selected: number[] = []
-      const remaining: number[] = []
-      for (let j = 0; j < vals.length; j++) (next[j] ? selected : remaining).push(vals[j])
-      onSelRef.current?.(selected, remaining)
-      return next
-    })
+    const next = [...selRef.current]
+    while (next.length < values.length) next.push(false)
+    next[i] = !next[i]
+    selRef.current = next
+    setSel(next)
+
+    const vals = values.map((v) => clamp(Math.round(v), 1, 6))
+    const selected: number[] = []
+    const remaining: number[] = []
+    for (let j = 0; j < vals.length; j++) (next[j] ? selected : remaining).push(vals[j])
+    onSelRef.current?.(selected, remaining)
   }
 
   const d = dataRef.current

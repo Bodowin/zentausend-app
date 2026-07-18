@@ -181,7 +181,7 @@ export function AnalysisScreen({ game, onBack }: { game: GameRecord; onBack: () 
                   </tr>
                 ))}
                 <tr className="border-t border-ink-700 bg-ink-900/40 font-bold">
-                  <td className="px-3 py-2 text-[10px] uppercase text-fog-500">Σ</td>
+                  <td className="px-3 py-2 text-[10px] uppercase text-fog-500">Endstand</td>
                   {a.players.map((p) => (
                     <td key={p.name} className="px-3 py-2 text-right font-mono text-gold-400">
                       {fmt(p.total)}
@@ -192,7 +192,7 @@ export function AnalysisScreen({ game, onBack }: { game: GameRecord; onBack: () 
             </table>
           </div>
           <p className="mt-2 text-[10px] text-fog-600">
-            Werte = in der jeweiligen Runde gesicherte Punkte. „·" = Niete oder kein Eintrag.
+            Werte = in der jeweiligen Runde gesicherte Punkte. „·" = Niete oder kein Eintrag. „Endstand" zeigt den offiziell gespeicherten Spielstand.
           </p>
         </section>
       )}
