@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run src/lib/cloud.parallel.test.ts --reporter=verbose",
+    "test": "vitest run --reporter=dot --silent",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
