@@ -5,7 +5,6 @@
   "type": "module",
   "description": "10.000 – Die Clique: intelligenter Begleit-Rechner für das Würfelspiel Zehntausend",
   "scripts": {
-    "postinstall": "python3 tools/apply-package-y1-backup-test-isolation.py",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

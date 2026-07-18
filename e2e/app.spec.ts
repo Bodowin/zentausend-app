@@ -142,6 +142,11 @@ test.describe('10.000 browser journeys', () => {
   })
 
   test('imports a backup through the real statistics file input', async ({ page }) => {
+    // This journey validates the local file-import path. Keep shared cloud
+    // history out so real family games cannot replace the imported fixture.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+    })
     await openCleanApp(page)
     await page.getByRole('button', { name: /Statistik/ }).click()
 
