@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FILES = [
     "src/App.tsx",
+    "src/cloudIdentityWiring.test.ts",
     "src/components/AnalysisScreen.tsx",
     "src/components/DiceArena.tsx",
     "src/components/GameScreen.tsx",
