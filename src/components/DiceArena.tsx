@@ -236,19 +236,46 @@ export function runAttempt(
   const commonLift = 1.25 + random() * 0.45
   const commonForward = 5.1 + random() * 0.8
   const commonSpin = 19 + random() * 8
-  const center = (n - 1) / 2
-  const columns = Math.min(n, 3)
   // Bounding spheres cannot intersect, even with arbitrary initial rotations.
-  const spacing = 2 * Math.sqrt(3) * h + 0.08
+  const minimumSeparation = 2 * Math.sqrt(3) * h
+  const releaseAngle = random() * Math.PI * 2
+  const releasePositions: Array<[number, number]> = []
+  if (n === 1) {
+    releasePositions.push([0, 0])
+  } else if (n <= 4) {
+    // A rotated, lightly irregular polygon reads as dice cupped in one hand,
+    // while the circumscribed-body spacing guarantees no initial collision.
+    const radius = minimumSeparation / (2 * Math.sin(Math.PI / n)) + 0.08
+    for (let i = 0; i < n; i++) {
+      const angle = releaseAngle + (i / n) * Math.PI * 2 + (random() - 0.5) * 0.03
+      const r = radius + (random() - 0.5) * minimumSeparation * 0.04
+      releasePositions.push([Math.cos(angle) * r, Math.sin(angle) * r])
+    }
+  } else {
+    // One centre die plus a loose ring resembles a compact handful without
+    // the conspicuous rows of a grid. Small seeded offsets avoid a perfect rosette.
+    releasePositions.push([
+      (random() - 0.5) * minimumSeparation * 0.025,
+      (random() - 0.5) * minimumSeparation * 0.025,
+    ])
+    const ringCount = n - 1
+    const radius = minimumSeparation * 1.08
+    for (let i = 0; i < ringCount; i++) {
+      const angle = releaseAngle + (i / ringCount) * Math.PI * 2 + (random() - 0.5) * 0.045
+      const r = radius + (random() - 0.5) * minimumSeparation * 0.045
+      releasePositions.push([Math.cos(angle) * r, Math.sin(angle) * r])
+    }
+  }
   for (let i = 0; i < n; i++) {
     const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
     b.sleepSpeedLimit = 0.12; b.sleepTimeLimit = 0.42; b.linearDamping = 0.025; b.angularDamping = 0.045
     // Shared release with separated dice: no solver explosion at frame one.
-    const lane = i - center
+    const [releaseX, releaseZ] = releasePositions[i]
+    const lane = releaseX / minimumSeparation
     b.position.set(
-      handX + ((i % columns) - (columns - 1) / 2) * spacing,
-      y0 * 0.50 + Math.floor(i / columns) * 0.12 + random() * 0.12,
-      Rb * 0.32 - Math.floor(i / columns) * spacing,
+      handX + releaseX,
+      y0 * 0.50 + i * 0.02 + random() * 0.14,
+      Rb * 0.15 + releaseZ,
     )
     b.quaternion.setFromEuler(random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2)
     b.velocity.set(

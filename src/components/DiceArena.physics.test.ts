@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { chooseLabeling, DICE_PLAYBACK_SPEED, runAttempt } from './DiceArena'
-import { createSeededRandom } from '../lib/diceThrowSeed'
+import { createSeededRandom, mixSeed } from '../lib/diceThrowSeed'
 
 const CFG = { h: 0.44, Rb: 3.26, y0: 3.83, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 720 }
 
@@ -43,11 +43,11 @@ describe('DiceArena physics', () => {
     const durations: number[] = []
 
     for (let seed = 1; seed <= 16; seed += 1) {
-      let attempt = runAttempt(6, CFG, createSeededRandom(seed))
+      let attempt = runAttempt(6, CFG, createSeededRandom(mixSeed(seed, 0)))
       for (let retry = 1; retry < 8 && attempt.cocked; retry += 1) {
-        attempt = runAttempt(6, CFG, createSeededRandom(seed + retry * 0x9e3779b9))
+        attempt = runAttempt(6, CFG, createSeededRandom(mixSeed(seed, retry)))
       }
-      expect(attempt.cocked).toBe(false)
+      expect(attempt.cocked, `seed ${seed} remained cocked after retries`).toBe(false)
       durations.push(attempt.frames * CFG.FIXED_DT / DICE_PLAYBACK_SPEED)
     }
 
