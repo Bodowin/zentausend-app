@@ -350,6 +350,12 @@ type Phase = 'ready' | 'rolling' | 'landed'
 // Wie weit ein ausgewählter Würfel zum Auslegen aus der Schale steigt (Bowl-Einheiten).
 const LIFT = 1.9
 export const DICE_PLAYBACK_SPEED = 1.45
+export const DICE_MAX_PLAYBACK_SECONDS = 2.8
+
+export function dicePlaybackSpeed(frames: number, fixedDt: number): number {
+  const recordedSeconds = Math.max(0, frames - 1) * fixedDt
+  return Math.max(DICE_PLAYBACK_SPEED, recordedSeconds / DICE_MAX_PLAYBACK_SECONDS)
+}
 
 let motionPermission: 'unknown' | 'granted' | 'denied' = 'unknown'
 
@@ -480,13 +486,14 @@ export default function DiceArena({
     if (phase !== 'rolling') return
     const d = dataRef.current; if (!d) return
     const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1
+    const playbackSpeed = dicePlaybackSpeed(d.frames, dt)
     const releaseQuat = [...idleQuatRef.current]
     let impactPtr = 0, raf = 0
     let lastSoundFrame = -10
     const start = performance.now()
 
     const frame = (now: number) => {
-      const f = ((now - start) / 1000) * DICE_PLAYBACK_SPEED / dt
+      const f = ((now - start) / 1000) * playbackSpeed / dt
       const i0 = Math.min(Math.floor(f), last), i1 = Math.min(i0 + 1, last)
       const a = i0 === last ? 0 : f - i0
       for (let i = 0; i < n; i++) {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { chooseLabeling, DICE_PLAYBACK_SPEED, runAttempt } from './DiceArena'
+import {
+  chooseLabeling,
+  DICE_MAX_PLAYBACK_SECONDS,
+  dicePlaybackSpeed,
+  runAttempt,
+} from './DiceArena'
 import { createSeededRandom, mixSeed } from '../lib/diceThrowSeed'
 
 const CFG = { h: 0.44, Rb: 3.26, y0: 3.83, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 720 }
@@ -48,12 +53,14 @@ describe('DiceArena physics', () => {
         attempt = runAttempt(6, CFG, createSeededRandom(mixSeed(seed, retry)))
       }
       expect(attempt.cocked, `seed ${seed} remained cocked after retries`).toBe(false)
-      durations.push(attempt.frames * CFG.FIXED_DT / DICE_PLAYBACK_SPEED)
+      const recordedSeconds = (attempt.frames - 1) * CFG.FIXED_DT
+      durations.push(recordedSeconds / dicePlaybackSpeed(attempt.frames, CFG.FIXED_DT))
     }
 
     durations.sort((left, right) => left - right)
     const median = durations[Math.floor(durations.length / 2)]
     expect(median).toBeGreaterThanOrEqual(1.4)
     expect(median).toBeLessThanOrEqual(2.2)
+    expect(durations[durations.length - 1]).toBeLessThanOrEqual(DICE_MAX_PLAYBACK_SECONDS)
   })
 })
