@@ -21,7 +21,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getPrefs, DICE_THEMES } from '../lib/prefs'
 import { PIPS } from '../lib/dicePips'
 import { buzz } from '../lib/haptics'
-import { createSeededRandom, mixSeed, seededSignedNoise } from '../lib/diceThrowSeed'
+import { createSeededRandom, mixSeed } from '../lib/diceThrowSeed'
 
 type DiceArenaProps = {
   values: number[]
@@ -82,7 +82,7 @@ function buildLabelings(): number[][] {
 }
 const LABELINGS = buildLabelings()
 
-function chooseLabeling(topSlot: number, value: number): number[] {
+export function chooseLabeling(topSlot: number, value: number): number[] {
   return LABELINGS.find((L) => L[topSlot] === value) ?? LABELINGS[0]
 }
 
@@ -96,7 +96,7 @@ function rotV(v: V, q: Q): V {
   const tx = 2 * (qy * vz - qz * vy), ty = 2 * (qz * vx - qx * vz), tz = 2 * (qx * vy - qy * vx)
   return [vx + qw * tx + (qy * tz - qz * ty), vy + qw * ty + (qz * tx - qx * tz), vz + qw * tz + (qx * ty - qy * tx)]
 }
-function topSlotFromQuat(q: Q): { slot: number; dot: number } {
+export function topSlotFromQuat(q: Q): { slot: number; dot: number } {
   let slot = 2, dot = -Infinity
   for (let s = 0; s < 6; s++) { const d = rotV(SLOT_NORMALS[s], q)[1]; if (d > dot) { dot = d; slot = s } }
   return { slot, dot }
@@ -115,9 +115,19 @@ function qSlerp(a: Q, b: Q, t: number): Q {
   return [a[0] * s0 + bb[0] * s1, a[1] * s0 + bb[1] * s1, a[2] * s0 + bb[2] * s1, a[3] * s0 + bb[3] * s1]
 }
 
-function qAxisAngle(x: number, y: number, z: number, ang: number): Q {
-  const s = Math.sin(ang / 2)
-  return [x * s, y * s, z * s, Math.cos(ang / 2)]
+function qMul(a: Q, b: Q): Q {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ]
+}
+
+function qAxisAngle(x: number, y: number, z: number, angle: number): Q {
+  const half = angle / 2
+  const s = Math.sin(half)
+  return [x * s, y * s, z * s, Math.cos(half)]
 }
 
 function matrix3dFor(q: Q, p: V, S: number): string {
@@ -147,17 +157,29 @@ export function unlockDiceAudio() {
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
 }
+// A short, cached noise transient plus a damped body resonance: a dry clack,
+// not a pitched electronic sweep. Generated locally, including offline.
+let impactBuffer: AudioBuffer | null = null
 function playClick(intensity: number) {
   const ctx = audioCtx
   if (!ctx || ctx.state !== 'running' || !soundOn()) return
-  const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain()
-  o.type = 'triangle'
-  o.frequency.setValueAtTime(150 + intensity * 140, t)
-  o.frequency.exponentialRampToValueAtTime(70, t + 0.06)
-  g.gain.setValueAtTime(0.0001, t)
-  g.gain.exponentialRampToValueAtTime(Math.min(0.16, 0.03 + intensity * 0.16), t + 0.005)
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
-  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.1)
+  if (!impactBuffer) {
+    impactBuffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.055), ctx.sampleRate)
+    const samples = impactBuffer.getChannelData(0)
+    const random = createSeededRandom(0xdecaf)
+    for (let i = 0; i < samples.length; i++) {
+      const t = i / ctx.sampleRate
+      samples[i] = (random() * 2 - 1) * Math.exp(-t * 150)
+        + Math.sin(2 * Math.PI * 460 * t) * Math.exp(-t * 95) * 0.3
+    }
+  }
+  const source = ctx.createBufferSource(), gain = ctx.createGain()
+  source.buffer = impactBuffer
+  source.playbackRate.value = 0.85 + intensity * 0.35
+  gain.gain.value = 0.035 + intensity * 0.12
+  source.connect(gain).connect(ctx.destination)
+  source.onended = () => { source.disconnect(); gain.disconnect() }
+  source.start()
 }
 // Heller, kurzer Klick beim Auslegen eines Würfels.
 function playTap() {
@@ -179,7 +201,7 @@ type Attempt = { pos: V[][]; quat: Q[][]; impacts: Impact[]; topSlots: number[];
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
-function runAttempt(
+export function runAttempt(
   n: number,
   cfg: { h: number; Rb: number; y0: number; G: number; FIXED_DT: number; MAX_STEPS: number },
   random: () => number,
@@ -215,16 +237,18 @@ function runAttempt(
   const commonForward = 5.1 + random() * 0.8
   const commonSpin = 19 + random() * 8
   const center = (n - 1) / 2
+  const columns = Math.min(n, 3)
+  // Bounding spheres cannot intersect, even with arbitrary initial rotations.
+  const spacing = 2 * Math.sqrt(3) * h + 0.08
   for (let i = 0; i < n; i++) {
     const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
     b.sleepSpeedLimit = 0.12; b.sleepTimeLimit = 0.42; b.linearDamping = 0.025; b.angularDamping = 0.045
-    // Ein Wurf aus EINER Hand: gemeinsame Grundbewegung, dazu kleine individuelle
-    // Abweichungen und eine leichte zeitliche Staffelung durch die Abwurfhöhe.
+    // Shared release with separated dice: no solver explosion at frame one.
     const lane = i - center
     b.position.set(
-      handX + lane * h * 0.42 + (random() - 0.5) * h * 0.45,
-      y0 * 0.56 + i * 0.09 + random() * 0.32,
-      Rb * 0.58 + (random() - 0.5) * 0.22,
+      handX + ((i % columns) - (columns - 1) / 2) * spacing,
+      y0 * 0.50 + Math.floor(i / columns) * 0.12 + random() * 0.12,
+      Rb * 0.32 - Math.floor(i / columns) * spacing,
     )
     b.quaternion.setFromEuler(random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2)
     b.velocity.set(
@@ -238,18 +262,28 @@ function runAttempt(
       (random() - 0.5) * 9,
     )
     const idx = i
+    let lastImpactFrame = -10
     b.addEventListener('collide', (e: { contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
       const v = Math.abs(e?.contact?.getImpactVelocityAlongNormal?.() ?? 0)
-      if (v > 1.2) impacts.push({ die: idx, frame: curFrame, intensity: clamp(v / 8, 0, 1) })
+      if (v > 1.2 && curFrame - lastImpactFrame >= 5) {
+        lastImpactFrame = curFrame
+        impacts.push({ die: idx, frame: curFrame, intensity: clamp(v / 8, 0, 1) })
+      }
     })
     bodies.push(b); world.addBody(b)
   }
 
   const pos: V[][] = bodies.map(() => [])
   const quat: Q[][] = bodies.map(() => [])
+  // Record the exact release pose before the first integration step.
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i]
+    pos[i].push([b.position.x, b.position.y, b.position.z])
+    quat[i].push([b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w])
+  }
   let restFrames = 0
   let settled = false
-  for (curFrame = 0; curFrame < MAX_STEPS; curFrame++) {
+  for (curFrame = 1; curFrame <= MAX_STEPS; curFrame++) {
     world.step(FIXED_DT)
     for (let i = 0; i < n; i++) {
       const b = bodies[i]
@@ -288,6 +322,7 @@ type Phase = 'ready' | 'rolling' | 'landed'
 
 // Wie weit ein ausgewählter Würfel zum Auslegen aus der Schale steigt (Bowl-Einheiten).
 const LIFT = 1.9
+export const DICE_PLAYBACK_SPEED = 1.45
 
 let motionPermission: 'unknown' | 'granted' | 'denied' = 'unknown'
 
@@ -302,11 +337,11 @@ export default function DiceArena({
 }: DiceArenaProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const camRef = useRef<HTMLDivElement>(null)
-  const fxRef = useRef<HTMLDivElement>(null)
   const dieRefs = useRef<HTMLDivElement[]>([])
   const shadowRefs = useRef<HTMLDivElement[]>([])
   const dataRef = useRef<ArenaData | null>(null)
   const reduceRef = useRef(false)
+  const idleQuatRef = useRef<Q[]>([])
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
   const onSelRef = useRef(onSelectionChange); onSelRef.current = onSelectionChange
   const onPhaseRef = useRef(onPhaseChange); onPhaseRef.current = onPhaseChange
@@ -321,29 +356,15 @@ export default function DiceArena({
   const selRef = useRef<boolean[]>([])
 
   // Hilfsfunktion: Würfel + Schatten setzen.
-  const writeDie = (d: ArenaData, i: number, p: V, q: Q, pop = 0) => {
+  const writeDie = (d: ArenaData, i: number, p: V, q: Q) => {
     const el = dieRefs.current[i]
-    if (el) el.style.transform = `${matrix3dFor(q, p, d.S)} scale(${1 + pop})`
+    if (el) el.style.transform = matrix3dFor(q, p, d.S)
     const sh = shadowRefs.current[i]
     if (sh) {
       const lift = clamp(p[1] / 4, 0, 1)
       sh.style.transform = `translate3d(${p[0] * d.S}px,0,${p[2] * d.S}px) rotateX(90deg) scale(${0.7 + lift * 0.8})`
       sh.style.opacity = `${0.4 * (1 - lift * 0.6)}`
     }
-  }
-
-  // Kleiner Staub-Puff auf dem Filz an der Aufprallstelle (imperativ, ohne React-State).
-  const spawnDust = (d: ArenaData, x: number, z: number, intensity: number) => {
-    const layer = fxRef.current
-    if (!layer) return
-    const el = document.createElement('div')
-    el.className = 'da-dust'
-    const s = d.sizePx * (1 + intensity * 1.3)
-    el.style.width = `${s}px`
-    el.style.height = `${s}px`
-    el.style.transform = `translate3d(${x * d.S}px,0,${z * d.S}px) rotateX(90deg)`
-    el.addEventListener('animationend', () => el.remove())
-    layer.appendChild(el)
   }
 
   // --- Pre-Roll (einmal, beim Mount) ---
@@ -412,10 +433,13 @@ export default function DiceArena({
       const t = (now - start) / 1000
       for (let i = 0; i < n; i++) {
         const p0 = d.pos[i]?.[0]; if (!p0) continue
-        // jeder Würfel um eine eigene, leicht gekippte Achse
-        const ax = Math.cos(i * 2.1), az = Math.sin(i * 2.1)
-        const len = Math.hypot(ax, 0.7, az) || 1
-        const q = qAxisAngle(ax / len, 0.7 / len, az / len, t * (3.4 + i * 0.4))
+        // Small hand tremor around the real release orientation. Full idle
+        // revolutions used to snap to an unrelated quaternion on tap.
+        const base = d.quat[i][0]
+        const phaseOffset = i * 0.9
+        const rock = qAxisAngle(0.82, 0.18, 0.54, Math.sin(t * 2.2 + phaseOffset) * 0.055)
+        const q = qMul(base, rock)
+        idleQuatRef.current[i] = q
         writeDie(d, i, p0, q)
       }
       raf = requestAnimationFrame(spin)
@@ -428,13 +452,14 @@ export default function DiceArena({
   useEffect(() => {
     if (phase !== 'rolling') return
     const d = dataRef.current; if (!d) return
-    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1, SPEED = 1.45
-    const pulses = new Array(n).fill(0)
-    let impactPtr = 0, raf = 0, shake = 0
+    const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1
+    const releaseQuat = [...idleQuatRef.current]
+    let impactPtr = 0, raf = 0
+    let lastSoundFrame = -10
     const start = performance.now()
 
     const frame = (now: number) => {
-      const f = ((now - start) / 1000) * SPEED / dt
+      const f = ((now - start) / 1000) * DICE_PLAYBACK_SPEED / dt
       const i0 = Math.min(Math.floor(f), last), i1 = Math.min(i0 + 1, last)
       const a = i0 === last ? 0 : f - i0
       for (let i = 0; i < n; i++) {
@@ -444,32 +469,21 @@ export default function DiceArena({
         const k0 = Math.max(0, Math.min(i0, li)), k1 = Math.max(0, Math.min(i1, li))
         const p0 = arr[k0], p1 = arr[k1]
         const p: V = [p0[0] + (p1[0] - p0[0]) * a, p0[1] + (p1[1] - p0[1]) * a, p0[2] + (p1[2] - p0[2]) * a]
-        writeDie(d, i, p, qSlerp(qarr[k0], qarr[k1], a), pulses[i])
+        const q = qSlerp(qarr[k0], qarr[k1], a)
+        const releaseBlend = Math.min(1, (now - start) / 90)
+        writeDie(d, i, p, releaseQuat[i] && releaseBlend < 1 ? qSlerp(releaseQuat[i], q, releaseBlend) : q)
       }
       while (impactPtr < d.impacts.length && d.impacts[impactPtr].frame <= i0) {
         const im = d.impacts[impactPtr++]
-        pulses[im.die] = Math.min(0.14, pulses[im.die] + im.intensity * 0.13)
-        playClick(im.intensity)
-        buzz(Math.round(4 + im.intensity * 10))
-        shake = Math.min(5, shake + im.intensity * 3.5)
-        // Staub nur bei Bodenkontakt (Würfel ist unten, nicht an der Wand).
-        const ip = d.pos[im.die]?.[Math.min(im.frame, (d.pos[im.die]?.length ?? 1) - 1)]
-        if (ip && ip[1] < 1.2 && im.intensity > 0.25) spawnDust(d, ip[0], ip[2], im.intensity)
+        // Drop stale impacts after a suspended tab and coalesce simultaneous
+        // contacts instead of playing a burst of overlapping sounds/vibrations.
+        if (i0 - im.frame <= 6 && im.frame - lastSoundFrame >= 4) {
+          playClick(im.intensity)
+          buzz(Math.round(4 + im.intensity * 10))
+          lastSoundFrame = im.frame
+        }
       }
-      for (let i = 0; i < n; i++) pulses[i] *= 0.84
-
-      // Kamera-Mikro-Wackeln nach harten Aufprallen, klingt schnell ab.
-      const cam = camRef.current
-      if (cam) {
-        cam.style.transform =
-          shake > 0.25
-            ? `translate(${seededSignedNoise(seed, i0, 0) * shake}px, ${seededSignedNoise(seed, i0, 1) * shake}px)`
-            : ''
-        shake *= 0.85
-      }
-
       if (i0 >= last) {
-        if (cam) cam.style.transform = ''
         setPhase('landed')
         return // liegen lassen, auf Tipp warten
       }
@@ -596,7 +610,7 @@ export default function DiceArena({
           <div className="da-stage">
             <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
           </div>
-          <div className="da-stage" ref={fxRef}>
+          <div className="da-stage">
             {d.labelings.map((_, i) => (
               <div
                 key={'s' + i}
@@ -686,12 +700,6 @@ const CSS = `
 /* Kurzes Aufblitzen beim Antippen. */
 .da-die.flash .da-face{animation:da-selflash .45s ease-out;}
 @keyframes da-selflash{0%{filter:brightness(2.1) saturate(1.3)}100%{filter:brightness(1)}}
-/* Staub-Puff auf dem Filz beim Aufprall. */
-.da-dust{position:absolute;left:0;top:0;border-radius:50%;pointer-events:none;
-  translate:-50% -50%;
-  background:radial-gradient(closest-side, rgba(226,214,182,.30), rgba(226,214,182,0) 70%);
-  animation:da-dust .5s ease-out forwards;}
-@keyframes da-dust{from{opacity:.9;scale:.35}to{opacity:0;scale:1.7}}
 .da-face{position:absolute;inset:0;display:grid;box-sizing:border-box;
   grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
   padding:13%;border-radius:15%;backface-visibility:hidden;
