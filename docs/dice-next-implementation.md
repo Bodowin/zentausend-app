@@ -1,5 +1,20 @@
 # Würfel: Übergabe für die nächste Umsetzung
 
+## Umsetzung am 18.09.2026
+
+Paket A sowie die anschließend von Bodo beauftragte Ziehgeste und der kleinere Auswahl-Hub sind mit `81d89981a139d235762a6b54352c381f4cac9cbd` auf main veröffentlicht. Vercel-Produktion: `dpl_3Q16fy1sWx6vbTfbv48shELnfee5`, READY.
+
+- Kontaktklänge unterscheiden Filz, Rand und Würfel; Paar-Ereignisse werden zusammengeführt und der stärkste frische Kontakt pro Wiedergabeframe ausgewählt. AudioBuffer sind je AudioContext gecacht.
+- Ziehen verschiebt die Würfelgruppe (nicht die Schale), Loslassen startet den Wurf mit 170-ms-Rückführung des visuellen Versatzes. Die Geste verändert keine Augenzahlen oder Physikparameter. Das vollständige Energieprofil-Konzept aus Paket D wurde nicht implementiert.
+- Pointer-Abbruch kehrt zur Bereitschaft zurück, zusätzliche Finger und Nicht-Linksklicks werden ignoriert; Schütteln löst während einer aktiven Ziehgeste keinen zweiten Start aus. Reduzierte Bewegung unterdrückt den Drag-Versatz.
+- Der Auswahl-Hub wurde von 1,9 auf 0,68 Schalen-Einheiten reduziert.
+- Lokal und CI: 185 Tests und Build bestanden. WebKit Smoke bestanden. Browser E2E: 43/44 bestanden, darunter alle drei neuen Fälle für 1/2/6 Würfel (Ziehen, Abbruch, Landung und sämtliche Würfelflächen nach Auswahl innerhalb der Arena bei 375×667).
+- Offenes unabhängiges Prüfproblem: `e2e/event-cup.spec.ts:87` findet den erwarteten Text `1 Spiel hat noch keinen Anlass.` nicht, auch beim Retry. Die Ursache ist noch nicht gesichert; die betroffenen Cup-/Statistikdateien wurden in diesem Paket nicht geändert. Lauf: https://github.com/Bodowin/zentausend-app/actions/runs/35319661320 . Keine pauschale Freigabe der gesamten Browsersuite behaupten.
+- Live zusätzlich geprüft: Zieh-und-Loslass-Wurf mit sechs Würfeln, Auswahl eines Würfels vollständig sichtbar, Fortsetzung nach PWA-Update. Während des Deployments war eine alte, noch geöffnete Version kurz von einem fehlenden dynamischen Chunk betroffen; Reload und das angebotene „Update laden“ stellten das gespeicherte Testspiel wieder her.
+- Physische iPhone-Touchbedienung und subjektiver Klang auf dem Gerät bleiben ungeprüft. B/C/D sind weiterhin offen.
+
+Der folgende ursprüngliche Plan bleibt als technische Referenz erhalten. Sein Startprompt für Paket A ist damit erledigt und nicht erneut auszuführen.
+
 Stand: 2026-09-10. Geprüfte Codebasis: `17de0ccfca0c63713930e56de5d1a302785f4701` in `Bodowin/zentausend-app`.
 
 ## Auftrag und Arbeitsweise
