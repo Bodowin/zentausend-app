@@ -22,6 +22,13 @@ import { getPrefs, DICE_THEMES } from '../lib/prefs'
 import { PIPS } from '../lib/dicePips'
 import { buzz } from '../lib/haptics'
 import { createSeededRandom, mixSeed } from '../lib/diceThrowSeed'
+import {
+  classifyImpactBody,
+  selectPlaybackImpact,
+  type DiceImpact,
+  type DiceImpactKind,
+  upsertDicePairImpact,
+} from '../lib/diceImpact'
 
 type DiceArenaProps = {
   values: number[]
@@ -159,24 +166,44 @@ export function unlockDiceAudio() {
 }
 // A short, cached noise transient plus a damped body resonance: a dry clack,
 // not a pitched electronic sweep. Generated locally, including offline.
-let impactBuffer: AudioBuffer | null = null
-function playClick(intensity: number) {
-  const ctx = audioCtx
-  if (!ctx || ctx.state !== 'running' || !soundOn()) return
-  if (!impactBuffer) {
-    impactBuffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.055), ctx.sampleRate)
-    const samples = impactBuffer.getChannelData(0)
-    const random = createSeededRandom(0xdecaf)
-    for (let i = 0; i < samples.length; i++) {
-      const t = i / ctx.sampleRate
-      samples[i] = (random() * 2 - 1) * Math.exp(-t * 150)
+const impactBuffers = new WeakMap<AudioContext, Partial<Record<DiceImpactKind, AudioBuffer>>>()
+
+function createImpactBuffer(ctx: AudioContext, kind: DiceImpactKind): AudioBuffer {
+  const duration = kind === 'rim' ? 0.055 : 0.035
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate)
+  const samples = buffer.getChannelData(0)
+  const random = createSeededRandom(kind === 'felt' ? 0xfe1701 : kind === 'rim' ? 0xdecaf : 0xd1ce01)
+  let previousNoise = 0
+  for (let i = 0; i < samples.length; i++) {
+    const t = i / ctx.sampleRate
+    const whiteNoise = random() * 2 - 1
+    if (kind === 'felt') {
+      previousNoise = previousNoise * 0.78 + whiteNoise * 0.22
+      samples[i] = previousNoise * Math.exp(-t * 125)
+    } else if (kind === 'dice') {
+      const brightNoise = whiteNoise - previousNoise * 0.7
+      previousNoise = whiteNoise
+      samples[i] = brightNoise * Math.exp(-t * 175)
+        + Math.sin(2 * Math.PI * 880 * t) * Math.exp(-t * 130) * 0.18
+    } else {
+      samples[i] = whiteNoise * Math.exp(-t * 150)
         + Math.sin(2 * Math.PI * 460 * t) * Math.exp(-t * 95) * 0.3
     }
   }
+  return buffer
+}
+
+function playClick(kind: DiceImpactKind, intensity: number) {
+  const ctx = audioCtx
+  if (!ctx || ctx.state !== 'running' || !soundOn()) return
+  let buffers = impactBuffers.get(ctx)
+  if (!buffers) { buffers = {}; impactBuffers.set(ctx, buffers) }
+  const impactBuffer = buffers[kind] ?? (buffers[kind] = createImpactBuffer(ctx, kind))
   const source = ctx.createBufferSource(), gain = ctx.createGain()
   source.buffer = impactBuffer
   source.playbackRate.value = 0.85 + intensity * 0.35
-  gain.gain.value = 0.035 + intensity * 0.12
+  const kindGain = kind === 'felt' ? 0.6 : kind === 'dice' ? 0.8 : 1
+  gain.gain.value = (0.035 + intensity * 0.12) * kindGain
   source.connect(gain).connect(ctx.destination)
   source.onended = () => { source.disconnect(); gain.disconnect() }
   source.start()
@@ -196,8 +223,7 @@ function playTap() {
 }
 
 /* ===================== Pre-Roll (headless Physik) ====================== */
-type Impact = { die: number; frame: number; intensity: number }
-type Attempt = { pos: V[][]; quat: Q[][]; impacts: Impact[]; topSlots: number[]; cocked: boolean; frames: number }
+type Attempt = { pos: V[][]; quat: Q[][]; impacts: DiceImpact[]; topSlots: number[]; cocked: boolean; frames: number }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
@@ -219,17 +245,21 @@ export function runAttempt(
   const floor = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
   floor.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
   world.addBody(floor)
+  const rimBodies = new Set<CANNON.Body>()
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2
     const nrm = new CANNON.Vec3(-Math.cos(a), 0.22, -Math.sin(a)); nrm.normalize()
     const w = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
     w.quaternion.setFromVectors(new CANNON.Vec3(0, 0, 1), nrm)
     w.position.set(Math.cos(a) * Rb, 0, Math.sin(a) * Rb)
+    rimBodies.add(w)
     world.addBody(w)
   }
 
   let curFrame = 0
-  const impacts: Impact[] = []
+  const impacts: DiceImpact[] = []
+  const diceByBody = new Map<CANNON.Body, number>()
+  const pairImpactIndices = new Map<string, number>()
   const bodies: CANNON.Body[] = []
   const handX = (random() - 0.5) * Rb * 0.18
   const commonSide = (random() - 0.5) * 0.8
@@ -290,11 +320,18 @@ export function runAttempt(
     )
     const idx = i
     let lastImpactFrame = -10
-    b.addEventListener('collide', (e: { contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
+    diceByBody.set(b, idx)
+    b.addEventListener('collide', (e: { body?: CANNON.Body; contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
       const v = Math.abs(e?.contact?.getImpactVelocityAlongNormal?.() ?? 0)
-      if (v > 1.2 && curFrame - lastImpactFrame >= 5) {
-        lastImpactFrame = curFrame
-        impacts.push({ die: idx, frame: curFrame, intensity: clamp(v / 8, 0, 1) })
+      if (v <= 1.2 || curFrame - lastImpactFrame < 5) return
+      const classified = classifyImpactBody(e.body, floor, rimBodies, diceByBody)
+      if (!classified) return
+      lastImpactFrame = curFrame
+      const intensity = clamp(v / 8, 0, 1)
+      if (classified.kind === 'dice' && classified.otherDie !== undefined) {
+        upsertDicePairImpact(impacts, pairImpactIndices, idx, classified.otherDie, curFrame, intensity)
+      } else {
+        impacts.push({ die: idx, frame: curFrame, intensity, kind: classified.kind })
       }
     })
     bodies.push(b); world.addBody(b)
@@ -341,14 +378,15 @@ export function runAttempt(
 
 /* =============================== Komponente ============================= */
 type ArenaData = {
-  pos: V[][]; quat: Q[][]; impacts: Impact[]; labelings: number[][]
+  pos: V[][]; quat: Q[][]; impacts: DiceImpact[]; labelings: number[][]
   frames: number; S: number; sizePx: number; feltPx: number; FIXED_DT: number; camTilt: number; perspective: number
 }
 
 type Phase = 'ready' | 'rolling' | 'landed'
 
-// Wie weit ein ausgewählter Würfel zum Auslegen aus der Schale steigt (Bowl-Einheiten).
-const LIFT = 1.9
+// Sichtbarer Auswahl-Hub, der auch in flachen iPhone-Layouts innerhalb der Arena bleibt.
+const LIFT = 0.68
+const DRAG_RELEASE_MS = 170
 export const DICE_PLAYBACK_SPEED = 1.45
 export const DICE_MAX_PLAYBACK_SECONDS = 2.8
 
@@ -370,11 +408,14 @@ export default function DiceArena({
 }: DiceArenaProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const camRef = useRef<HTMLDivElement>(null)
+  const diceStageRef = useRef<HTMLDivElement>(null)
   const dieRefs = useRef<HTMLDivElement[]>([])
   const shadowRefs = useRef<HTMLDivElement[]>([])
   const dataRef = useRef<ArenaData | null>(null)
   const reduceRef = useRef(false)
   const idleQuatRef = useRef<Q[]>([])
+  const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, x: 0, y: 0 })
+  const dragResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
   const onSelRef = useRef(onSelectionChange); onSelRef.current = onSelectionChange
   const onPhaseRef = useRef(onPhaseChange); onPhaseRef.current = onPhaseChange
@@ -384,9 +425,20 @@ export default function DiceArena({
   const [phase, setPhase] = useState<Phase>('ready')
   // Welche gelandeten Würfel sind ausgewählt (ausgelegt)?
   const [sel, setSel] = useState<boolean[]>([])
+  const [dragging, setDragging] = useState(false)
   // Synchronous mirror: rapid taps derive from the latest selection without
   // invoking the parent callback from inside React's state updater.
   const selRef = useRef<boolean[]>([])
+
+  const setDiceStageOffset = (x: number, y: number, animate: boolean) => {
+    const stage = diceStageRef.current
+    if (!stage) return
+    stage.style.transition = animate
+      ? `left ${DRAG_RELEASE_MS}ms cubic-bezier(.2,.8,.3,1), top ${DRAG_RELEASE_MS}ms cubic-bezier(.2,.8,.3,1)`
+      : 'none'
+    stage.style.left = `calc(50% + ${x}px)`
+    stage.style.top = `calc(50% + ${y}px)`
+  }
 
   // Hilfsfunktion: Würfel + Schatten setzen.
   const writeDie = (d: ArenaData, i: number, p: V, q: Q) => {
@@ -507,15 +559,12 @@ export default function DiceArena({
         const releaseBlend = Math.min(1, (now - start) / 90)
         writeDie(d, i, p, releaseQuat[i] && releaseBlend < 1 ? qSlerp(releaseQuat[i], q, releaseBlend) : q)
       }
-      while (impactPtr < d.impacts.length && d.impacts[impactPtr].frame <= i0) {
-        const im = d.impacts[impactPtr++]
-        // Drop stale impacts after a suspended tab and coalesce simultaneous
-        // contacts instead of playing a burst of overlapping sounds/vibrations.
-        if (i0 - im.frame <= 6 && im.frame - lastSoundFrame >= 4) {
-          playClick(im.intensity)
-          buzz(Math.round(4 + im.intensity * 10))
-          lastSoundFrame = im.frame
-        }
+      const dueImpact = selectPlaybackImpact(d.impacts, impactPtr, i0, lastSoundFrame)
+      impactPtr = dueImpact.nextIndex
+      if (dueImpact.impact) {
+        playClick(dueImpact.impact.kind, dueImpact.impact.intensity)
+        buzz(Math.round(4 + dueImpact.impact.intensity * 10))
+        lastSoundFrame = dueImpact.impact.frame
       }
       if (i0 >= last) {
         setPhase('landed')
@@ -532,6 +581,10 @@ export default function DiceArena({
 
   // Wurfphase nach außen melden (z. B. um Overlays erst beim Liegen zu zeigen).
   useEffect(() => { onPhaseRef.current?.(phase) }, [phase])
+
+  useEffect(() => () => {
+    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current)
+  }, [])
 
   // --- Gelandet: Würfel an ihre Ruhepose schreiben, Ausgewählte heben. ---
   useEffect(() => {
@@ -579,7 +632,7 @@ export default function DiceArena({
       if (!a) return
       const mag = Math.hypot(a.x ?? 0, a.y ?? 0, a.z ?? 0)
       const now = performance.now()
-      if (mag > 14 && now - lastTrigger > 800) {
+      if (mag > 14 && now - lastTrigger > 800 && dragRef.current.pointerId === -1) {
         lastTrigger = now
         buzz(20)
         unlockDiceAudio()
@@ -596,6 +649,50 @@ export default function DiceArena({
       if (motionEnabled) requestMotion() // Sensorzugriff nur nach ausdrücklicher Aktivierung
       setPhase('rolling')
     } else if (phase === 'landed' && !selectable) onSettleRef.current?.()
+  }
+
+  const beginDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (phase !== 'ready' || !ready || !e.isPrimary || e.button !== 0 || dragRef.current.pointerId !== -1) return
+    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current)
+    setDiceStageOffset(0, 0, false)
+    unlockDiceAudio()
+    if (motionEnabled) requestMotion()
+    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: 0, y: 0 }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDragging(true)
+  }
+
+  const moveDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (phase !== 'ready' || drag.pointerId !== e.pointerId) return
+    const root = rootRef.current
+    const maxX = Math.min(86, (root?.clientWidth ?? 320) * 0.22)
+    const maxY = Math.min(72, (root?.clientHeight ?? 360) * 0.18)
+    drag.x = clamp(e.clientX - drag.startX, -maxX, maxX)
+    drag.y = clamp(e.clientY - drag.startY, -maxY, maxY)
+    if (!reduceRef.current) setDiceStageOffset(drag.x, drag.y, false)
+  }
+
+  const releaseDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (phase !== 'ready' || drag.pointerId !== e.pointerId) return
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    drag.pointerId = -1
+    setDragging(false)
+    setDiceStageOffset(0, 0, true)
+    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current)
+    dragResetTimerRef.current = setTimeout(() => {
+      if (diceStageRef.current) diceStageRef.current.style.transition = 'none'
+      dragResetTimerRef.current = null
+    }, DRAG_RELEASE_MS)
+    setPhase('rolling')
+  }
+
+  const cancelDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragRef.current.pointerId !== e.pointerId) return
+    dragRef.current.pointerId = -1
+    setDragging(false)
+    setDiceStageOffset(0, 0, true)
   }
 
   // Einen gelandeten Würfel aus-/abwählen und die neue Auswahl melden.
@@ -644,7 +741,7 @@ export default function DiceArena({
           <div className="da-stage">
             <div className="da-floor" style={{ width: d.feltPx, height: d.feltPx }} />
           </div>
-          <div className="da-stage">
+          <div ref={diceStageRef} className="da-stage da-dice-stage">
             {d.labelings.map((_, i) => (
               <div
                 key={'s' + i}
@@ -683,11 +780,29 @@ export default function DiceArena({
       )}
 
       {/* Tipp-Fläche zum Werfen (und „weiter" nur im nicht-auswählbaren Alt-Modus). */}
-      {(phase === 'ready' || (phase === 'landed' && !selectable)) && (
-        <button className="da-tap" onClick={handleTap} aria-label={phase === 'ready' ? 'Würfeln' : 'Weiter'} />
+      {phase === 'ready' && (
+        <button
+          className="da-tap"
+          onPointerDown={beginDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={releaseDrag}
+          onPointerCancel={cancelDrag}
+          onLostPointerCapture={cancelDrag}
+          onClick={(e) => { if (e.detail === 0) handleTap() }}
+          aria-label="Würfeln"
+        />
+      )}
+      {phase === 'landed' && !selectable && (
+        <button className="da-tap" onClick={handleTap} aria-label="Weiter" />
       )}
       {phase === 'ready' && (
-        <div className="da-hint">{motionEnabled && motionOk ? 'Tippen oder schütteln' : 'Tippen zum Würfeln'}</div>
+        <div className="da-hint">{
+          dragging
+            ? 'Loslassen zum Würfeln'
+            : motionEnabled && motionOk
+              ? 'Ziehen, tippen oder schütteln'
+              : 'Ziehen oder tippen zum Würfeln'
+        }</div>
       )}
       {phase === 'landed' && selectable && <div className="da-hint">Würfel antippen, die zählen</div>}
       {phase === 'landed' && !selectable && <div className="da-hint">Tippen für weiter</div>}
@@ -700,8 +815,9 @@ const CSS = `
 .da-root{position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:inherit;
   background:radial-gradient(130% 100% at 50% 6%, #0c2b25 0%, #07201d 52%, #050b0d 100%);}
 .da-cam{position:absolute;inset:0;}
-.da-stage{position:absolute;left:50%;top:50%;transform-style:preserve-3d;
-  transform:rotateX(var(--tilt));transform-origin:center;}
+ .da-stage{position:absolute;left:50%;top:50%;transform-style:preserve-3d;
+   transform:rotateX(var(--tilt));transform-origin:center;}
+ .da-dice-stage{will-change:left,top;}
 .da-floor{position:absolute;left:0;top:0;transform:translate(-50%,-50%) rotateX(90deg);
   border-radius:50%;
   background:
@@ -745,8 +861,9 @@ const CSS = `
 .da-pip{place-self:center;width:62%;height:62%;border-radius:50%;
   background:radial-gradient(closest-side, var(--die-pip-a, #2b2b2b), var(--die-pip-b, #131313));
   box-shadow:inset 0 1px 1px rgba(255,255,255,.18), 0 1px 1px rgba(0,0,0,.35);}
-.da-tap{position:absolute;inset:0;padding:0;margin:0;border:0;background:transparent;
-  cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent;}
+ .da-tap{position:absolute;inset:0;padding:0;margin:0;border:0;background:transparent;
+   cursor:grab;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;}
+ .da-tap:active{cursor:grabbing;}
 .da-hint{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
   pointer-events:none;white-space:nowrap;color:#f3deA0;
   font:800 12px/1 ui-sans-serif,system-ui,-apple-system,sans-serif;
