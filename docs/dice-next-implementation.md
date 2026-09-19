@@ -1,5 +1,9 @@
 # Würfel: Übergabe für die nächste Umsetzung
 
+## Nachjustierung am 19.09.2026
+
+Auf Bodos Feedback „zu globig“: individuelle fortlaufende Drehung mit leicht unterschiedlichen Geschwindigkeiten und kleinen versetzten Hüpfbewegungen im Bereitschaftszustand. Die sichtbare Drehung und der Positionsversatz werden beim Loslassen übernommen und innerhalb von 240 ms weich in die bestehende Physikbahn überführt. Die letzte Fingergeschwindigkeit beeinflusst den kurzen visuellen Übergang, nicht die aufgezeichnete Bahn oder Augenzahlen. Veraltete Geschwindigkeit nach einer Haltepause wird ignoriert. Reduzierte Bewegung bleibt respektiert. Die kleineren Auswahl-Hübe und Kontaktklänge bleiben erhalten. Subjektive Zufriedenheit auf dem echten iPhone ist weiterhin durch Spielen zu beurteilen.
+
 ## Umsetzung am 18.09.2026
 
 Paket A sowie die anschließend von Bodo beauftragte Ziehgeste und der kleinere Auswahl-Hub sind mit `81d89981a139d235762a6b54352c381f4cac9cbd` auf main veröffentlicht. Vercel-Produktion: `dpl_3Q16fy1sWx6vbTfbv48shELnfee5`, READY.

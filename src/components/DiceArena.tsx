@@ -386,7 +386,7 @@ type Phase = 'ready' | 'rolling' | 'landed'
 
 // Sichtbarer Auswahl-Hub, der auch in flachen iPhone-Layouts innerhalb der Arena bleibt.
 const LIFT = 0.68
-const DRAG_RELEASE_MS = 170
+const DRAG_RELEASE_MS = 240
 export const DICE_PLAYBACK_SPEED = 1.45
 export const DICE_MAX_PLAYBACK_SECONDS = 2.8
 
@@ -414,8 +414,9 @@ export default function DiceArena({
   const dataRef = useRef<ArenaData | null>(null)
   const reduceRef = useRef(false)
   const idleQuatRef = useRef<Q[]>([])
-  const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, x: 0, y: 0 })
-  const dragResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const idleOffsetRef = useRef<V[]>([])
+  const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, x: 0, y: 0, vx: 0, vy: 0, time: 0 })
+  const releaseRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 })
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
   const onSelRef = useRef(onSelectionChange); onSelRef.current = onSelectionChange
   const onPhaseRef = useRef(onPhaseChange); onPhaseRef.current = onPhaseChange
@@ -518,14 +519,19 @@ export default function DiceArena({
       const t = (now - start) / 1000
       for (let i = 0; i < n; i++) {
         const p0 = d.pos[i]?.[0]; if (!p0) continue
-        // Small hand tremor around the real release orientation. Full idle
-        // revolutions used to snap to an unrelated quaternion on tap.
+        // Individual tumbles and small hops keep the handful loose and alive.
+        // Capture both pose offsets so release continues without a snap.
         const base = d.quat[i][0]
         const phaseOffset = i * 0.9
-        const rock = qAxisAngle(0.82, 0.18, 0.54, Math.sin(t * 2.2 + phaseOffset) * 0.055)
+        const hand = dragRef.current
+        const rock = qAxisAngle(0.8, 0, 0.6,
+          t * (1.1 + i * 0.09) + hand.x * 0.009 + hand.y * 0.006)
         const q = qMul(base, rock)
+        const hop = Math.sin(t * 4.2 + phaseOffset)
+        const offset: V = [Math.sin(t * 2.4 + phaseOffset) * 0.035, 0.11 * hop * hop, Math.cos(t * 2.1 + phaseOffset) * 0.035]
         idleQuatRef.current[i] = q
-        writeDie(d, i, p0, q)
+        idleOffsetRef.current[i] = offset
+        writeDie(d, i, [p0[0] + offset[0], p0[1] + offset[1], p0[2] + offset[2]], q)
       }
       raf = requestAnimationFrame(spin)
     }
@@ -540,11 +546,28 @@ export default function DiceArena({
     const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1
     const playbackSpeed = dicePlaybackSpeed(d.frames, dt)
     const releaseQuat = [...idleQuatRef.current]
+    const releaseOffsets = [...idleOffsetRef.current]
+    // Correct the whole recorded orientation, preserving its angular motion.
+    const corrections = releaseQuat.map((q, i) => {
+      const initial = d.quat[i][0]
+      return qMul(q, [-initial[0], -initial[1], -initial[2], initial[3]])
+    })
+    const handRelease = { ...releaseRef.current }
     let impactPtr = 0, raf = 0
     let lastSoundFrame = -10
     const start = performance.now()
 
     const frame = (now: number) => {
+      const releaseT = Math.min(1, (now - start) / DRAG_RELEASE_MS)
+      const tail = 1 - releaseT
+      // Hermite return: carry finger velocity into release, settle with zero velocity.
+      const positionWeight = tail * tail * (1 + 2 * releaseT)
+      const velocityWeight = releaseT * tail * tail * DRAG_RELEASE_MS / 1000
+      setDiceStageOffset(
+        handRelease.x * positionWeight + handRelease.vx * velocityWeight,
+        handRelease.y * positionWeight + handRelease.vy * velocityWeight,
+        false,
+      )
       const f = ((now - start) / 1000) * playbackSpeed / dt
       const i0 = Math.min(Math.floor(f), last), i1 = Math.min(i0 + 1, last)
       const a = i0 === last ? 0 : f - i0
@@ -556,8 +579,14 @@ export default function DiceArena({
         const p0 = arr[k0], p1 = arr[k1]
         const p: V = [p0[0] + (p1[0] - p0[0]) * a, p0[1] + (p1[1] - p0[1]) * a, p0[2] + (p1[2] - p0[2]) * a]
         const q = qSlerp(qarr[k0], qarr[k1], a)
-        const releaseBlend = Math.min(1, (now - start) / 90)
-        writeDie(d, i, p, releaseQuat[i] && releaseBlend < 1 ? qSlerp(releaseQuat[i], q, releaseBlend) : q)
+        const offset = releaseOffsets[i]
+        if (offset && releaseT < 1) {
+          for (let axis = 0; axis < 3; axis++) p[axis] += offset[axis] * positionWeight
+        }
+        const correction = corrections[i]
+        const blend = releaseT * releaseT * (3 - 2 * releaseT)
+        writeDie(d, i, p, correction && releaseT < 1
+          ? qMul(qSlerp(correction, [0, 0, 0, 1], blend), q) : q)
       }
       const dueImpact = selectPlaybackImpact(d.impacts, impactPtr, i0, lastSoundFrame)
       impactPtr = dueImpact.nextIndex
@@ -581,10 +610,6 @@ export default function DiceArena({
 
   // Wurfphase nach außen melden (z. B. um Overlays erst beim Liegen zu zeigen).
   useEffect(() => { onPhaseRef.current?.(phase) }, [phase])
-
-  useEffect(() => () => {
-    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current)
-  }, [])
 
   // --- Gelandet: Würfel an ihre Ruhepose schreiben, Ausgewählte heben. ---
   useEffect(() => {
@@ -653,11 +678,11 @@ export default function DiceArena({
 
   const beginDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (phase !== 'ready' || !ready || !e.isPrimary || e.button !== 0 || dragRef.current.pointerId !== -1) return
-    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current)
     setDiceStageOffset(0, 0, false)
     unlockDiceAudio()
     if (motionEnabled) requestMotion()
-    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: 0, y: 0 }
+    releaseRef.current = { x: 0, y: 0, vx: 0, vy: 0 }
+    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: 0, y: 0, vx: 0, vy: 0, time: performance.now() }
     e.currentTarget.setPointerCapture(e.pointerId)
     setDragging(true)
   }
@@ -668,8 +693,12 @@ export default function DiceArena({
     const root = rootRef.current
     const maxX = Math.min(86, (root?.clientWidth ?? 320) * 0.22)
     const maxY = Math.min(72, (root?.clientHeight ?? 360) * 0.18)
-    drag.x = clamp(e.clientX - drag.startX, -maxX, maxX)
-    drag.y = clamp(e.clientY - drag.startY, -maxY, maxY)
+    const x = clamp(e.clientX - drag.startX, -maxX, maxX)
+    const y = clamp(e.clientY - drag.startY, -maxY, maxY)
+    const now = performance.now(), dt = Math.max(0.008, (now - drag.time) / 1000)
+    drag.vx = clamp((x - drag.x) / dt, -220, 220)
+    drag.vy = clamp((y - drag.y) / dt, -180, 180)
+    drag.x = x; drag.y = y; drag.time = now
     if (!reduceRef.current) setDiceStageOffset(drag.x, drag.y, false)
   }
 
@@ -679,12 +708,9 @@ export default function DiceArena({
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     drag.pointerId = -1
     setDragging(false)
-    setDiceStageOffset(0, 0, true)
-    if (dragResetTimerRef.current) clearTimeout(dragResetTimerRef.current)
-    dragResetTimerRef.current = setTimeout(() => {
-      if (diceStageRef.current) diceStageRef.current.style.transition = 'none'
-      dragResetTimerRef.current = null
-    }, DRAG_RELEASE_MS)
+    const fresh = performance.now() - drag.time < 100
+    releaseRef.current = reduceRef.current ? { x: 0, y: 0, vx: 0, vy: 0 }
+      : { x: drag.x, y: drag.y, vx: fresh ? drag.vx : 0, vy: fresh ? drag.vy : 0 }
     setPhase('rolling')
   }
 

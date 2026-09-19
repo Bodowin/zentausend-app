@@ -21,6 +21,8 @@ for (const count of [1, 2, 6]) {
     await page.getByRole('button', { name: /Spiel fortsetzen/ }).click()
     const roll = page.getByRole('button', { name: 'Würfeln', exact: true })
     await expect(page.locator('.da-die')).toHaveCount(count)
+    const firstPose = await page.locator('.da-die').first().getAttribute('style')
+    await expect.poll(() => page.locator('.da-die').first().getAttribute('style')).not.toBe(firstPose)
     const area = await roll.boundingBox()
     const x = area!.x + area!.width / 2, y = area!.y + area!.height / 2
     const floorBefore = await page.locator('.da-floor').boundingBox()
