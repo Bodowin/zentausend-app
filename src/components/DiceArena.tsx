@@ -415,7 +415,7 @@ export default function DiceArena({
   const reduceRef = useRef(false)
   const idleQuatRef = useRef<Q[]>([])
   const idleOffsetRef = useRef<V[]>([])
-  const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, x: 0, y: 0, vx: 0, vy: 0, time: 0 })
+  const dragRef = useRef({ pointerId: -1, lastX: 0, lastY: 0, x: 0, y: 0, vx: 0, vy: 0, time: 0 })
   const releaseRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 })
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
   const onSelRef = useRef(onSelectionChange); onSelRef.current = onSelectionChange
@@ -435,10 +435,9 @@ export default function DiceArena({
     const stage = diceStageRef.current
     if (!stage) return
     stage.style.transition = animate
-      ? `left ${DRAG_RELEASE_MS}ms cubic-bezier(.2,.8,.3,1), top ${DRAG_RELEASE_MS}ms cubic-bezier(.2,.8,.3,1)`
+      ? `transform ${DRAG_RELEASE_MS}ms cubic-bezier(.2,.8,.3,1)`
       : 'none'
-    stage.style.left = `calc(50% + ${x}px)`
-    stage.style.top = `calc(50% + ${y}px)`
+    stage.style.transform = `translate3d(${x}px, ${y}px, 0) rotateX(var(--tilt))`
   }
 
   // Hilfsfunktion: Würfel + Schatten setzen.
@@ -682,7 +681,7 @@ export default function DiceArena({
     unlockDiceAudio()
     if (motionEnabled) requestMotion()
     releaseRef.current = { x: 0, y: 0, vx: 0, vy: 0 }
-    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: 0, y: 0, vx: 0, vy: 0, time: performance.now() }
+    dragRef.current = { pointerId: e.pointerId, lastX: e.clientX, lastY: e.clientY, x: 0, y: 0, vx: 0, vy: 0, time: performance.now() }
     e.currentTarget.setPointerCapture(e.pointerId)
     setDragging(true)
   }
@@ -693,8 +692,10 @@ export default function DiceArena({
     const root = rootRef.current
     const maxX = Math.min(86, (root?.clientWidth ?? 320) * 0.22)
     const maxY = Math.min(72, (root?.clientHeight ?? 360) * 0.18)
-    const x = clamp(e.clientX - drag.startX, -maxX, maxX)
-    const y = clamp(e.clientY - drag.startY, -maxY, maxY)
+    // Incremental movement avoids a dead zone when reversing at the boundary.
+    const x = clamp(drag.x + (e.clientX - drag.lastX) * 1.2, -maxX, maxX)
+    const y = clamp(drag.y + (e.clientY - drag.lastY) * 1.2, -maxY, maxY)
+    drag.lastX = e.clientX; drag.lastY = e.clientY
     const now = performance.now(), dt = Math.max(0.008, (now - drag.time) / 1000)
     drag.vx = clamp((x - drag.x) / dt, -220, 220)
     drag.vy = clamp((y - drag.y) / dt, -180, 180)
@@ -843,7 +844,7 @@ const CSS = `
 .da-cam{position:absolute;inset:0;}
  .da-stage{position:absolute;left:50%;top:50%;transform-style:preserve-3d;
    transform:rotateX(var(--tilt));transform-origin:center;}
- .da-dice-stage{will-change:left,top;}
+ .da-dice-stage{will-change:transform;}
 .da-floor{position:absolute;left:0;top:0;transform:translate(-50%,-50%) rotateX(90deg);
   border-radius:50%;
   background:

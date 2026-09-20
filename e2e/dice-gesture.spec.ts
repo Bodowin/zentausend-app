@@ -34,6 +34,12 @@ for (const count of [1, 2, 6]) {
     const dieDragged = await page.locator('.da-die').first().boundingBox()
     expect(dieDragged!.x - dieBefore!.x).toBeGreaterThan(20)
     expect(await page.locator('.da-floor').boundingBox()).toEqual(floorBefore)
+    // Returning from a long drag must react immediately, even beyond the limit.
+    await page.mouse.move(x + 160, y + 20, { steps: 5 })
+    const stageAtEdge = await page.locator('.da-dice-stage').boundingBox()
+    await page.mouse.move(x + 140, y + 20)
+    const stageAfterReverse = await page.locator('.da-dice-stage').boundingBox()
+    expect(stageAtEdge!.x - stageAfterReverse!.x).toBeGreaterThan(15)
     // The platform can cancel a touch (e.g. app switch); that must not roll.
     await roll.dispatchEvent('pointercancel', { pointerId: 1 })
     await page.mouse.up()
