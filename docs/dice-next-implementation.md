@@ -1,5 +1,17 @@
 # Würfel: Übergabe für die nächste Umsetzung
 
+## Umsetzung am 07.10.2026 (Claude) · Wurf folgt der Geste, kein Einfrieren
+
+Ausgangsbefund (gemessen, Chromium-Produktions-Build): Beim Öffnen der Schale blockierte die Vorab-Physik bei 6 Würfeln 118–472 ms den Main-Thread (4× CPU-Drossel bis 2,3 s). Ursache: 69 % der Simulationen wurden verworfen, weil ein Würfel schief lag – in 91 von 94 Fällen an einen **anderen Würfel** gelehnt, weil alle Würfel gebündelt gegen die Rückwand flogen. Alle Würfel landeten hinten, die Wischrichtung hatte keinen Einfluss, das letzte Drittel jedes Wurfs war unsichtbares Auskriechen.
+
+- **Physik als Modul** `src/lib/diceSim.ts`: Handlage nur aus dem Seed (sofort sichtbar, keine Rechenpause), Abwurf mit Richtung und Kraft aus der Geste, Simulation als Job in Zeitscheiben. Materialien gegen je 100 Würfe abgestimmt (Plastik prallt ab, Filz lässt rollen, Rand federt, Hand fächert auf): 6 Würfel Ø 3,4 → 1,8 Simulationsläufe, kein Wurf mehr schief (vorher 7/100). Eigene Schalen-Vorprüfung (nur erreichbare Wandstücke): bit-identische Bahnen, 1,8× schneller.
+- **Umgreifen statt Umbeschriften:** Die Augenzahlen stehen ab der Hand fest. Damit am Ende der Wurfwert oben liegt, wird die Bahn als q(t)·g gezeichnet (g eine der 24 Würfeldrehungen, physikalisch identisch); der Unterschied verschwindet in der 240-ms-Abwurfdrehung. Augenzahlen springen nie.
+- **Geste** (`src/lib/diceThrowPlanner.ts`): Wischrichtung in 30°-Schritten, Wischtempo → sanft/normal/kräftig, Tippen = leicht gestreut vom Spieler weg. Standardwurf und vier Hauptrichtungen werden im Leerlauf vorgerechnet, die Wischrichtung spekulativ beim Ziehen. Eine fertige Nachbarbahn wird exakt in die gewünschte Richtung gedreht (24-Eck-Schale, Symmetrie). Bei abweichender Kraft wartet die Hand höchstens 80 ms auf die exakte Bahn.
+- **Nachlauf** endet, sobald sich sichtbar nichts mehr bewegt (`trimRestTail`, Ruhelage exakt erhalten).
+- **Klang:** bis zu drei gleichzeitige Aufpralle (je Würfel einer, versetzt), vier Varianten je Material, Stereo nach Position. **Licht:** Flächen werden je nach Neigung zum Licht abgedunkelt.
+- **Gemessen danach** (Chromium, 390×844, Produktions-Build): keine Long Tasks beim Werfen; Loslassen→Abflug 5–88 ms, mit 4× CPU-Drossel 19–177 ms; 48/48 Augenzahlen korrekt oben, alle flach; Wischen nach unten/rechts/links landet unten/rechts/links. Unit-Tests 203/203, Build grün, E2E 42/44 – die zwei roten (`animation-layout` „centers a large saved-score celebration“, kompaktes/aktuelles iPhone) sind auch auf unverändertem main `b9453eb` wackelig (2/3 Läufe rot, Echte-Würfel-Modus, keine Schale beteiligt).
+- **Nicht geprüft:** echtes iPhone (Gefühl der Geste, Klang über Lautsprecher, Wurf-Latenz auf dem Gerät). iPhone-Safari kennt keine Vibrations-API, Haptik bleibt dort wirkungslos.
+
 ## Nachjustierung am 19.09.2026
 
 Auf Bodos Feedback „zu globig“: individuelle fortlaufende Drehung mit leicht unterschiedlichen Geschwindigkeiten und kleinen versetzten Hüpfbewegungen im Bereitschaftszustand. Die sichtbare Drehung und der Positionsversatz werden beim Loslassen übernommen und innerhalb von 240 ms weich in die bestehende Physikbahn überführt. Die letzte Fingergeschwindigkeit beeinflusst den kurzen visuellen Übergang, nicht die aufgezeichnete Bahn oder Augenzahlen. Veraltete Geschwindigkeit nach einer Haltepause wird ignoriert. Reduzierte Bewegung bleibt respektiert. Die kleineren Auswahl-Hübe und Kontaktklänge bleiben erhalten. Subjektive Zufriedenheit auf dem echten iPhone ist weiterhin durch Spielen zu beurteilen.
