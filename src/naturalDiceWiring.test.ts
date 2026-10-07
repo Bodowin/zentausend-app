@@ -30,6 +30,6 @@ describe('natural dice motion wiring', () => {
 
   it('routes every vibration through the optional haptics preference', () => {
     expect(arenaSource).not.toContain('navigator.vibrate')
-    expect(arenaSource).toContain('buzz(Math.round(4 + dueImpact.impact.intensity * 10))')
+    expect(arenaSource).toContain('if (strongest) buzz(Math.round(4 + strongest.intensity * 10))')
   })
 })

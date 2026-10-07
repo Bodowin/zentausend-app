@@ -52,6 +52,42 @@ export type PlaybackImpactSelection = {
   impact: DiceImpact | null
 }
 
+export type PlaybackImpactsSelection = {
+  nextIndex: number
+  impacts: DiceImpact[]
+}
+
+/**
+ * Consumes all due events and returns up to `maxVoices` fresh impacts,
+ * strongest first and at most one per die. Several dice landing together are
+ * heard as a short clatter instead of a single click; stale events (tab
+ * return, slow frame) are dropped, never queued.
+ */
+export function selectPlaybackImpacts(
+  impacts: readonly DiceImpact[],
+  startIndex: number,
+  currentFrame: number,
+  maxVoices = 3,
+): PlaybackImpactsSelection {
+  let nextIndex = startIndex
+  const fresh: DiceImpact[] = []
+  while (nextIndex < impacts.length && impacts[nextIndex].frame <= currentFrame) {
+    const candidate = impacts[nextIndex]
+    nextIndex += 1
+    if (currentFrame - candidate.frame <= 6) fresh.push(candidate)
+  }
+  fresh.sort((a, b) => b.intensity - a.intensity || a.frame - b.frame || a.die - b.die)
+  const selected: DiceImpact[] = []
+  const usedDice = new Set<number>()
+  for (const impact of fresh) {
+    if (selected.length >= maxVoices) break
+    if (usedDice.has(impact.die)) continue
+    usedDice.add(impact.die)
+    selected.push(impact)
+  }
+  return { nextIndex, impacts: selected }
+}
+
 /** Consumes all due events and returns at most one fresh, strongest impact. */
 export function selectPlaybackImpact(
   impacts: readonly DiceImpact[],

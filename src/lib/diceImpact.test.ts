@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyImpactBody,
   selectPlaybackImpact,
+  selectPlaybackImpacts,
   type DiceImpact,
   upsertDicePairImpact,
 } from './diceImpact'
@@ -55,5 +56,26 @@ describe('dice impact handling', () => {
       impact: { die: 2, frame: 12, intensity: 0.7, kind: 'dice' },
     })
     expect(selectPlaybackImpact(impacts, 0, 20, 0)).toEqual({ nextIndex: 3, impact: null })
+  })
+  it('lets several dice be heard together, strongest first, one voice per die', () => {
+    const impacts: DiceImpact[] = [
+      { die: 0, frame: 10, intensity: 0.5, kind: 'felt' },
+      { die: 1, frame: 10, intensity: 0.9, kind: 'felt' },
+      { die: 1, frame: 11, intensity: 0.95, kind: 'dice' },
+      { die: 2, frame: 11, intensity: 0.7, kind: 'rim' },
+      { die: 3, frame: 11, intensity: 0.6, kind: 'felt' },
+      { die: 4, frame: 2, intensity: 1, kind: 'rim' },
+      { die: 5, frame: 14, intensity: 1, kind: 'rim' },
+    ]
+    expect(selectPlaybackImpacts(impacts, 0, 12)).toEqual({
+      nextIndex: 6,
+      impacts: [
+        { die: 1, frame: 11, intensity: 0.95, kind: 'dice' },
+        { die: 2, frame: 11, intensity: 0.7, kind: 'rim' },
+        { die: 3, frame: 11, intensity: 0.6, kind: 'felt' },
+      ],
+    })
+    // Veraltete Ereignisse werden verworfen, nicht nachgeholt.
+    expect(selectPlaybackImpacts(impacts, 0, 30)).toEqual({ nextIndex: 7, impacts: [] })
   })
 })

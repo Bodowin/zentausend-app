@@ -20,12 +20,14 @@ import { getPrefs, DICE_THEMES } from '../lib/prefs'
 import { PIPS } from '../lib/dicePips'
 import { buzz } from '../lib/haptics'
 import { createSeededRandom, mixSeed } from '../lib/diceThrowSeed'
-import { selectPlaybackImpact, type DiceImpact, type DiceImpactKind } from '../lib/diceImpact'
+import { selectPlaybackImpacts, type DiceImpact, type DiceImpactKind } from '../lib/diceImpact'
 import {
+  SLOT_NORMALS,
   chooseBodySymmetry,
   handPose,
   qMul,
   qSlerp,
+  rotV,
   type DiceSimConfig,
   type DiceThrow,
 } from '../lib/diceSim'
@@ -136,13 +138,19 @@ export function unlockDiceAudio() {
 }
 // A short, cached noise transient plus a damped body resonance: a dry clack,
 // not a pitched electronic sweep. Generated locally, including offline.
-const impactBuffers = new WeakMap<AudioContext, Partial<Record<DiceImpactKind, AudioBuffer>>>()
+// Mehrere Varianten je Material, damit ein Wurf nicht wie ein wiederholtes
+// Sample klingt; Tonhöhe und Raum (Stereo) folgen dem einzelnen Aufprall.
+const IMPACT_VARIANTS = 4
+const impactBuffers = new WeakMap<AudioContext, Map<string, AudioBuffer>>()
 
-function createImpactBuffer(ctx: AudioContext, kind: DiceImpactKind): AudioBuffer {
-  const duration = kind === 'rim' ? 0.055 : 0.035
+function createImpactBuffer(ctx: AudioContext, kind: DiceImpactKind, variant: number): AudioBuffer {
+  const duration = (kind === 'rim' ? 0.055 : 0.035) * (0.9 + variant * 0.07)
   const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate)
   const samples = buffer.getChannelData(0)
-  const random = createSeededRandom(kind === 'felt' ? 0xfe1701 : kind === 'rim' ? 0xdecaf : 0xd1ce01)
+  const base = kind === 'felt' ? 0xfe1701 : kind === 'rim' ? 0xdecaf : 0xd1ce01
+  const random = createSeededRandom(mixSeed(base, variant))
+  // Leicht verschiedene Körperresonanzen: verschiedene Würfel, verschiedene Stellen.
+  const tone = 1 + (variant - 1.5) * 0.06
   let previousNoise = 0
   for (let i = 0; i < samples.length; i++) {
     const t = i / ctx.sampleRate
@@ -154,29 +162,44 @@ function createImpactBuffer(ctx: AudioContext, kind: DiceImpactKind): AudioBuffe
       const brightNoise = whiteNoise - previousNoise * 0.7
       previousNoise = whiteNoise
       samples[i] = brightNoise * Math.exp(-t * 175)
-        + Math.sin(2 * Math.PI * 880 * t) * Math.exp(-t * 130) * 0.18
+        + Math.sin(2 * Math.PI * 880 * tone * t) * Math.exp(-t * 130) * 0.18
+        + Math.sin(2 * Math.PI * 1370 * tone * t) * Math.exp(-t * 160) * 0.07
     } else {
       samples[i] = whiteNoise * Math.exp(-t * 150)
-        + Math.sin(2 * Math.PI * 460 * t) * Math.exp(-t * 95) * 0.3
+        + Math.sin(2 * Math.PI * 460 * tone * t) * Math.exp(-t * 95) * 0.3
     }
   }
   return buffer
 }
 
-function playClick(kind: DiceImpactKind, intensity: number) {
+/**
+ * Ein Aufprall. `pan` −1…1 (links…rechts), `delay` in Sekunden: mehrere
+ * gleichzeitige Aufpralle werden um wenige Millisekunden versetzt, wie beim
+ * echten Prasseln.
+ */
+function playClick(kind: DiceImpactKind, intensity: number, variant = 0, pan = 0, delay = 0) {
   const ctx = audioCtx
   if (!ctx || ctx.state !== 'running' || !soundOn()) return
   let buffers = impactBuffers.get(ctx)
-  if (!buffers) { buffers = {}; impactBuffers.set(ctx, buffers) }
-  const impactBuffer = buffers[kind] ?? (buffers[kind] = createImpactBuffer(ctx, kind))
+  if (!buffers) { buffers = new Map(); impactBuffers.set(ctx, buffers) }
+  const v = ((variant % IMPACT_VARIANTS) + IMPACT_VARIANTS) % IMPACT_VARIANTS
+  const cacheKey = `${kind}:${v}`
+  let impactBuffer = buffers.get(cacheKey)
+  if (!impactBuffer) { impactBuffer = createImpactBuffer(ctx, kind, v); buffers.set(cacheKey, impactBuffer) }
   const source = ctx.createBufferSource(), gain = ctx.createGain()
   source.buffer = impactBuffer
-  source.playbackRate.value = 0.85 + intensity * 0.35
+  source.playbackRate.value = (0.85 + intensity * 0.35) * (0.96 + v * 0.025)
   const kindGain = kind === 'felt' ? 0.6 : kind === 'dice' ? 0.8 : 1
   gain.gain.value = (0.035 + intensity * 0.12) * kindGain
-  source.connect(gain).connect(ctx.destination)
-  source.onended = () => { source.disconnect(); gain.disconnect() }
-  source.start()
+  const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null
+  if (panner) {
+    panner.pan.value = clamp(pan, -1, 1)
+    source.connect(gain).connect(panner).connect(ctx.destination)
+  } else {
+    source.connect(gain).connect(ctx.destination)
+  }
+  source.onended = () => { source.disconnect(); gain.disconnect(); panner?.disconnect() }
+  source.start(ctx.currentTime + Math.max(0, delay))
 }
 // Heller, kurzer Klick beim Auslegen eines Würfels.
 function playTap() {
@@ -201,6 +224,11 @@ type ArenaData = {
 }
 
 type Phase = 'ready' | 'rolling' | 'landed'
+
+// Licht von oben links vorn (Welt: y oben, z zum Betrachter), normiert.
+const LIGHT: V = (() => { const v: V = [-0.45, 1, 0.55]; const l = Math.hypot(...v); return [v[0] / l, v[1] / l, v[2] / l] })()
+// Stärkste Abdunklung einer vom Licht abgewandten Fläche.
+const SHADE_MAX = 0.42
 
 // Sichtbarer Auswahl-Hub, der auch in flachen iPhone-Layouts innerhalb der Arena bleibt.
 const LIFT = 0.68
@@ -232,6 +260,9 @@ export default function DiceArena({
   const diceStageRef = useRef<HTMLDivElement>(null)
   const dieRefs = useRef<HTMLDivElement[]>([])
   const shadowRefs = useRef<HTMLDivElement[]>([])
+  // Abdunklung je Würfelfläche (Licht von oben links vorn) und zuletzt gesetzter Wert.
+  const shadeRefs = useRef<HTMLElement[][]>([])
+  const shadeValues = useRef<number[][]>([])
   const dataRef = useRef<ArenaData | null>(null)
   const reduceRef = useRef(false)
   const idleQuatRef = useRef<Q[]>([])
@@ -284,6 +315,18 @@ export default function DiceArena({
       const lift = clamp(p[1] / 4, 0, 1)
       sh.style.transform = `translate3d(${p[0] * d.S}px,0,${p[2] * d.S}px) rotateX(90deg) scale(${0.7 + lift * 0.8})`
       sh.style.opacity = `${0.4 * (1 - lift * 0.6)}`
+    }
+    // Licht folgt der Lage: Flächen, die sich vom Licht wegdrehen, werden
+    // dunkler. Nur geänderte Werte schreiben (Deckkraft ist billig für den Compositor).
+    const shades = shadeRefs.current[i]
+    if (shades) {
+      const last = (shadeValues.current[i] ??= [])
+      for (let s = 0; s < 6; s++) {
+        const nrm = rotV(SLOT_NORMALS[s], q)
+        const lambert = nrm[0] * LIGHT[0] + nrm[1] * LIGHT[1] + nrm[2] * LIGHT[2]
+        const shade = Math.round(SHADE_MAX * clamp((LIGHT[1] - lambert) / LIGHT[1], 0, 1) * 100) / 100
+        if (shades[s] && last[s] !== shade) { shades[s].style.opacity = `${shade}`; last[s] = shade }
+      }
     }
   }
 
@@ -461,7 +504,8 @@ export default function DiceArena({
     })
     const handRelease = { ...releaseRef.current }
     let impactPtr = 0, raf = 0
-    let lastSoundFrame = -10
+    // Schalenradius für das Stereo-Panorama der Aufpralle.
+    const bowlRadius = (d.feltPx / d.S - 1.2) / 2
     const start = performance.now()
 
     const frame = (now: number) => {
@@ -495,13 +539,15 @@ export default function DiceArena({
         writeDie(d, i, p, correction && releaseT < 1
           ? qMul(qSlerp(correction, [0, 0, 0, 1], blend), q) : q)
       }
-      const dueImpact = selectPlaybackImpact(d.impacts, impactPtr, i0, lastSoundFrame)
-      impactPtr = dueImpact.nextIndex
-      if (dueImpact.impact) {
-        playClick(dueImpact.impact.kind, dueImpact.impact.intensity)
-        buzz(Math.round(4 + dueImpact.impact.intensity * 10))
-        lastSoundFrame = dueImpact.impact.frame
-      }
+      const due = selectPlaybackImpacts(d.impacts, impactPtr, i0)
+      impactPtr = due.nextIndex
+      due.impacts.forEach((impact, voice) => {
+        const x = d.pos[impact.die]?.[Math.min(impact.frame, last)]?.[0] ?? 0
+        playClick(impact.kind, impact.intensity, impact.die + impact.frame, (x / bowlRadius) * 0.7, voice * 0.009)
+      })
+      // Haptik nur für den stärksten Aufprall: ein klarer Impuls statt Brummen.
+      const strongest = due.impacts[0]
+      if (strongest) buzz(Math.round(4 + strongest.intensity * 10))
       if (i0 >= last) {
         setPhase('landed')
         return // liegen lassen, auf Tipp warten
@@ -720,6 +766,7 @@ export default function DiceArena({
                     {PIPS[L[s]].map(([c, r], pi) => (
                       <span key={pi} className="da-pip" style={{ gridColumn: c + 1, gridRow: r + 1 }} />
                     ))}
+                    <i className="da-shade" ref={(el) => { if (el) (shadeRefs.current[i] ??= [])[s] = el }} />
                   </div>
                 ))}
               </div>
@@ -799,6 +846,7 @@ const CSS = `
 /* Kurzes Aufblitzen beim Antippen. */
 .da-die.flash .da-face{animation:da-selflash .45s ease-out;}
 @keyframes da-selflash{0%{filter:brightness(2.1) saturate(1.3)}100%{filter:brightness(1)}}
+.da-shade{position:absolute;inset:0;border-radius:inherit;background:#000;opacity:0;pointer-events:none;}
 .da-face{position:absolute;inset:0;display:grid;box-sizing:border-box;
   grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
   padding:13%;border-radius:15%;backface-visibility:hidden;
