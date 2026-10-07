@@ -1,34 +1,35 @@
 /**
  * DiceArena — echter 3D-Schwerkraft-Fall in einer Würfelschale, gerendert OHNE WebGL.
  *
- * Basiert auf dem Entwurf von Claude, an dieses Projekt angepasst (Demo-Wrapper
- * entfernt, Casino-Grün-Optik, Default-Export). Architektur:
- *  1) HEADLESS PRE-ROLL: cannon-es simuliert den kompletten Wurf einmal ohne
- *     Rendering bis zur Ruhe und zeichnet Position/Quaternion pro Schritt auf.
- *  2) RELABELING VOR FRAME 1: Aus der Ruhe-Orientierung wird die obenliegende
- *     Fläche bestimmt und EINE gültige Würfel-Beschriftung (Rotation eines echten
- *     Würfels) gewählt, deren Oberseite values[i] zeigt — bevor etwas sichtbar ist.
- *  3) PLAYBACK: Die aufgezeichnete Bahn wird per CSS-3D abgespielt (matrix3d aus
- *     der Quaternion). Da die Zahlen die ganze Animation gleich bleiben, gibt es
- *     nichts zu verstecken → kein Umspringen der Augenzahl.
- *
- *  Cocked-Rejection: Landet ein Würfel auf Kante/Ecke, wird der Pre-Roll neu
- *  gewürfelt (unsichtbar). Kein WebGL → iOS-stabil, offline.
+ * Architektur:
+ *  1) HAND: Die Würfel liegen sofort in der Hand (Lage nur aus dem Seed, keine
+ *     Rechenpause) und tragen eine feste, gültige Beschriftung.
+ *  2) ABWURF: Richtung und Kraft kommen aus der Geste. cannon-es simuliert den
+ *     Wurf headless bis zur Ruhe (lib/diceSim), in Zeitscheiben und meist schon
+ *     spekulativ während des Ziehens (lib/diceThrowPlanner).
+ *  3) UMGREIFEN STATT UMSCHREIBEN: Damit am Ende values[i] oben liegt, wird die
+ *     Bahn als q(t)·g gezeichnet, g eine der 24 Würfeldrehungen. Für einen
+ *     Würfel ist das physikalisch dieselbe Bahn; die Beschriftung springt nie.
+ *     Der Unterschied zur Handlage verschwindet in der 240-ms-Abwurfdrehung.
+ *  4) PLAYBACK per CSS-3D (matrix3d aus der Quaternion). Kein WebGL → iOS-stabil,
+ *     offline.
  */
 
-import * as CANNON from 'cannon-es'
 import { useEffect, useRef, useState } from 'react'
 import { getPrefs, DICE_THEMES } from '../lib/prefs'
 import { PIPS } from '../lib/dicePips'
 import { buzz } from '../lib/haptics'
 import { createSeededRandom, mixSeed } from '../lib/diceThrowSeed'
+import { selectPlaybackImpact, type DiceImpact, type DiceImpactKind } from '../lib/diceImpact'
 import {
-  classifyImpactBody,
-  selectPlaybackImpact,
-  type DiceImpact,
-  type DiceImpactKind,
-  upsertDicePairImpact,
-} from '../lib/diceImpact'
+  chooseBodySymmetry,
+  handPose,
+  qMul,
+  qSlerp,
+  type DiceSimConfig,
+  type DiceThrow,
+} from '../lib/diceSim'
+import { ThrowPlanner, defaultChoice, gestureChoice, type ThrowChoice } from '../lib/diceThrowPlanner'
 
 type DiceArenaProps = {
   values: number[]
@@ -47,10 +48,7 @@ type DiceArenaProps = {
 }
 
 /* ============================ Würfel-Logik ============================== */
-// Slots (Body-lokal): 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z
-const SLOT_NORMALS: [number, number, number][] = [
-  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
-]
+// Slots (Body-lokal): 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z (siehe SLOT_NORMALS in lib/diceSim)
 // Ein gültiger Standardwürfel (gegenüberliegend = 7). Falls Augen gespiegelt
 // wirken: +X/-X tauschen, z.B. [5,2,3,4,1,6] → kippt die Chiralität.
 const BASE = [2, 5, 3, 4, 1, 6]
@@ -93,43 +91,15 @@ export function chooseLabeling(topSlot: number, value: number): number[] {
   return LABELINGS.find((L) => L[topSlot] === value) ?? LABELINGS[0]
 }
 
+/** Feste Beschriftung je Würfel in der Hand, unabhängig vom späteren Ergebnis. */
+export function handLabelings(count: number, seed: number): number[][] {
+  const random = createSeededRandom(mixSeed(seed, 31))
+  return Array.from({ length: count }, () => LABELINGS[Math.floor(random() * LABELINGS.length)])
+}
+
 /* ============================ Mathe-Helfer ============================== */
 type Q = [number, number, number, number]
 type V = [number, number, number]
-
-function rotV(v: V, q: Q): V {
-  const [vx, vy, vz] = v
-  const [qx, qy, qz, qw] = q
-  const tx = 2 * (qy * vz - qz * vy), ty = 2 * (qz * vx - qx * vz), tz = 2 * (qx * vy - qy * vx)
-  return [vx + qw * tx + (qy * tz - qz * ty), vy + qw * ty + (qz * tx - qx * tz), vz + qw * tz + (qx * ty - qy * tx)]
-}
-export function topSlotFromQuat(q: Q): { slot: number; dot: number } {
-  let slot = 2, dot = -Infinity
-  for (let s = 0; s < 6; s++) { const d = rotV(SLOT_NORMALS[s], q)[1]; if (d > dot) { dot = d; slot = s } }
-  return { slot, dot }
-}
-function qSlerp(a: Q, b: Q, t: number): Q {
-  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
-  let bb: Q = b
-  if (d < 0) { bb = [-b[0], -b[1], -b[2], -b[3]]; d = -d }
-  if (d > 0.9995) {
-    const r: Q = [a[0] + (bb[0] - a[0]) * t, a[1] + (bb[1] - a[1]) * t, a[2] + (bb[2] - a[2]) * t, a[3] + (bb[3] - a[3]) * t]
-    const l = Math.hypot(r[0], r[1], r[2], r[3]) || 1
-    return [r[0] / l, r[1] / l, r[2] / l, r[3] / l]
-  }
-  const th0 = Math.acos(d), th = th0 * t
-  const s0 = Math.sin(th0 - th) / Math.sin(th0), s1 = Math.sin(th) / Math.sin(th0)
-  return [a[0] * s0 + bb[0] * s1, a[1] * s0 + bb[1] * s1, a[2] * s0 + bb[2] * s1, a[3] * s0 + bb[3] * s1]
-}
-
-function qMul(a: Q, b: Q): Q {
-  return [
-    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
-    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
-    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
-    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
-  ]
-}
 
 function qAxisAngle(x: number, y: number, z: number, angle: number): Q {
   const half = angle / 2
@@ -222,159 +192,7 @@ function playTap() {
   o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.11)
 }
 
-/* ===================== Pre-Roll (headless Physik) ====================== */
-type Attempt = { pos: V[][]; quat: Q[][]; impacts: DiceImpact[]; topSlots: number[]; cocked: boolean; frames: number }
-
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-
-export function runAttempt(
-  n: number,
-  cfg: { h: number; Rb: number; y0: number; G: number; FIXED_DT: number; MAX_STEPS: number },
-  random: () => number,
-): Attempt {
-  const { h, Rb, y0, G, FIXED_DT, MAX_STEPS } = cfg
-  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -G, 0) })
-  world.allowSleep = true
-  ;(world.solver as CANNON.GSSolver).iterations = 14
-  world.broadphase = new CANNON.NaiveBroadphase()
-  const ground = new CANNON.Material('g'), dieM = new CANNON.Material('d')
-  world.addContactMaterial(new CANNON.ContactMaterial(ground, dieM, { friction: 0.16, restitution: 0.24 }))
-  world.addContactMaterial(new CANNON.ContactMaterial(dieM, dieM, { friction: 0.09, restitution: 0.18 }))
-  world.defaultContactMaterial.friction = 0.14
-
-  const floor = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
-  floor.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2)
-  world.addBody(floor)
-  const rimBodies = new Set<CANNON.Body>()
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2
-    const nrm = new CANNON.Vec3(-Math.cos(a), 0.22, -Math.sin(a)); nrm.normalize()
-    const w = new CANNON.Body({ mass: 0, material: ground, shape: new CANNON.Plane() })
-    w.quaternion.setFromVectors(new CANNON.Vec3(0, 0, 1), nrm)
-    w.position.set(Math.cos(a) * Rb, 0, Math.sin(a) * Rb)
-    rimBodies.add(w)
-    world.addBody(w)
-  }
-
-  let curFrame = 0
-  const impacts: DiceImpact[] = []
-  const diceByBody = new Map<CANNON.Body, number>()
-  const pairImpactIndices = new Map<string, number>()
-  const bodies: CANNON.Body[] = []
-  const handX = (random() - 0.5) * Rb * 0.18
-  const commonSide = (random() - 0.5) * 0.8
-  const commonLift = 1.25 + random() * 0.45
-  const commonForward = 5.1 + random() * 0.8
-  const commonSpin = 19 + random() * 8
-  // Bounding spheres cannot intersect, even with arbitrary initial rotations.
-  const minimumSeparation = 2 * Math.sqrt(3) * h
-  const releaseAngle = random() * Math.PI * 2
-  const releasePositions: Array<[number, number]> = []
-  if (n === 1) {
-    releasePositions.push([0, 0])
-  } else if (n <= 4) {
-    // A rotated, lightly irregular polygon reads as dice cupped in one hand,
-    // while the circumscribed-body spacing guarantees no initial collision.
-    const radius = minimumSeparation / (2 * Math.sin(Math.PI / n)) + 0.08
-    for (let i = 0; i < n; i++) {
-      const angle = releaseAngle + (i / n) * Math.PI * 2 + (random() - 0.5) * 0.03
-      const r = radius + (random() - 0.5) * minimumSeparation * 0.04
-      releasePositions.push([Math.cos(angle) * r, Math.sin(angle) * r])
-    }
-  } else {
-    // One centre die plus a loose ring resembles a compact handful without
-    // the conspicuous rows of a grid. Small seeded offsets avoid a perfect rosette.
-    releasePositions.push([
-      (random() - 0.5) * minimumSeparation * 0.025,
-      (random() - 0.5) * minimumSeparation * 0.025,
-    ])
-    const ringCount = n - 1
-    const radius = minimumSeparation * 1.08
-    for (let i = 0; i < ringCount; i++) {
-      const angle = releaseAngle + (i / ringCount) * Math.PI * 2 + (random() - 0.5) * 0.045
-      const r = radius + (random() - 0.5) * minimumSeparation * 0.045
-      releasePositions.push([Math.cos(angle) * r, Math.sin(angle) * r])
-    }
-  }
-  for (let i = 0; i < n; i++) {
-    const b = new CANNON.Body({ mass: 1, material: dieM, shape: new CANNON.Box(new CANNON.Vec3(h, h, h)), allowSleep: true })
-    b.sleepSpeedLimit = 0.12; b.sleepTimeLimit = 0.42; b.linearDamping = 0.025; b.angularDamping = 0.045
-    // Shared release with separated dice: no solver explosion at frame one.
-    const [releaseX, releaseZ] = releasePositions[i]
-    const lane = releaseX / minimumSeparation
-    b.position.set(
-      handX + releaseX,
-      y0 * 0.50 + i * 0.02 + random() * 0.14,
-      Rb * 0.15 + releaseZ,
-    )
-    b.quaternion.setFromEuler(random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2)
-    b.velocity.set(
-      commonSide + lane * 0.22 + (random() - 0.5) * 0.75,
-      commonLift + (random() - 0.5) * 0.35,
-      -(commonForward + (random() - 0.5) * 0.7),
-    )
-    b.angularVelocity.set(
-      -(commonSpin + (random() - 0.5) * 7),
-      (random() - 0.5) * 8 + lane * 0.7,
-      (random() - 0.5) * 9,
-    )
-    const idx = i
-    let lastImpactFrame = -10
-    diceByBody.set(b, idx)
-    b.addEventListener('collide', (e: { body?: CANNON.Body; contact?: { getImpactVelocityAlongNormal?: () => number } }) => {
-      const v = Math.abs(e?.contact?.getImpactVelocityAlongNormal?.() ?? 0)
-      if (v <= 1.2 || curFrame - lastImpactFrame < 5) return
-      const classified = classifyImpactBody(e.body, floor, rimBodies, diceByBody)
-      if (!classified) return
-      lastImpactFrame = curFrame
-      const intensity = clamp(v / 8, 0, 1)
-      if (classified.kind === 'dice' && classified.otherDie !== undefined) {
-        upsertDicePairImpact(impacts, pairImpactIndices, idx, classified.otherDie, curFrame, intensity)
-      } else {
-        impacts.push({ die: idx, frame: curFrame, intensity, kind: classified.kind })
-      }
-    })
-    bodies.push(b); world.addBody(b)
-  }
-
-  const pos: V[][] = bodies.map(() => [])
-  const quat: Q[][] = bodies.map(() => [])
-  // Record the exact release pose before the first integration step.
-  for (let i = 0; i < n; i++) {
-    const b = bodies[i]
-    pos[i].push([b.position.x, b.position.y, b.position.z])
-    quat[i].push([b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w])
-  }
-  let restFrames = 0
-  let settled = false
-  for (curFrame = 1; curFrame <= MAX_STEPS; curFrame++) {
-    world.step(FIXED_DT)
-    for (let i = 0; i < n; i++) {
-      const b = bodies[i]
-      pos[i].push([b.position.x, b.position.y, b.position.z])
-      quat[i].push([b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w])
-    }
-    const allSlow = bodies.every(
-      (b) => b.sleepState === CANNON.Body.SLEEPING || (b.velocity.lengthSquared() < 0.02 && b.angularVelocity.lengthSquared() < 0.05),
-    )
-    if (allSlow) {
-      if (++restFrames > 16) { settled = true; break }
-    } else restFrames = 0
-  }
-
-  let cocked = !settled
-  const topSlots: number[] = []
-  for (let i = 0; i < n; i++) {
-    const last = quat[i].length - 1
-    const q = quat[i][last]
-    const { slot, dot } = topSlotFromQuat(q)
-    topSlots.push(slot)
-    if (dot < 0.93) cocked = true
-    // Auf einem anderen Würfel gestapelt? Ruht deutlich über dem Boden → neu würfeln.
-    if (pos[i][last][1] > h * 1.7) cocked = true
-  }
-  return { pos, quat, impacts, topSlots, cocked, frames: pos[0]?.length ?? 0 }
-}
 
 /* =============================== Komponente ============================= */
 type ArenaData = {
@@ -387,6 +205,9 @@ type Phase = 'ready' | 'rolling' | 'landed'
 // Sichtbarer Auswahl-Hub, der auch in flachen iPhone-Layouts innerhalb der Arena bleibt.
 const LIFT = 0.68
 const DRAG_RELEASE_MS = 240
+// Höchstens so lange hält die Hand nach dem Loslassen still, um die Bahn mit
+// exakt passender Kraft abzuwarten; spürbar wird erst deutlich mehr.
+const PENDING_EXACT_MS = 80
 export const DICE_PLAYBACK_SPEED = 1.45
 export const DICE_MAX_PLAYBACK_SECONDS = 2.8
 
@@ -415,8 +236,22 @@ export default function DiceArena({
   const reduceRef = useRef(false)
   const idleQuatRef = useRef<Q[]>([])
   const idleOffsetRef = useRef<V[]>([])
-  const dragRef = useRef({ pointerId: -1, lastX: 0, lastY: 0, x: 0, y: 0, vx: 0, vy: 0, time: 0 })
+  // Abstand sichtbare Hand → Start der übernommenen Bahn (wird beim Abwurf ausgeblendet).
+  const releaseOffsetRef = useRef<V[]>([])
+  const dragRef = useRef({
+    pointerId: -1, lastX: 0, lastY: 0, x: 0, y: 0, vx: 0, vy: 0, time: 0,
+    // Rohe Fingerbewegung für den Wurf (px/s bzw. px seit dem Aufsetzen).
+    startX: 0, startY: 0, fvx: 0, fvy: 0,
+  })
   const releaseRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 })
+  const plannerRef = useRef<ThrowPlanner | null>(null)
+  const defaultChoiceRef = useRef<ThrowChoice>({ dir: 0, energy: 1 })
+  // Wurf ist losgelassen, aber die Bahn wird noch fertig gerechnet.
+  const pendingRef = useRef<ThrowChoice | null>(null)
+  // Bis dahin wird auf die Bahn mit exakt passender Kraft gewartet, danach
+  // startet eine fertige Nachbarbahn mit etwas anderer Kraft.
+  const pendingDeadlineRef = useRef(0)
+  const [launching, setLaunching] = useState(false)
   const onSettleRef = useRef(onSettle); onSettleRef.current = onSettle
   const onSelRef = useRef(onSelectionChange); onSelRef.current = onSelectionChange
   const onPhaseRef = useRef(onPhaseChange); onPhaseRef.current = onPhaseChange
@@ -492,24 +327,97 @@ export default function DiceArena({
       return () => clearTimeout(t)
     }
 
-    const cfg = { h, Rb, y0, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 720 }
-    let attempt = runAttempt(n, cfg, createSeededRandom(mixSeed(seed, 0)))
-    for (let k = 1; k < 8 && attempt.cocked; k++) {
-      attempt = runAttempt(n, cfg, createSeededRandom(mixSeed(seed, k)))
-    }
-
-    const labelings = attempt.topSlots.map((slot, i) => chooseLabeling(slot, vals[i]))
-    attempt.impacts.sort((a, b) => a.frame - b.frame)
+    // Keine Rechenpause beim Öffnen: Die Handlage ist sofort bekannt, die Bahn
+    // entsteht erst mit der Geste (Standardwurf im Hintergrund vorbereitet).
+    const cfg: DiceSimConfig = { h, Rb, y0, G: 26, FIXED_DT: 1 / 120, MAX_STEPS: 720 }
+    const pose = handPose(n, cfg, seed)
     dataRef.current = {
-      pos: attempt.pos, quat: attempt.quat, impacts: attempt.impacts, labelings,
-      frames: attempt.frames, S, sizePx, feltPx, FIXED_DT: cfg.FIXED_DT, camTilt, perspective,
+      pos: pose.pos.map((p) => [p]), quat: pose.quat.map((q) => [q]), impacts: [],
+      labelings: handLabelings(n, seed),
+      frames: 1, S, sizePx, feltPx, FIXED_DT: cfg.FIXED_DT, camTilt, perspective,
     }
+    const planner = new ThrowPlanner(n, cfg, seed)
+    defaultChoiceRef.current = defaultChoice(seed)
+    planner.request(defaultChoiceRef.current, true)
+    // Danach im Leerlauf: Vorrat, mit dem jede Wischrichtung sofort startet.
+    planner.requestCardinals()
+    plannerRef.current = planner
+    pendingRef.current = null
+    setLaunching(false)
     setReady(true)
   }, [values, seed])
+
+  // Übernimmt eine fertige Bahn. Jeder Würfel wird so „umgegriffen“, dass am
+  // Ende values[i] oben liegt, ohne die Beschriftung zu ändern.
+  const commitThrow = (t: DiceThrow) => {
+    const d = dataRef.current; if (!d) return
+    const vals = values.map((v) => clamp(Math.round(v), 1, 6))
+    const last = t.frames - 1
+    const quat = t.quat.map((path, i) => {
+      const wanted = Math.max(0, d.labelings[i].indexOf(vals[i]))
+      const visible = idleQuatRef.current[i] ?? path[0]
+      const g = chooseBodySymmetry(path[last], wanted, path[0], visible)
+      return path.map((q) => qMul(q, g))
+    })
+    // Sichtbare Lage in der Hand (inkl. Wippen) minus Start der Bahn. Bei einer
+    // gedrehten Nachbarbahn ist das mehr als nur das Wippen.
+    releaseOffsetRef.current = t.pos.map((path, i) => {
+      const hand = d.pos[i][0], hop = idleOffsetRef.current[i] ?? [0, 0, 0]
+      return [hand[0] + hop[0] - path[0][0], hand[1] + hop[1] - path[0][1], hand[2] + hop[2] - path[0][2]]
+    })
+    dataRef.current = { ...d, pos: t.pos, quat, impacts: t.impacts, frames: t.frames }
+  }
+
+  // Wirft mit der gewählten Geste: sofort, wenn die Bahn schon bereitliegt,
+  // sonst sobald sie fertig ist (die Würfel bleiben solange in der Hand).
+  const launch = (choice: ThrowChoice) => {
+    if (pendingRef.current) return
+    const planner = plannerRef.current
+    if (reduceRef.current || !planner) { setPhase('rolling'); return }
+    planner.request(choice, true)
+    // Exakt passende Bahn oder eine fertige Nachbarbahn, exakt hingedreht.
+    const ready = planner.getNearest(choice)
+    if (ready) {
+      commitThrow(ready)
+      setPhase('rolling')
+    } else {
+      pendingRef.current = choice
+      pendingDeadlineRef.current = performance.now() + PENDING_EXACT_MS
+      setLaunching(true)
+    }
+  }
+
+  // --- Planer in Zeitscheiben, solange die Würfel in der Hand liegen. ---
+  useEffect(() => {
+    if (!ready || phase !== 'ready' || reduceRef.current) return
+    let raf = 0
+    const tick = () => {
+      const planner = plannerRef.current
+      if (planner) {
+        const pending = pendingRef.current
+        // Wartet ein losgelassener Wurf, darf er mehr vom Frame bekommen.
+        planner.pump(pending ? 12 : 5)
+        const t = pending && (planner.getNearest(pending)
+          ?? (performance.now() > pendingDeadlineRef.current ? planner.getNearest(pending, { anyEnergy: true }) : null))
+        if (t) {
+          pendingRef.current = null
+          commitThrow(t)
+          setLaunching(false)
+          setPhase('rolling')
+          return
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [ready, phase])
 
   // --- „In der Hand": Würfel drehen sich an der Startposition, bis getippt wird. ---
   useEffect(() => {
     if (!ready || phase !== 'ready' || reduceRef.current) return
+    // Bewusst die HAND-Daten dieses Effekts festhalten: commitThrow ersetzt
+    // dataRef durch die (umgegriffene) Bahn, die Hand darf davon nichts sehen.
     const d = dataRef.current; if (!d) return
     const n = d.labelings.length
     const start = performance.now()
@@ -545,7 +453,7 @@ export default function DiceArena({
     const n = d.labelings.length, dt = d.FIXED_DT, last = d.frames - 1
     const playbackSpeed = dicePlaybackSpeed(d.frames, dt)
     const releaseQuat = [...idleQuatRef.current]
-    const releaseOffsets = [...idleOffsetRef.current]
+    const releaseOffsets = [...releaseOffsetRef.current]
     // Correct the whole recorded orientation, preserving its angular motion.
     const corrections = releaseQuat.map((q, i) => {
       const initial = d.quat[i][0]
@@ -660,7 +568,7 @@ export default function DiceArena({
         lastTrigger = now
         buzz(20)
         unlockDiceAudio()
-        setPhase('rolling')
+        launch(defaultChoiceRef.current)
       }
     }
     window.addEventListener('devicemotion', onMotion)
@@ -671,17 +579,20 @@ export default function DiceArena({
     if (phase === 'ready') {
       unlockDiceAudio() // erste Geste → Sound entsperren
       if (motionEnabled) requestMotion() // Sensorzugriff nur nach ausdrücklicher Aktivierung
-      setPhase('rolling')
+      launch(defaultChoiceRef.current)
     } else if (phase === 'landed' && !selectable) onSettleRef.current?.()
   }
 
   const beginDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (phase !== 'ready' || !ready || !e.isPrimary || e.button !== 0 || dragRef.current.pointerId !== -1) return
+    if (phase !== 'ready' || !ready || pendingRef.current || !e.isPrimary || e.button !== 0 || dragRef.current.pointerId !== -1) return
     setDiceStageOffset(0, 0, false)
     unlockDiceAudio()
     if (motionEnabled) requestMotion()
     releaseRef.current = { x: 0, y: 0, vx: 0, vy: 0 }
-    dragRef.current = { pointerId: e.pointerId, lastX: e.clientX, lastY: e.clientY, x: 0, y: 0, vx: 0, vy: 0, time: performance.now() }
+    dragRef.current = {
+      pointerId: e.pointerId, lastX: e.clientX, lastY: e.clientY, x: 0, y: 0, vx: 0, vy: 0, time: performance.now(),
+      startX: e.clientX, startY: e.clientY, fvx: 0, fvy: 0,
+    }
     e.currentTarget.setPointerCapture(e.pointerId)
     setDragging(true)
   }
@@ -695,12 +606,17 @@ export default function DiceArena({
     // Incremental movement avoids a dead zone when reversing at the boundary.
     const x = clamp(drag.x + (e.clientX - drag.lastX) * 1.2, -maxX, maxX)
     const y = clamp(drag.y + (e.clientY - drag.lastY) * 1.2, -maxY, maxY)
-    drag.lastX = e.clientX; drag.lastY = e.clientY
     const now = performance.now(), dt = Math.max(0.008, (now - drag.time) / 1000)
+    // Geglättete echte Fingergeschwindigkeit: daraus entstehen Richtung und Kraft.
+    drag.fvx = drag.fvx * 0.4 + ((e.clientX - drag.lastX) / dt) * 0.6
+    drag.fvy = drag.fvy * 0.4 + ((e.clientY - drag.lastY) / dt) * 0.6
+    drag.lastX = e.clientX; drag.lastY = e.clientY
     drag.vx = clamp((x - drag.x) / dt, -220, 220)
     drag.vy = clamp((y - drag.y) / dt, -180, 180)
     drag.x = x; drag.y = y; drag.time = now
     if (!reduceRef.current) setDiceStageOffset(drag.x, drag.y, false)
+    // Den Wurf für die gerade gezeigte Richtung schon vorbereiten.
+    if (Math.hypot(drag.fvx, drag.fvy) > 150) plannerRef.current?.request(gestureChoice(drag.fvx, drag.fvy), true)
   }
 
   const releaseDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -712,7 +628,13 @@ export default function DiceArena({
     const fresh = performance.now() - drag.time < 100
     releaseRef.current = reduceRef.current ? { x: 0, y: 0, vx: 0, vy: 0 }
       : { x: drag.x, y: drag.y, vx: fresh ? drag.vx : 0, vy: fresh ? drag.vy : 0 }
-    setPhase('rolling')
+    // Geschleudert: Richtung und Kraft der letzten Fingerbewegung. Langsam
+    // geführt und losgelassen: sanft in Zugrichtung. Kaum bewegt: Standardwurf.
+    const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY
+    const choice: ThrowChoice = fresh && Math.hypot(drag.fvx, drag.fvy) > 150
+      ? gestureChoice(drag.fvx, drag.fvy)
+      : Math.hypot(dx, dy) > 24 ? { ...gestureChoice(dx, dy), energy: 0 } : defaultChoiceRef.current
+    launch(choice)
   }
 
   const cancelDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -822,7 +744,7 @@ export default function DiceArena({
       {phase === 'landed' && !selectable && (
         <button className="da-tap" onClick={handleTap} aria-label="Weiter" />
       )}
-      {phase === 'ready' && (
+      {phase === 'ready' && !launching && (
         <div className="da-hint">{
           dragging
             ? 'Loslassen zum Würfeln'

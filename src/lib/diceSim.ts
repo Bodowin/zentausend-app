@@ -58,25 +58,34 @@ export type DicePhysicsTuning = {
   /** Mittelpunkt der Hand als Anteil des Schalenradius (Richtung Spieler positiv). */
   handZ: number
   maxAttempts: number
+  broadphase?: BroadphaseKind
 }
 
+/**
+ * Gemessen an je 100 Würfen mit 3 und 6 Würfeln gegen die frühere Abstimmung:
+ * Plastik prallt von Plastik ab (statt aneinander zu kleben), der Filz lässt
+ * rollen statt rutschen, der Rand federt zurück und die Hand fächert leicht
+ * auf. Dadurch stützen sich viel seltener Würfel aneinander ab (Ø 3,4 → 1,8
+ * Simulationsläufe bei 6 Würfeln) und kein Wurf endet mehr schief.
+ */
 export const DEFAULT_TUNING: DicePhysicsTuning = {
   rimSegments: 24,
-  rimSlope: 0.22,
-  feltFriction: 0.16,
+  rimSlope: 0.1,
+  feltFriction: 0.3,
   feltRestitution: 0.24,
-  rimFriction: 0.16,
-  rimRestitution: 0.24,
-  diceFriction: 0.09,
-  diceRestitution: 0.18,
+  rimFriction: 0.05,
+  rimRestitution: 0.45,
+  diceFriction: 0.25,
+  diceRestitution: 0.55,
   linearDamping: 0.025,
-  angularDamping: 0.045,
-  forward: [5.1, 5.9],
+  angularDamping: 0.08,
+  forward: [4.2, 5.0],
   lift: [1.25, 1.7],
   spin: [19, 27],
-  fan: 0,
-  handZ: 0.15,
+  fan: 0.18,
+  handZ: 0.05,
   maxAttempts: 8,
+  broadphase: 'bowl',
 }
 
 /** Geste des Spielers: Richtung (0 = vom Spieler weg, im Uhrzeigersinn von oben) und Kraft. */
@@ -139,7 +148,70 @@ export function quatAngleDeg(a: Quat, b: Quat): number {
   return 2 * Math.acos(Math.min(1, d)) * 180 / Math.PI
 }
 
+export function qMul(a: Quat, b: Quat): Quat {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ]
+}
+
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
+/* ======================= Würfelsymmetrie (24 Drehungen) ================= */
+
+function buildCubeRotations(): Quat[] {
+  const s = Math.SQRT1_2
+  const gens: Quat[] = [[s, 0, 0, s], [0, s, 0, s], [0, 0, s, s]]
+  const key = (q: Quat) => {
+    // q und −q sind dieselbe Drehung → Vorzeichen normieren.
+    const sign = q[3] < -1e-9 || (Math.abs(q[3]) < 1e-9 && (q[0] < -1e-9 || (Math.abs(q[0]) < 1e-9 && (q[1] < -1e-9 || (Math.abs(q[1]) < 1e-9 && q[2] < 0))))) ? -1 : 1
+    return q.map((x) => Math.round(x * sign * 1e6)).join()
+  }
+  const out: Quat[] = [[0, 0, 0, 1]]
+  const seen = new Set([key(out[0])])
+  for (let i = 0; i < out.length; i++) {
+    for (const g of gens) {
+      const r = qMul(out[i], g)
+      const k = key(r)
+      if (!seen.has(k)) { seen.add(k); out.push(r) }
+    }
+  }
+  return out
+}
+
+/** Die 24 Drehungen, die einen Würfel auf sich selbst abbilden. */
+export const CUBE_ROTATIONS: Quat[] = buildCubeRotations()
+
+function slotOf(v: V3): number {
+  let best = 0, dot = -Infinity
+  for (let s = 0; s < 6; s++) {
+    const d = v[0] * SLOT_NORMALS[s][0] + v[1] * SLOT_NORMALS[s][1] + v[2] * SLOT_NORMALS[s][2]
+    if (d > dot) { dot = d; best = s }
+  }
+  return best
+}
+
+/**
+ * Wählt die Würfeldrehung g, mit der die simulierte Bahn q(t) als q(t)·g
+ * gezeichnet wird, sodass am Ende die Fläche `wantedSlot` der festen
+ * Beschriftung oben liegt. Ein Würfel ist unter g physikalisch identisch,
+ * Positionen und Kontakte ändern sich nicht. Von den vier passenden g wird
+ * das gewählt, das am Start am wenigsten von der gerade sichtbaren Lage
+ * abweicht, damit der Übergang aus der Hand kaum zusätzliche Drehung braucht.
+ */
+export function chooseBodySymmetry(finalQuat: Quat, wantedSlot: number, startQuat: Quat, visibleQuat: Quat): Quat {
+  const top = topSlotFromQuat(finalQuat).slot
+  let best: Quat = CUBE_ROTATIONS[0]
+  let bestAngle = Infinity
+  for (const g of CUBE_ROTATIONS) {
+    if (slotOf(rotV(SLOT_NORMALS[wantedSlot], g)) !== top) continue
+    const angle = quatAngleDeg(visibleQuat, qMul(startQuat, g))
+    if (angle < bestAngle) { bestAngle = angle; best = g }
+  }
+  return best
+}
 
 /** Dreht einen horizontalen Vektor aus dem Wurf-Rahmen (vorwärts = −z) in die Welt. */
 function toWorld(x: number, z: number, direction: number): [number, number] {
@@ -196,6 +268,60 @@ export function handPose(n: number, cfg: DiceSimConfig, seed: number, tuning: Di
 
 /* ============================== Simulation ============================= */
 
+/**
+ * Vorprüfung für die Schale: Ein Würfel wird nur gegen Wandstücke und Würfel
+ * getestet, die er in diesem Schritt überhaupt berühren kann. Die naive
+ * Variante prüft jeden Würfel in jedem Schritt gegen alle unendlichen
+ * Wand-Ebenen. Die Paar-Reihenfolge entspricht der von NaiveBroadphase, damit
+ * sich am Ergebnis nichts ändert, nur an der Rechenzeit.
+ */
+class BowlBroadphase extends CANNON.Broadphase {
+  private readonly normals = new Map<CANNON.Body, CANNON.Vec3>()
+
+  constructor(private readonly margin: number) {
+    super()
+  }
+
+  private planeNormal(plane: CANNON.Body): CANNON.Vec3 {
+    let normal = this.normals.get(plane)
+    if (!normal) {
+      normal = plane.quaternion.vmult(new CANNON.Vec3(0, 0, 1))
+      this.normals.set(plane, normal)
+    }
+    return normal
+  }
+
+  private near(a: CANNON.Body, b: CANNON.Body): boolean {
+    const aPlane = a.shapes[0]?.type === CANNON.Shape.types.PLANE
+    const bPlane = b.shapes[0]?.type === CANNON.Shape.types.PLANE
+    if (aPlane || bPlane) {
+      const plane = aPlane ? a : b, die = aPlane ? b : a
+      const nrm = this.planeNormal(plane)
+      const dx = die.position.x - plane.position.x
+      const dy = die.position.y - plane.position.y
+      const dz = die.position.z - plane.position.z
+      return nrm.x * dx + nrm.y * dy + nrm.z * dz < die.boundingRadius + this.margin
+    }
+    const reach = a.boundingRadius + b.boundingRadius + this.margin
+    return a.position.distanceSquared(b.position) < reach * reach
+  }
+
+  collisionPairs(world: CANNON.World, pairs1: CANNON.Body[], pairs2: CANNON.Body[]): void {
+    const bodies = world.bodies
+    for (let i = 0; i !== bodies.length; i++) {
+      for (let j = 0; j !== i; j++) {
+        const bi = bodies[i], bj = bodies[j]
+        if (!this.needBroadphaseCollision(bi, bj) || !this.near(bi, bj)) continue
+        pairs1.push(bi)
+        pairs2.push(bj)
+      }
+    }
+  }
+}
+
+/** Wählbar, damit Tests die Gleichwertigkeit mit der naiven Vorprüfung belegen können. */
+export type BroadphaseKind = 'bowl' | 'naive'
+
 type AttemptResult = Omit<DiceThrow, 'attempts'>
 
 function* simulateAttempt(
@@ -210,7 +336,8 @@ function* simulateAttempt(
   const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -G, 0) })
   world.allowSleep = true
   ;(world.solver as CANNON.GSSolver).iterations = 14
-  world.broadphase = new CANNON.NaiveBroadphase()
+  // Reichweite je Schritt: schnellster Würfel (~12 Einheiten/s) plus Reserve.
+  world.broadphase = tuning.broadphase === 'naive' ? new CANNON.NaiveBroadphase() : new BowlBroadphase(0.25)
   const felt = new CANNON.Material('felt'), rim = new CANNON.Material('rim'), dieM = new CANNON.Material('die')
   world.addContactMaterial(new CANNON.ContactMaterial(felt, dieM, { friction: tuning.feltFriction, restitution: tuning.feltRestitution }))
   world.addContactMaterial(new CANNON.ContactMaterial(rim, dieM, { friction: tuning.rimFriction, restitution: tuning.rimRestitution }))
@@ -387,6 +514,25 @@ export function simulateThrow(
   tuning: DicePhysicsTuning = DEFAULT_TUNING,
 ): DiceThrow {
   return createThrowJob(n, cfg, seed, input, tuning).advance() as DiceThrow
+}
+
+/* ============================ Drehen um die Mitte ====================== */
+
+/**
+ * Dreht einen fertigen Wurf um die senkrechte Schalenachse. Weil die Schale
+ * ein regelmäßiges Vieleck ist, ist das für Vielfache von 2π/rimSegments eine
+ * exakte physikalische Lösung desselben Wurfs in eine andere Richtung. Die oben
+ * liegenden Flächen ändern sich durch eine Drehung um die Senkrechte nicht.
+ */
+export function rotateThrow(t: DiceThrow, angle: number): DiceThrow {
+  if (angle === 0) return t
+  const half = angle / 2
+  const r: Quat = [0, Math.sin(half), 0, Math.cos(half)]
+  return {
+    ...t,
+    pos: t.pos.map((path) => path.map((p) => rotV(p, r))),
+    quat: t.quat.map((path) => path.map((q) => qMul(r, q))),
+  }
 }
 
 /* ============================== Nachlauf =============================== */
